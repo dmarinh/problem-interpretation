@@ -2,13 +2,11 @@
 Health Check Endpoints
 
 Provides endpoints for monitoring application health and readiness.
-Used by orchestration systems (Kubernetes, Docker, etc.) for:
-- Liveness probes: Is the application running?
-- Readiness probes: Is the application ready to serve traffic?
 """
 
 from datetime import datetime, timezone
 from enum import Enum
+import time
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
@@ -35,11 +33,7 @@ class ComponentHealth(BaseModel):
 
 
 class HealthResponse(BaseModel):
-    """
-    Comprehensive health check response.
-    
-    Includes status of all critical components.
-    """
+    """Comprehensive health check response."""
     status: ServiceStatus = Field(description="Overall application status")
     timestamp: datetime = Field(description="Time of health check")
     version: str = Field(description="Application version")
@@ -57,27 +51,36 @@ class ReadinessResponse(BaseModel):
 
 
 async def check_components() -> dict[str, ComponentHealth]:
-    """
-    Check health of all critical components.
+    """Check health of all critical components."""
+    from app.services.llm.client import get_llm_client
     
-    TODO: Implement actual health checks:
-    - Vector store connectivity
-    - LLM API availability
-    - Engine API connectivity
-    """
     components = {}
     
-    # Placeholder checks - will be implemented as components are added
+    # Vector store check (placeholder)
     components["vector_store"] = ComponentHealth(
         status=ServiceStatus.HEALTHY,
         message="Not yet implemented"
     )
     
-    components["llm_client"] = ComponentHealth(
-        status=ServiceStatus.HEALTHY,
-        message=f"Configured model: {settings.llm_model}"
-    )
+    # LLM client check
+    try:
+        start = time.perf_counter()
+        client = get_llm_client()
+        health = await client.health_check()
+        latency = (time.perf_counter() - start) * 1000
+        
+        components["llm_client"] = ComponentHealth(
+            status=ServiceStatus.HEALTHY if health["healthy"] else ServiceStatus.DEGRADED,
+            message=health.get("message"),
+            latency_ms=round(latency, 2),
+        )
+    except Exception as e:
+        components["llm_client"] = ComponentHealth(
+            status=ServiceStatus.UNHEALTHY,
+            message=f"Error: {str(e)}",
+        )
     
+    # Engine check (placeholder)
     components["engine"] = ComponentHealth(
         status=ServiceStatus.HEALTHY,
         message=f"ComBase URL: {settings.combase_api_url or 'Not configured'}"
@@ -105,12 +108,7 @@ def determine_overall_status(components: dict[str, ComponentHealth]) -> ServiceS
     description="Returns the health status of the application and its components."
 )
 async def health_check() -> HealthResponse:
-    """
-    Comprehensive health check endpoint.
-    
-    Checks all critical components and returns overall status.
-    Use for detailed health monitoring and debugging.
-    """
+    """Comprehensive health check endpoint."""
     components = await check_components()
     overall_status = determine_overall_status(components)
     
@@ -129,12 +127,7 @@ async def health_check() -> HealthResponse:
     description="Simple liveness check - returns 200 if application is running."
 )
 async def liveness() -> dict[str, str]:
-    """
-    Liveness probe endpoint.
-    
-    Returns 200 if the application process is running.
-    Use for Kubernetes/Docker liveness probes.
-    """
+    """Liveness probe endpoint."""
     return {"status": "alive"}
 
 
@@ -145,15 +138,9 @@ async def liveness() -> dict[str, str]:
     description="Checks if application is ready to serve traffic."
 )
 async def readiness() -> ReadinessResponse:
-    """
-    Readiness probe endpoint.
-    
-    Returns ready=true if all critical components are available.
-    Use for Kubernetes/Docker readiness probes.
-    """
+    """Readiness probe endpoint."""
     components = await check_components()
     
-    # Application is ready if no components are unhealthy
     critical_healthy = all(
         c.status != ServiceStatus.UNHEALTHY 
         for c in components.values()
@@ -175,14 +162,10 @@ async def readiness() -> ReadinessResponse:
 @router.get(
     "/config",
     summary="Configuration Info",
-    description="Returns non-sensitive configuration information (debug mode only)."
+    description="Returns non-sensitive configuration (debug mode only)."
 )
 async def config_info() -> dict:
-    """
-    Returns current configuration (debug mode only).
-    
-    Excludes sensitive values like API keys.
-    """
+    """Returns current configuration (debug mode only)."""
     if not settings.debug:
         return {"message": "Config info only available in debug mode"}
     
