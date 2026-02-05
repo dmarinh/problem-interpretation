@@ -3,14 +3,6 @@ Application Configuration
 
 Centralized configuration management using Pydantic Settings.
 Loads from environment variables and .env files.
-
-Note: Engine-specific constraints (parameter bounds per model) are NOT
-stored here. They are fetched from engine APIs and cached dynamically.
-See app/engines/constraints/ for constraint management.
-
-Usage:
-    from app.config import settings
-    print(settings.llm_model)
 """
 
 from enum import Enum
@@ -19,6 +11,10 @@ from typing import Optional
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+# Project root directory
+PROJECT_ROOT = Path(__file__).parent.parent
 
 
 # =============================================================================
@@ -41,18 +37,10 @@ class LogLevel(str, Enum):
 class Settings(BaseSettings):
     """
     Application settings loaded from environment variables.
-    
-    Environment variables can be set directly or via a .env file.
-    Variable names are case-insensitive.
-    
-    Example .env file:
-        LLM_MODEL=gpt-4-turbo-preview
-        LLM_API_KEY=sk-...
-        DEBUG=true
     """
     
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=PROJECT_ROOT / ".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
@@ -157,7 +145,6 @@ class Settings(BaseSettings):
     
     # -------------------------------------------------------------------------
     # Conservative Defaults (Safety-Critical)
-    # These are fallback values when data cannot be retrieved from RAG
     # -------------------------------------------------------------------------
     default_temperature_abuse_c: float = Field(
         default=25.0,
@@ -178,7 +165,6 @@ class Settings(BaseSettings):
     
     # -------------------------------------------------------------------------
     # Engine Configuration (connection settings only, NOT constraints)
-    # Constraints are fetched from engine APIs and cached dynamically.
     # -------------------------------------------------------------------------
     combase_api_url: Optional[str] = Field(
         default=None,
@@ -193,10 +179,9 @@ class Settings(BaseSettings):
     
     # -------------------------------------------------------------------------
     # Constraint Cache Settings
-    # Engine constraints are fetched on-demand and cached for performance.
     # -------------------------------------------------------------------------
     constraint_cache_ttl_seconds: int = Field(
-        default=86400,  # 24 hours
+        default=86400,
         ge=0,
         description="Time-to-live for cached engine constraints (0 = no expiry)"
     )
