@@ -128,11 +128,11 @@ class GrowthPrediction(BaseModel):
     temperature_celsius: float = Field(
         description="Temperature during this step"
     )
+    mu_max: float = Field(
+        description="Growth rate at this step's temperature (1/h)"
+    )
     log_increase: float = Field(
         description="Predicted log10 CFU increase during this step"
-    )
-    generations: float = Field(
-        description="Number of generations (doublings) during this step"
     )
 
 
@@ -153,9 +153,6 @@ class BaseExecutionResult(BaseModel):
     # Summary
     total_log_increase: float = Field(
         description="Total log10 CFU increase across all steps"
-    )
-    total_generations: float = Field(
-        description="Total generations across all steps"
     )
     
     # Metadata

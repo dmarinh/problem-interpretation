@@ -193,5 +193,4 @@ class ComBaseExecutionResult(BaseExecutionResult):
     # Inherited from base:
     # - step_predictions
     # - total_log_increase
-    # - total_generations
     # - warnings
