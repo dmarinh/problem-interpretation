@@ -21,6 +21,15 @@ class FoodExtraction(BaseModel):
     temperature_c: float | None = Field(default=None, description="Temperature in Celsius")
     duration_minutes: float | None = Field(default=None, description="Duration in minutes")
 
+class TimeTemperatureStep(BaseModel):
+    description: str = Field(description="Description of this step")
+    temperature_c: float = Field(description="Temperature in Celsius")
+    duration_minutes: float = Field(description="Duration in minutes")
+
+class MultiStepExtraction(BaseModel):
+    food_item: str = Field(description="The food item")
+    steps: list[TimeTemperatureStep] = Field(description="Time-temperature steps in order")
+    total_duration_minutes: float = Field(description="Total time from purchase to cooking")
 
 async def main():
     from app.services.llm.client import get_llm_client
@@ -56,6 +65,39 @@ async def main():
     
     print(f"Extracted: food={result.food}, temp={result.temperature_c}°C, duration={result.duration_minutes}min")
 
+
+    # Test 4: Complex structured extraction
+    print("--- Test 4: Complex Structured Extraction ---")
+    test_input = """
+    After purchasing salmon fillets from the supermarket, I drove home which took about 
+    45 minutes in summer traffic. The car was warm, maybe 28°C. Once home, I put the 
+    salmon in the fridge at 4°C where it stayed overnight (about 10 hours) before I 
+    cooked it for dinner.
+    """
+    print(f"Input: {test_input.strip()}")
+    print()
+    
+    try:
+        result = await client.extract(
+            response_model=MultiStepExtraction,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "Extract the time-temperature history of the food item. Identify each step with its temperature and duration."
+                },
+                {"role": "user", "content": test_input}
+            ],
+        )
+        
+        print(f"Food: {result.food_item}")
+        print(f"Total duration: {result.total_duration_minutes} minutes")
+        print(f"Steps:")
+        for i, step in enumerate(result.steps, 1):
+            print(f"  {i}. {step.description}")
+            print(f"     Temp: {step.temperature_c}°C, Duration: {step.duration_minutes} min")
+        
+    except Exception as e:
+        print(f"ERROR: {type(e).__name__}: {e}")
 
 if __name__ == "__main__":
     asyncio.run(main())
