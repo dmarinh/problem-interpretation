@@ -1,53 +1,90 @@
 """
 FastAPI Application Entry Point
 
-This module initializes the FastAPI application and registers all routes.
+Main application factory and configuration.
 """
 
+import logging
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
+from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware #CORS only protects the browser JavaScript client, not curl or other http clients
+from fastapi.middleware.cors import CORSMiddleware
 
-from app import __version__
-from app.api.routes import health
+from app.config import settings
+from app.api.routes import health, translation
+
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+async def lifespan(app: FastAPI):
     """
-    Application lifespan manager. This is used by FastAPI to handle startup and shutdown events.
+    Application lifespan manager.
+    
+    Handles startup and shutdown events.
     """
     # Startup
-    # Initialize database connections
-    # Load ML models into memory
-    # Warm up caches
+    logger.info(f"Starting {settings.app_name}")
+    
+    # Initialize ComBase engine
+    try:
+        from app.engines.combase.engine import get_combase_engine
+        engine = get_combase_engine()
+        
+        csv_path = Path("data/combase_models.csv")
+        if csv_path.exists():
+            count = engine.load_models(csv_path)
+            logger.info(f"Loaded {count} ComBase models")
+        else:
+            logger.warning(f"ComBase models not found at {csv_path}")
+    except Exception as e:
+        logger.error(f"Failed to initialize ComBase engine: {e}")
+    
+    # Initialize Vector Store
+    try:
+        from app.rag.vector_store import get_vector_store
+        store = get_vector_store()
+        store.initialize()
+        logger.info(f"Vector store initialized with {store.get_count()} documents")
+    except Exception as e:
+        logger.error(f"Failed to initialize vector store: {e}")
+    
+    logger.info("Application startup complete")
+    
     yield
+    
     # Shutdown
-    # Close database connections
-    # Save state
-    # Clean up resources
+    logger.info("Application shutting down")
 
 
 def create_app() -> FastAPI:
     """
-    Application factory.
+    Create and configure the FastAPI application.
     """
     app = FastAPI(
-        title="Problem Interpretation Module",
-        description=(
-            "Semantic middleware for translating natural language food safety "
-            "scenarios into engine-compliant predictive microbiology parameters."
-        ),
-        version=__version__,
+        title=settings.app_name,
+        description="""
+        Problem Translation Module for Predictive Microbiology.
+        
+        Translates natural language food safety queries into structured predictions
+        using ComBase and other predictive models.
+        
+        ## Features
+        
+        - Natural language query translation
+        - RAG-grounded value extraction
+        - Conservative default handling
+        - Full provenance tracking
+        - ComBase model execution
+        """,
+        version="0.1.0",
         lifespan=lifespan,
-        docs_url="/docs",
-        redoc_url="/redoc",
-        openapi_url="/openapi.json",
+        debug=settings.debug,
     )
     
-    # Configure CORS
+    # CORS middleware
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -56,11 +93,22 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     
-    # Register routes
-    app.include_router(health.router, tags=["Health"])
+    # Include routers
+    app.include_router(health.router)
+    app.include_router(translation.router, prefix="/api/v1")
     
     return app
 
 
-# Application instance
+# Create application instance
 app = create_app()
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(
+        "app.main:app",
+        host=settings.host,
+        port=settings.port,
+        reload=settings.debug,
+    )

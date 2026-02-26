@@ -11,10 +11,22 @@ from typing import Optional
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pathlib import Path
+
+# Find project root by looking for .env or pyproject.toml
+def find_project_root() -> Path:
+    current = Path(__file__).resolve().parent
+    while current != current.parent:
+        if (current / ".env").exists() or (current / "pyproject.toml").exists():
+            return current
+        current = current.parent
+    return Path.cwd()
+
+PROJECT_ROOT = find_project_root()
 
 
-# Project root directory
-PROJECT_ROOT = Path(__file__).parent.parent
+# # Project root directory
+# PROJECT_ROOT = Path(__file__).parent.parent
 
 
 # =============================================================================

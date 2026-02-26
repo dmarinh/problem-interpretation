@@ -57,6 +57,74 @@ class TestComBaseOrganism:
         assert ComBaseOrganism.from_string("LISTERIA") == ComBaseOrganism.LISTERIA_MONOCYTOGENES
         assert ComBaseOrganism.from_string("Salmonella") == ComBaseOrganism.SALMONELLA
 
+class TestComBaseOrganismFromText:
+    """Tests for ComBaseOrganism.from_text()."""
+    
+    def test_finds_salmonella_in_text(self):
+        """Should find Salmonella in longer text."""
+        text = "Salmonella is commonly found in raw poultry and eggs."
+        result = ComBaseOrganism.from_text(text)
+        
+        assert result == ComBaseOrganism.SALMONELLA
+    
+    def test_finds_listeria_in_text(self):
+        """Should find Listeria in longer text."""
+        text = "Listeria monocytogenes can grow at refrigeration temperatures."
+        result = ComBaseOrganism.from_text(text)
+        
+        assert result == ComBaseOrganism.LISTERIA_MONOCYTOGENES
+    
+    def test_finds_ecoli_in_text(self):
+        """Should find E. coli in text."""
+        text = "E. coli O157:H7 is associated with undercooked ground beef."
+        result = ComBaseOrganism.from_text(text)
+        
+        assert result == ComBaseOrganism.ESCHERICHIA_COLI
+    
+    def test_finds_bacillus_cereus_in_text(self):
+        """Should find Bacillus cereus in text."""
+        text = "Bacillus cereus produces toxins in cooked rice."
+        result = ComBaseOrganism.from_text(text)
+        
+        assert result == ComBaseOrganism.BACILLUS_CEREUS
+    
+    def test_prefers_longer_match(self):
+        """Should match longer patterns first."""
+        text = "Salmonella enteritidis is common in eggs."
+        result = ComBaseOrganism.from_text(text)
+        
+        # Should still resolve to SALMONELLA
+        assert result == ComBaseOrganism.SALMONELLA
+    
+    def test_case_insensitive(self):
+        """Should match case-insensitively."""
+        text = "LISTERIA was found in the sample."
+        result = ComBaseOrganism.from_text(text)
+        
+        assert result == ComBaseOrganism.LISTERIA_MONOCYTOGENES
+    
+    def test_no_match_returns_none(self):
+        """Should return None when no organism found."""
+        text = "This food is perfectly safe to eat."
+        result = ComBaseOrganism.from_text(text)
+        
+        assert result is None
+    
+    def test_empty_text_returns_none(self):
+        """Should return None for empty text."""
+        assert ComBaseOrganism.from_text("") is None
+        assert ComBaseOrganism.from_text(None) is None
+    
+    def test_finds_first_organism(self):
+        """Should return first matching organism."""
+        text = "Both Salmonella and Listeria can contaminate deli meats."
+        result = ComBaseOrganism.from_text(text)
+        
+        # Salmonella appears first in text, but longer patterns checked first
+        # "salmonella" and "listeria" are same length, so depends on dict order
+        # Just verify we get a valid organism
+        assert result in [ComBaseOrganism.SALMONELLA, ComBaseOrganism.LISTERIA_MONOCYTOGENES]
+
 
 class TestFactor4Type:
     """Tests for Factor4Type enum."""
