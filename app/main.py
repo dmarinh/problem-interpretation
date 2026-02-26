@@ -4,7 +4,6 @@ FastAPI Application Entry Point
 Main application factory and configuration.
 """
 
-import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -12,10 +11,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
+from app.core.logging import setup_logging, get_logger
 from app.api.routes import health, translation
 
 
-logger = logging.getLogger(__name__)
+# Setup logging before anything else
+setup_logging()
+logger = get_logger(__name__)
 
 
 @asynccontextmanager
@@ -47,7 +49,11 @@ async def lifespan(app: FastAPI):
         from app.rag.vector_store import get_vector_store
         store = get_vector_store()
         store.initialize()
-        logger.info(f"Vector store initialized with {store.get_count()} documents")
+        doc_count = store.get_count()
+        logger.info(f"Vector store initialized with {doc_count} documents")
+        
+        if doc_count == 0:
+            logger.warning("Vector store is empty. Run ingestion to add documents.")
     except Exception as e:
         logger.error(f"Failed to initialize vector store: {e}")
     

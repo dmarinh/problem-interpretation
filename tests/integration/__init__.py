@@ -1,3 +1,3 @@
 """
-Integration tests - test multiple components working together.
+Integration tests for end-to-end pipeline - test multiple components working together.
 """
