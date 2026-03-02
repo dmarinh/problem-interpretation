@@ -15,6 +15,7 @@ Flow:
 """
 
 from pydantic import BaseModel, Field
+from app.models.enums import ModelType
 
 
 # =============================================================================
@@ -155,16 +156,6 @@ class ExtractedScenario(BaseModel):
     
     This is the main model that Instructor populates from user input.
     All fields are optional because users rarely provide complete information.
-    
-    Example input:
-        "I left raw chicken on the counter for about 3 hours, 
-         it was pretty warm in the kitchen, maybe 25°C"
-    
-    Example extraction:
-        food_description: "raw chicken"
-        pathogen_mentioned: None (not explicitly mentioned)
-        temperature: {value_celsius: 25, description: "warm kitchen"}
-        duration: {value_minutes: 180, description: "about 3 hours"}
     """
     # Food information
     food_description: str | None = Field(
@@ -215,7 +206,24 @@ class ExtractedScenario(BaseModel):
         default=None,
         description="Any other relevant context mentioned"
     )
-
+    
+    # Scenario type inference (NEW)
+    is_cooking_scenario: bool = Field(
+        default=False,
+        description="Whether this is a cooking/heating scenario"
+    )
+    is_storage_scenario: bool = Field(
+        default=False,
+        description="Whether this is a storage/holding scenario"
+    )
+    is_non_thermal_treatment: bool = Field(
+        default=False,
+        description="Whether this involves non-thermal preservation (acid, drying, preservatives)"
+    )
+    implied_model_type: ModelType | None = Field(
+        default=None,
+        description="Model type implied by scenario context"
+    )
 
 # =============================================================================
 # INTENT CLASSIFICATION

@@ -43,6 +43,29 @@ Extract the following information if present:
 - Whether this is a multi-step scenario (e.g., transport then storage)
 - What the user is concerned about (safety, spoilage, shelf life)
 
+Scenario type inference:
+- is_cooking_scenario: True if the scenario involves cooking, heating, pasteurizing, boiling, grilling, or any high-temperature treatment intended to kill pathogens
+- is_storage_scenario: True if the scenario involves storing, holding, leaving out, sitting at temperature, or ambient/refrigerated conditions
+- is_non_thermal_treatment: True if the scenario involves non-thermal preservation or inactivation methods (acidification, drying, salting, high pressure, UV, irradiation, preservatives)
+- implied_model_type:
+  - "thermal_inactivation" if cooking/heating at high temperatures (typically >50°C) to kill pathogens
+  - "growth" if storage/holding where bacterial growth is the concern
+  - "non_thermal_survival" if non-thermal treatments affecting pathogen survival (acid exposure, drying, preservatives, high pressure processing)
+  - null if unclear or ambiguous
+
+Examples of scenario type inference:
+- "Chicken left out for 3 hours" → is_storage_scenario=True, implied_model_type="growth"
+- "Cooking chicken to 75°C for 5 minutes" → is_cooking_scenario=True, implied_model_type="thermal_inactivation"
+- "Will pasteurization kill Salmonella?" → is_cooking_scenario=True, implied_model_type="thermal_inactivation"
+- "Beef stored in fridge for a week" → is_storage_scenario=True, implied_model_type="growth"
+- "Reheating leftovers to 70°C" → is_cooking_scenario=True, implied_model_type="thermal_inactivation"
+- "Marinating chicken in lemon juice (pH 3)" → is_non_thermal_treatment=True, implied_model_type="non_thermal_survival"
+- "Adding vinegar to preserve vegetables" → is_non_thermal_treatment=True, implied_model_type="non_thermal_survival"
+- "Salting fish for preservation" → is_non_thermal_treatment=True, implied_model_type="non_thermal_survival"
+- "High pressure processing of juice" → is_non_thermal_treatment=True, implied_model_type="non_thermal_survival"
+- "Drying meat into jerky" → is_non_thermal_treatment=True, implied_model_type="non_thermal_survival"
+- "Adding nitrites to cured meat" → is_non_thermal_treatment=True, implied_model_type="non_thermal_survival"
+
 Important guidelines:
 - Only extract what is explicitly stated or clearly implied
 - Do not invent or assume values not mentioned

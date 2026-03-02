@@ -15,6 +15,7 @@ instructor>=1.0.0
 # RAG / Vector Store
 chromadb>=0.4.22
 sentence-transformers>=2.3.0
+ranx>=0.3.21
 
 # Document Loaders (ingestion pipeline)
 pypdf>=4.0.0

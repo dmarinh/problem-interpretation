@@ -34,9 +34,9 @@ class TranslationRequest(BaseModel):
             "Ground beef was in my car for 2 hours at 30°C",
         ],
     )
-    model_type: ModelType = Field(
-        default=ModelType.GROWTH,
-        description="Type of prediction model to use",
+    model_type: ModelType | None = Field(
+        default=None,
+        description="Type of prediction model. If not provided, inferred from query context.",
     )
     
     model_config = {
@@ -44,7 +44,12 @@ class TranslationRequest(BaseModel):
             "examples": [
                 {
                     "query": "Raw chicken left out for 3 hours at room temperature",
-                    "model_type": "growth",
+                },
+                {
+                    "query": "Cooking chicken to 75°C for 5 minutes",
+                },
+                {
+                    "query": "Marinating raw fish in vinegar for preservation",
                 }
             ]
         }

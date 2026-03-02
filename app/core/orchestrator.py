@@ -94,13 +94,19 @@ class Orchestrator:
             
             # Step 2: Extract scenario
             await self._extract_scenario(state)
+
+            # Step 3: Determine model type (infer if not provided)
+            effective_model_type = self._determine_model_type(
+                model_type,
+                state.extracted_scenario,
+            )
             
-            # Step 3: Ground values via RAG
+            # Step 4: Ground values via RAG
             grounded = await self._ground_values(state)
             
-            # Step 4: Standardize and build payload
+            # Step 5: Standardize and build payload
             state.update_status(SessionStatus.STANDARDIZING)
-            std_result = self._standardizer.standardize(grounded, model_type)
+            std_result = self._standardizer.standardize(grounded, effective_model_type)
             
             if std_result.missing_required:
                 state.set_error(
@@ -133,7 +139,58 @@ class Orchestrator:
             state.set_error(str(e))
             return TranslationResult(state)
     
-    
+    def _determine_model_type(
+        self,
+        explicit_type: ModelType | None,
+        scenario,
+    ) -> ModelType:
+        """
+        Determine model type from explicit parameter or scenario inference.
+        
+        Priority:
+        1. Explicit parameter (if provided)
+        2. LLM-extracted inference (implied_model_type)
+        3. Temperature heuristic (>50°C → thermal inactivation)
+        4. Scenario flags (is_cooking_scenario, is_non_thermal_treatment)
+        5. Default to Growth
+        
+        Model types:
+        - GROWTH: Bacterial multiplication during storage/holding
+        - THERMAL_INACTIVATION: Pathogen death from heat treatment
+        - NON_THERMAL_SURVIVAL: Pathogen survival under non-thermal stress (acid, aw, preservatives)
+        """
+        # Explicit takes priority
+        if explicit_type is not None:
+            return explicit_type
+        
+        # Use LLM-extracted inference
+        if scenario.implied_model_type is not None:
+            return scenario.implied_model_type
+        
+        # Infer from temperature if available
+        temp = scenario.single_step_temperature
+        if temp.value_celsius is not None and temp.value_celsius > 50:
+            return ModelType.THERMAL_INACTIVATION
+        
+        # Infer from scenario flags
+        if scenario.is_cooking_scenario:
+            return ModelType.THERMAL_INACTIVATION
+        
+        if scenario.is_non_thermal_treatment:
+            return ModelType.NON_THERMAL_SURVIVAL
+        
+        # Infer from environmental conditions (low pH, low aw, preservatives)
+        env = scenario.environmental_conditions
+        if env.ph_value is not None and env.ph_value < 4.5:
+            return ModelType.NON_THERMAL_SURVIVAL
+        if env.water_activity is not None and env.water_activity < 0.90:
+            return ModelType.NON_THERMAL_SURVIVAL
+        if env.nitrite_ppm is not None or env.lactic_acid_ppm is not None or env.acetic_acid_ppm is not None:
+            return ModelType.NON_THERMAL_SURVIVAL
+        
+        # Default to growth (most common use case)
+        return ModelType.GROWTH
+
     async def _classify_intent(self, state: SessionState) -> None:
         """Classify user intent."""
         state.intent = await self._parser.classify_intent(state.user_input)
