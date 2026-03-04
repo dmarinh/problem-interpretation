@@ -95,7 +95,9 @@ class Orchestrator:
             # Step 2: Extract scenario
             await self._extract_scenario(state)
 
-            # Step 3: Determine model type (infer if not provided)
+            # Step 3: Determine model type. Model type should be extracted in step 2 by the LLM.
+            # We determine it here with rules as a fallback and make sure that model type is 
+            # set to the explicit model type if provided.
             effective_model_type = self._determine_model_type(
                 model_type,
                 state.extracted_scenario,
