@@ -24,7 +24,6 @@ async def main():
     from app.engines.combase.engine import get_combase_engine
     from app.rag.vector_store import get_vector_store
     from app.rag.ingestion import IngestionPipeline
-    from app.models.enums import ModelType
     
     print("=" * 70)
     print("FULL PIPELINE TEST")
@@ -70,6 +69,12 @@ async def main():
             doc_type="food_properties",
             metadata={"food": "beef"},
         )
+        pipeline.ingest_text(
+            "Deli turkey has pH 6.0-6.4 and water activity 0.97-0.98. "
+            "Risk of Listeria monocytogenes even under refrigeration.",
+            doc_type="food_properties",
+            metadata={"food": "deli turkey"},
+        )
         
         # Pathogen hazards
         pipeline.ingest_text(
@@ -92,6 +97,12 @@ async def main():
             doc_type="pathogen_hazards",
             metadata={"pathogen": "bacillus"},
         )
+        pipeline.ingest_text(
+            "E. coli O157:H7 is associated with undercooked ground beef. "
+            "Growth temperature range 7-50°C. Can cause severe illness.",
+            doc_type="pathogen_hazards",
+            metadata={"pathogen": "ecoli"},
+        )
         
         print(f"  ✓ Ingested {store.get_count()} documents")
     else:
@@ -103,35 +114,38 @@ async def main():
     reset_orchestrator()
     orchestrator = get_orchestrator()
     
-    # Test queries
+    # Test queries - model_type is inferred, not specified
     test_cases = [
         {
             "query": "I left raw chicken on the counter for 3 hours at room temperature",
-            "model_type": ModelType.GROWTH,
+            "description": "Growth scenario - chicken at ambient temp",
         },
         {
             "query": "Cooked rice was sitting out overnight at about 25°C",
-            "model_type": ModelType.GROWTH,
+            "description": "Growth scenario - rice overnight",
         },
         {
             "query": "Ground beef in my car for 2 hours on a warm day",
-            "model_type": ModelType.GROWTH,
+            "description": "Growth scenario - beef warm conditions",
         },
         {
             "query": "Is deli turkey safe after being refrigerated for a week?",
-            "model_type": ModelType.GROWTH,
+            "description": "Growth scenario - deli meat refrigerated",
+        },
+        {
+            "query": "Cooking chicken to 75°C for 5 minutes to kill Salmonella",
+            "description": "Thermal inactivation scenario",
         },
     ]
     
     for i, test in enumerate(test_cases, 1):
-        print(f"TEST {i}: {test['query']}")
+        print(f"TEST {i}: {test['description']}")
+        print(f"Query: \"{test['query']}\"")
         print("-" * 70)
         
         try:
-            result = await orchestrator.translate(
-                user_input=test["query"],
-                model_type=test["model_type"],
-            )
+            # model_type not specified - let it be inferred
+            result = await orchestrator.translate(user_input=test["query"])
             
             if result.success:
                 print(f"✓ Status: SUCCESS")
@@ -140,28 +154,51 @@ async def main():
                 if result.execution_result:
                     er = result.execution_result
                     mr = er.model_result
+                    
+                    # Show inferred model type
+                    model_type = result.state.execution_payload.model_selection.model_type
+                    print(f"  Model Type: {model_type.value if model_type else 'Unknown'} (inferred)")
                     print(f"  Organism: {mr.organism.name if mr.organism else 'Unknown'}")
                     print(f"  Temperature: {mr.temperature_used}°C")
                     print(f"  pH: {mr.ph_used}")
                     print(f"  Water Activity: {mr.aw_used}")
-                    print(f"  Duration: {result.state.execution_payload.time_temperature_profile.total_duration_minutes} min")
+                    duration = result.state.execution_payload.time_temperature_profile.total_duration_minutes
+                    print(f"  Duration: {duration:.0f} min ({duration/60:.1f} h)")
                     print(f"  μ_max: {mr.mu_max:.4f} 1/h")
                     if mr.doubling_time_hours:
                         print(f"  Doubling Time: {mr.doubling_time_hours:.2f} h")
-                    print(f"  Log Increase: {er.total_log_increase:.2f}")
+                    print(f"  Log Change: {er.total_log_increase:.2f}")
+                    
+                    # Interpret result
+                    if er.total_log_increase > 0:
+                        fold_increase = 10 ** er.total_log_increase
+                        print(f"  → Bacterial population increased ~{fold_increase:.1f}x")
+                    elif er.total_log_increase < 0:
+                        log_reduction = abs(er.total_log_increase)
+                        print(f"  → {log_reduction:.1f} log reduction (pathogen death)")
+                    else:
+                        print(f"  → No significant change")
                 
                 if result.metadata:
                     print(f"  Overall Confidence: {result.metadata.overall_confidence:.2f}")
+                    if result.metadata.provenance:
+                        print(f"  Provenance: {list(result.metadata.provenance.keys())}")
                     if result.metadata.warnings:
-                        print(f"  Warnings: {len(result.metadata.warnings)}")
+                        print(f"  Warnings ({len(result.metadata.warnings)}):")
                         for w in result.metadata.warnings[:3]:
-                            print(f"    - {w[:80]}...")
+                            print(f"    - {w[:70]}{'...' if len(w) > 70 else ''}")
+                    if result.metadata.bias_corrections:
+                        print(f"  Bias Corrections ({len(result.metadata.bias_corrections)}):")
+                        for bc in result.metadata.bias_corrections[:2]:
+                            print(f"    - {bc.field_name}: {bc.correction_reason[:60]}")
             else:
                 print(f"✗ Status: FAILED")
                 print(f"  Error: {result.error}")
         
         except Exception as e:
+            import traceback
             print(f"✗ Exception: {e}")
+            traceback.print_exc()
         
         print()
     

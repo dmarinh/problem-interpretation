@@ -64,7 +64,7 @@ class Orchestrator:
     async def translate(
         self,
         user_input: str,
-        model_type: ModelType = ModelType.GROWTH,
+        model_type: ModelType | None = None,
     ) -> TranslationResult:
         """
         Run the full translation pipeline.
