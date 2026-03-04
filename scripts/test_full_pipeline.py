@@ -16,7 +16,7 @@ load_dotenv()
 
 
 async def main():
-    from app.core.logging import setup_logging, get_logger
+    from app.core.log_config import setup_logging, get_logger
     setup_logging()
     logger = get_logger(__name__)
     
