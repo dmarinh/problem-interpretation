@@ -102,6 +102,52 @@ class ExtractedTimeTemperatureStep(BaseModel):
     )
 
 
+class ExtractedFoodProperties(BaseModel):
+    """
+    Extracted food properties from text.
+    
+    Used for both:
+    - LLM structured extraction (via Instructor)
+    - Internal representation of extracted values
+    """
+    ph_value: float | None = Field(
+        default=None,
+        description="Single pH value if explicitly stated (e.g., 'pH 6.0')"
+    )
+    ph_min: float | None = Field(
+        default=None,
+        description="Minimum pH if a range is given (e.g., 'pH 5.5-6.0' → 5.5)"
+    )
+    ph_max: float | None = Field(
+        default=None,
+        description="Maximum pH if a range is given (e.g., 'pH 5.5-6.0' → 6.0)"
+    )
+    aw_value: float | None = Field(
+        default=None,
+        description="Single water activity value if explicitly stated"
+    )
+    aw_min: float | None = Field(
+        default=None,
+        description="Minimum water activity if a range is given"
+    )
+    aw_max: float | None = Field(
+        default=None,
+        description="Maximum water activity if a range is given"
+    )
+    extraction_method: str = Field(
+        default="unknown",
+        description="How values were extracted: 'regex', 'llm', or 'regex+llm'"
+    )
+    
+    @property
+    def has_ph(self) -> bool:
+        return self.ph_value is not None or self.ph_min is not None or self.ph_max is not None
+    
+    @property
+    def has_aw(self) -> bool:
+        return self.aw_value is not None or self.aw_min is not None or self.aw_max is not None
+
+
 class ExtractedEnvironmentalConditions(BaseModel):
     """
     Environmental conditions extracted from user input.

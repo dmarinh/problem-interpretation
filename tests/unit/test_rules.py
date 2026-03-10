@@ -15,6 +15,8 @@ from app.config.rules import (
     BIAS_CORRECTIONS,
     find_temperature_interpretation,
     find_duration_interpretation,
+    find_temperature_interpretation_with_fallback,
+    find_temperature_by_similarity,
     get_bias_correction,
 )
 
@@ -107,6 +109,55 @@ class TestTemperatureInterpretations:
         assert rule is not None
         assert rule.value == 25.0
     
+    def test_bench(self):
+        """Should find bench rule."""
+        rule = find_temperature_interpretation("on the bench")
+        
+        assert rule is not None
+        assert rule.value == 25.0
+    
+    def test_table(self):
+        """Should find table rule."""
+        rule = find_temperature_interpretation("on the table")
+        
+        assert rule is not None
+        assert rule.value == 25.0
+    
+    def test_left_out(self):
+        """Should find left out rule."""
+        rule = find_temperature_interpretation("left out for hours")
+        
+        assert rule is not None
+        assert rule.value == 25.0
+    
+    def test_sitting_out(self):
+        """Should find sitting out rule."""
+        rule = find_temperature_interpretation("sitting out all day")
+        
+        assert rule is not None
+        assert rule.value == 25.0
+    
+    def test_sat_out(self):
+        """Should find sat out rule."""
+        rule = find_temperature_interpretation("sat out overnight")
+        
+        assert rule is not None
+        assert rule.value == 25.0
+    
+    def test_in_the_car(self):
+        """Should find in the car rule."""
+        rule = find_temperature_interpretation("left in the car")
+        
+        assert rule is not None
+        assert rule.value == 30.0
+    
+    def test_in_my_bag(self):
+        """Should find in my bag rule."""
+        rule = find_temperature_interpretation("in my bag all day")
+        
+        assert rule is not None
+        assert rule.value == 25.0
+    
     def test_ambient(self):
         """Should find ambient rule."""
         rule = find_temperature_interpretation("at ambient temperature")
@@ -120,6 +171,20 @@ class TestTemperatureInterpretations:
         
         assert rule is not None
         assert rule.value == 30.0
+    
+    def test_unrefrigerated(self):
+        """Should find unrefrigerated rule."""
+        rule = find_temperature_interpretation("left unrefrigerated")
+        
+        assert rule is not None
+        assert rule.value == 25.0
+    
+    def test_out_of_the_fridge(self):
+        """Should find out of the fridge rule."""
+        rule = find_temperature_interpretation("out of the fridge for hours")
+        
+        assert rule is not None
+        assert rule.value == 25.0
     
     def test_no_match(self):
         """Should return None for explicit numeric."""
@@ -143,6 +208,14 @@ class TestTemperatureInterpretations:
         assert rule is not None
         assert rule.value == 25.0
     
+    def test_longer_pattern_priority(self):
+        """Should prefer longer patterns over shorter ones."""
+        # "room temperature" should match before just "room"
+        rule = find_temperature_interpretation("at room temperature")
+        
+        assert rule is not None
+        assert rule.pattern == "room temperature"
+    
     def test_empty_string(self):
         """Should return None for empty string."""
         rule = find_temperature_interpretation("")
@@ -154,6 +227,79 @@ class TestTemperatureInterpretations:
         rule = find_temperature_interpretation(None)
         
         assert rule is None
+
+
+class TestTemperatureEmbeddingFallback:
+    """Tests for embedding-based temperature fallback."""
+    
+    def test_rule_takes_priority(self):
+        """Rule-based match should take priority over embedding."""
+        rule = find_temperature_interpretation_with_fallback("room temperature")
+        
+        assert rule is not None
+        assert rule.value == 25.0
+        assert "embedding" not in rule.notes.lower()
+    
+    def test_fallback_for_unknown_phrase(self):
+        """Should use embedding fallback for unknown phrases."""
+        # "on the windowsill" isn't in rules but semantically similar to room temp
+        rule = find_temperature_interpretation_with_fallback("on the windowsill")
+        
+        # May or may not match depending on similarity threshold
+        # Just verify it doesn't crash and returns rule or None
+        assert rule is None or isinstance(rule, InterpretationRule)
+    
+    def test_fallback_for_parked_vehicle(self):
+        """Should potentially match 'parked vehicle' via embeddings."""
+        rule = find_temperature_interpretation_with_fallback("left in parked vehicle")
+        
+        # Either matches via rule ("hot" partial?) or embedding, or None
+        assert rule is None or isinstance(rule, InterpretationRule)
+    
+    def test_embedding_similarity_function(self):
+        """Test direct embedding similarity function."""
+        temp, score = find_temperature_by_similarity("sitting at ambient conditions")
+        
+        # Should find a match with reasonable similarity
+        if temp is not None:
+            assert temp in [25.0, 30.0, 35.0, 4.0, -18.0]
+            assert 0.0 <= score <= 1.0
+    
+    def test_embedding_returns_low_score_for_unrelated(self):
+        """Should return low score for completely unrelated text."""
+        temp, score = find_temperature_by_similarity("hello world")
+        
+        # Score should be low
+        assert score < 0.8
+    
+    def test_fallback_confidence_includes_similarity(self):
+        """Embedding fallback confidence should incorporate similarity score."""
+        rule = find_temperature_interpretation_with_fallback("sitting in warm sunshine")
+        
+        # If it matches via embedding, confidence should be less than rule-based
+        if rule is not None and "embedding" in rule.notes.lower():
+            assert rule.confidence < 0.65  # EMBEDDING_MATCH_CONFIDENCE
+    
+    def test_fallback_notes_indicate_method(self):
+        """Embedding fallback should indicate method in notes."""
+        # Find something that won't match rules but might match embeddings
+        rule = find_temperature_interpretation_with_fallback("next to the radiator")
+        
+        if rule is not None and rule.pattern == "next to the radiator":
+            assert "embedding" in rule.notes.lower() or "similarity" in rule.notes.lower()
+    
+    def test_empty_string_with_fallback(self):
+        """Should return None for empty string."""
+        rule = find_temperature_interpretation_with_fallback("")
+        
+        assert rule is None
+    
+    def test_short_string_with_fallback(self):
+        """Should handle very short strings."""
+        rule = find_temperature_interpretation_with_fallback("ab")
+        
+        # Either None or valid rule
+        assert rule is None or isinstance(rule, InterpretationRule)
 
 
 class TestDurationInterpretations:

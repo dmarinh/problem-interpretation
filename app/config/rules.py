@@ -16,7 +16,11 @@ What does NOT belong here:
 """
 
 from dataclasses import dataclass
-from typing import Any
+from functools import lru_cache
+from typing import Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from sentence_transformers import SentenceTransformer
 
 
 @dataclass
@@ -58,6 +62,62 @@ TEMPERATURE_INTERPRETATIONS: list[InterpretationRule] = [
         conservative=True,
         notes="Left on counter implies room temperature",
     ),
+    InterpretationRule(
+        pattern="bench",
+        value=25.0,
+        confidence=0.75,
+        conservative=True,
+        notes="On bench implies room temperature",
+    ),
+    InterpretationRule(
+        pattern="table",
+        value=25.0,
+        confidence=0.70,
+        conservative=True,
+        notes="On table implies room temperature",
+    ),
+    InterpretationRule(
+        pattern="left out",
+        value=25.0,
+        confidence=0.75,
+        conservative=True,
+        notes="Left out implies room temperature",
+    ),
+    InterpretationRule(
+        pattern="sitting out",
+        value=25.0,
+        confidence=0.75,
+        conservative=True,
+        notes="Sitting out implies room temperature",
+    ),
+    InterpretationRule(
+        pattern="sat out",
+        value=25.0,
+        confidence=0.75,
+        conservative=True,
+        notes="Sat out implies room temperature",
+    ),
+    InterpretationRule(
+        pattern="unrefrigerated",
+        value=25.0,
+        confidence=0.80,
+        conservative=True,
+        notes="Unrefrigerated implies room temperature",
+    ),
+    InterpretationRule(
+        pattern="out of the fridge",
+        value=25.0,
+        confidence=0.80,
+        conservative=True,
+        notes="Out of fridge implies room temperature",
+    ),
+    InterpretationRule(
+        pattern="in my bag",
+        value=25.0,
+        confidence=0.65,
+        conservative=True,
+        notes="Bag at ambient temperature",
+    ),
     # Warm conditions
     InterpretationRule(
         pattern="warm",
@@ -79,6 +139,20 @@ TEMPERATURE_INTERPRETATIONS: list[InterpretationRule] = [
         confidence=0.65,
         conservative=True,
         notes="Summer temperatures vary; using warm estimate",
+    ),
+    InterpretationRule(
+        pattern="in the car",
+        value=30.0,
+        confidence=0.65,
+        conservative=True,
+        notes="Car interior can get warm; conservative estimate",
+    ),
+    InterpretationRule(
+        pattern="in my car",
+        value=30.0,
+        confidence=0.65,
+        conservative=True,
+        notes="Car interior can get warm; conservative estimate",
     ),
     # Cold storage
     InterpretationRule(
@@ -379,6 +453,7 @@ def find_temperature_interpretation(description: str) -> InterpretationRule | No
         TEMPERATURE_INTERPRETATIONS,
         key=lambda r: len(r.pattern),
         reverse=True,
+
     )
     
     for rule in sorted_rules:
@@ -422,4 +497,167 @@ def get_bias_correction(name: str) -> BiasCorrectionRule | None:
     for rule in BIAS_CORRECTIONS:
         if rule.name == name:
             return rule
+    return None
+
+# =============================================================================
+# EMBEDDING FALLBACK FOR TEMPERATURE INTERPRETATION
+# =============================================================================
+
+from functools import lru_cache
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from sentence_transformers import SentenceTransformer
+
+# Canonical phrases for each temperature category
+TEMPERATURE_CANONICAL_PHRASES: dict[float, list[str]] = {
+    25.0: [
+        "room temperature",
+        "ambient temperature",
+        "left out on counter",
+        "sitting at room temp",
+        "unrefrigerated",
+        "on the kitchen bench",
+        "at ambient conditions",
+        "on the table",
+        "left on the side",
+        "sitting on the counter",
+        "kept out",
+    ],
+    30.0: [
+        "warm environment",
+        "warm day",
+        "in a hot car",
+        "warm kitchen",
+        "warm room",
+        "left in vehicle",
+        "sunny spot",
+        "parked car",
+    ],
+    35.0: [
+        "hot day",
+        "very warm",
+        "hot environment",
+        "summer heat",
+        "direct sunlight",
+        "in the sun",
+    ],
+    4.0: [
+        "refrigerated",
+        "in the fridge",
+        "cold storage",
+        "chilled",
+        "refrigerator temperature",
+        "kept cold",
+        "in the refrigerator",
+    ],
+    -18.0: [
+        "frozen",
+        "in the freezer",
+        "freezer storage",
+        "deep frozen",
+    ],
+}
+
+# Confidence for embedding-based matches (lower than rule-based)
+EMBEDDING_MATCH_CONFIDENCE = 0.65
+EMBEDDING_SIMILARITY_THRESHOLD = 0.5
+
+
+@lru_cache(maxsize=1)
+def _get_embedding_model() -> "SentenceTransformer":
+    """Lazy-load embedding model for similarity matching."""
+    from sentence_transformers import SentenceTransformer
+    return SentenceTransformer("all-MiniLM-L6-v2")
+
+
+@lru_cache(maxsize=1)
+def _get_canonical_embeddings() -> dict[float, list]:
+    """Pre-compute embeddings for canonical phrases."""
+    model = _get_embedding_model()
+    embeddings = {}
+    for temp, phrases in TEMPERATURE_CANONICAL_PHRASES.items():
+        embeddings[temp] = model.encode(phrases, convert_to_numpy=True)
+    return embeddings
+
+
+def find_temperature_by_similarity(description: str) -> tuple[float | None, float]:
+    """
+    Find temperature using embedding similarity as fallback.
+    
+    Args:
+        description: Temperature description that didn't match rules
+        
+    Returns:
+        Tuple of (temperature_value, similarity_score) or (None, 0.0)
+    """
+    if not description or len(description) < 3:
+        return None, 0.0
+    
+    try:
+        import numpy as np
+        
+        model = _get_embedding_model()
+        canonical_embeddings = _get_canonical_embeddings()
+        
+        # Embed the query
+        query_embedding = model.encode([description.lower()], convert_to_numpy=True)[0]
+        
+        best_temp = None
+        best_score = 0.0
+        
+        # Find best matching category
+        for temp, phrase_embeddings in canonical_embeddings.items():
+            # Cosine similarity with each canonical phrase
+            for phrase_emb in phrase_embeddings:
+                similarity = float(
+                    np.dot(query_embedding, phrase_emb) /
+                    (np.linalg.norm(query_embedding) * np.linalg.norm(phrase_emb))
+                )
+                if similarity > best_score:
+                    best_score = similarity
+                    best_temp = temp
+        
+        if best_score >= EMBEDDING_SIMILARITY_THRESHOLD:
+            return best_temp, best_score
+        
+        return None, best_score
+    
+    except Exception:
+        return None, 0.0
+
+
+def find_temperature_interpretation_with_fallback(
+    description: str,
+) -> InterpretationRule | None:
+    """
+    Find temperature interpretation with embedding fallback.
+    
+    1. Try exact/substring rule matching (fast, deterministic)
+    2. Fall back to embedding similarity (slower, semantic)
+    
+    Args:
+        description: Temperature description from user
+        
+    Returns:
+        Matching rule or None
+    """
+    # First try rule-based matching
+    rule = find_temperature_interpretation(description)
+    if rule is not None:
+        return rule
+    
+    # Fallback to embedding similarity
+    temp_value, similarity = find_temperature_by_similarity(description)
+    
+    if temp_value is not None:
+        # Create a dynamic rule for the match
+        return InterpretationRule(
+            pattern=description.lower(),
+            value=temp_value,
+            confidence=EMBEDDING_MATCH_CONFIDENCE * similarity,
+            conservative=True,
+            notes=f"Matched via embedding similarity (score: {similarity:.2f})",
+        )
+    
     return None
