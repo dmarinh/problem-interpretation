@@ -1,0 +1,47 @@
+food_category,pathogen,control_methods,notes,source_id
+meats and poultry,Clostridium botulinum,time/temperature; pH; aw; preservatives; moisture protein ratio; fermentation; heat processing,Only concern in anoxic environments,IFT-2003-T1
+meats and poultry,Clostridium perfringens,time/temperature; pH; aw; preservatives; moisture protein ratio; fermentation; heat processing,,IFT-2003-T1
+meats and poultry,Salmonella spp.,time/temperature; pH; aw; preservatives; moisture protein ratio; fermentation; heat processing,,IFT-2003-T1
+meats and poultry,Escherichia coli O157:H7,time/temperature; pH; aw; preservatives; moisture protein ratio; fermentation; heat processing,,IFT-2003-T1
+meats and poultry,Campylobacter jejuni,time/temperature; pH; aw; preservatives; moisture protein ratio; fermentation; heat processing,,IFT-2003-T1
+meats and poultry,Yersinia enterocolitica,time/temperature; pH; aw; preservatives; moisture protein ratio; fermentation; heat processing,,IFT-2003-T1
+meats and poultry,Staphylococcus aureus,time/temperature; pH; aw; preservatives; moisture protein ratio; fermentation; heat processing,,IFT-2003-T1
+meats and poultry,Listeria monocytogenes,time/temperature; pH; aw; preservatives; moisture protein ratio; fermentation; heat processing,,IFT-2003-T1
+fish and seafood,Vibrio vulnificus,time/temperature; harvest site control; fermentation; pH; aw; water-phase salt; preservatives; drying; salting,,IFT-2003-T1
+fish and seafood,Vibrio parahaemolyticus,time/temperature; harvest site control; fermentation; pH; aw; water-phase salt; preservatives; drying; salting,,IFT-2003-T1
+fish and seafood,Vibrio cholerae,time/temperature; harvest site control; fermentation; pH; aw; water-phase salt; preservatives; drying; salting,,IFT-2003-T1
+fish and seafood,Clostridium botulinum,time/temperature; harvest site control; fermentation; pH; aw; water-phase salt; preservatives; drying; salting,Only concern in anoxic environments,IFT-2003-T1
+fish and seafood,Listeria monocytogenes,time/temperature; harvest site control; fermentation; pH; aw; water-phase salt; preservatives; drying; salting,,IFT-2003-T1
+fish and seafood,Salmonella spp.,time/temperature; harvest site control; fermentation; pH; aw; water-phase salt; preservatives; drying; salting,,IFT-2003-T1
+fish and seafood,Shigella spp.,time/temperature; harvest site control; fermentation; pH; aw; water-phase salt; preservatives; drying; salting,,IFT-2003-T1
+fish and seafood,Staphylococcus aureus,time/temperature; harvest site control; fermentation; pH; aw; water-phase salt; preservatives; drying; salting,,IFT-2003-T1
+fruits and vegetables,Salmonella spp.,production control (GAP); time/temperature; cooking; preservation techniques,,IFT-2003-T1
+fruits and vegetables,Shigella spp.,production control (GAP); time/temperature; cooking; preservation techniques,,IFT-2003-T1
+fruits and vegetables,Escherichia coli O157:H7,production control (GAP); time/temperature; cooking; preservation techniques,,IFT-2003-T1
+fruits and vegetables,Listeria monocytogenes,production control (GAP); time/temperature; cooking; preservation techniques,,IFT-2003-T1
+fruits and vegetables,Bacillus cereus,production control (GAP); time/temperature; cooking; preservation techniques,,IFT-2003-T1
+fruits and vegetables,Clostridium botulinum,production control (GAP); time/temperature; cooking; preservation techniques,Only concern in anoxic environments,IFT-2003-T1
+fruits and vegetables,Yersinia enterocolitica,production control (GAP); time/temperature; cooking; preservation techniques,,IFT-2003-T1
+cereal grains,Salmonella spp.,cooking; aw; pH; preservatives; time/temperature,,IFT-2003-T1
+cereal grains,Staphylococcus aureus,cooking; aw; pH; preservatives; time/temperature,,IFT-2003-T1
+cereal grains,Bacillus cereus,cooking; aw; pH; preservatives; time/temperature,,IFT-2003-T1
+cereal grains,Clostridium botulinum,cooking; aw; pH; preservatives; time/temperature,Only concern in anoxic environments,IFT-2003-T1
+eggs and egg products,Salmonella spp.,production control; cooking/pasteurization; time/temperature,In pasteurized products all pre-processing vegetative pathogens controlled,IFT-2003-T1
+eggs and egg products,Listeria monocytogenes,production control; cooking/pasteurization; time/temperature,In pasteurized products all pre-processing vegetative pathogens controlled,IFT-2003-T1
+milk and milk products,Salmonella spp.,production control; time/temperature; cooking/pasteurization; aw; preservatives,In pasteurized products all pre-processing vegetative pathogens controlled,IFT-2003-T1
+milk and milk products,Listeria monocytogenes,production control; time/temperature; cooking/pasteurization; aw; preservatives,In pasteurized products all pre-processing vegetative pathogens controlled,IFT-2003-T1
+milk and milk products,Escherichia coli O157:H7,production control; time/temperature; cooking/pasteurization; aw; preservatives,In pasteurized products all pre-processing vegetative pathogens controlled,IFT-2003-T1
+milk and milk products,Staphylococcus aureus,production control; time/temperature; cooking/pasteurization; aw; preservatives,In pasteurized products all pre-processing vegetative pathogens controlled,IFT-2003-T1
+milk and milk products,Bacillus cereus,production control; time/temperature; cooking/pasteurization; aw; preservatives,Cells controlled by pasteurization; spores concern in anoxic environments,IFT-2003-T1
+milk and milk products,Clostridium botulinum,production control; time/temperature; cooking/pasteurization; aw; preservatives,Cells controlled by pasteurization; spores concern in anoxic environments,IFT-2003-T1
+milk and milk products,Campylobacter jejuni,production control; time/temperature; cooking/pasteurization; aw; preservatives,In pasteurized products all pre-processing vegetative pathogens controlled,IFT-2003-T1
+cheese and cheese products,Salmonella spp.,production control; moisture content; aw; pasteurization; preservatives; pH,In pasteurized products all pre-processing vegetative pathogens controlled,IFT-2003-T1
+cheese and cheese products,Listeria monocytogenes,production control; moisture content; aw; pasteurization; preservatives; pH,In pasteurized products all pre-processing vegetative pathogens controlled,IFT-2003-T1
+cheese and cheese products,Escherichia coli O157:H7,production control; moisture content; aw; pasteurization; preservatives; pH,In pasteurized products all pre-processing vegetative pathogens controlled,IFT-2003-T1
+cheese and cheese products,Staphylococcus aureus,production control; moisture content; aw; pasteurization; preservatives; pH,In pasteurized products all pre-processing vegetative pathogens controlled,IFT-2003-T1
+cheese and cheese products,Shigella spp.,production control; moisture content; aw; pasteurization; preservatives; pH,In pasteurized products all pre-processing vegetative pathogens controlled,IFT-2003-T1
+cheese and cheese products,Clostridium botulinum,production control; moisture content; aw; pasteurization; preservatives; pH,Cells controlled by pasteurization; spores concern in anoxic environments,IFT-2003-T1
+butter and margarine,Staphylococcus aureus,production/raw ingredient quality control; moisture droplet size; water phase salt; aw,,IFT-2003-T1
+butter and margarine,Listeria monocytogenes,production/raw ingredient quality control; moisture droplet size; water phase salt; aw,,IFT-2003-T1
+butter and margarine,Yersinia enterocolitica,production/raw ingredient quality control; moisture droplet size; water phase salt; aw,,IFT-2003-T1
+sugars and syrups,Clostridium botulinum,aw; acidification,Only concern in light syrups; controlled by acidification,IFT-2003-T1

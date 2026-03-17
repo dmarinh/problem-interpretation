@@ -1,0 +1,28 @@
+pathogen,percent_foodborne,foodborne_basis,non_foodborne_routes,comments,source_id
+Bacillus cereus,100,All outbreaks in FDOSS were foodborne,none documented,Rapid onset short duration illness,CDC-2011-A1
+Brucella spp.,50,Mead 1999 estimate confirmed by CA data,animal contact,Consumption of unpasteurized milk/cheese from Mexico implicated in 45% of CA cases,CDC-2011-A1
+Campylobacter spp.,80,FoodNet case-control study,animal stool contact 6%; pet puppy 5%; farm animals 6%; untreated water 3%,Leading cause of bacterial gastroenteritis,CDC-2011-A1
+Clostridium botulinum,100,Based on foodborne botulism reports only,wound botulism exists but tracked separately,Mild cases recognized in outbreaks but seldom seek care,CDC-2011-A1
+Clostridium perfringens,100,All outbreaks in FDOSS were foodborne,none documented,Temperature abuse concern,CDC-2011-A1
+STEC O157,68,FoodNet case-control and outbreak data,animal contact; recreational water,Very low infectious dose 10-100 organisms,CDC-2011-A1
+STEC non-O157,82,Assumed similar to O157,animal contact; water,Emerging pathogen group,CDC-2011-A1
+Listeria monocytogenes,99,Microbiologic and epidemiologic data,rare non-food transmission,Can cause febrile gastroenteritis rarely diagnosed; spontaneous abortion may be underdiagnosed,CDC-2011-A1
+Mycobacterium bovis,95,Historical association with unpasteurized milk,rare aerosol transmission,Almost exclusively in Mexican-born adults and US-born Hispanic children; Mexican dairy products,CDC-2011-A1
+Salmonella nontyphoidal,94,FoodNet case-control and outbreak data,reptile exposure 6%; animal contact 3%; water 1%,Primarily foodborne disease,CDC-2011-A1
+Salmonella Typhi,96,Outbreak data,contaminated water in endemic areas,67% travel-related; domestic cases rare,CDC-2011-A1
+Shigella spp.,31,Outbreak data 1996-2006,person-to-person 64%; water 5%,Low infectious dose enables person-to-person spread,CDC-2011-A1
+Staphylococcus aureus,100,All outbreaks in FDOSS were foodborne,none documented,Preformed toxin; rapid onset,CDC-2011-A1
+Vibrio cholerae toxigenic,100,COVIS surveillance,none documented in US,70% travel-related,CDC-2011-A1
+Vibrio vulnificus,47,COVIS surveillance,wound infections from water exposure,Highest case fatality rate 34.8%,CDC-2011-A1
+Vibrio parahaemolyticus,86,COVIS surveillance,wound infections,Raw or undercooked seafood,CDC-2011-A1
+Yersinia enterocolitica,90,Limited published data,rare waterborne,Nearly all US outbreaks linked to contaminated foods,CDC-2011-A1
+Cryptosporidium spp.,8,Canadian study data,recreational water; person-to-person; animal contact,Primarily waterborne and person-to-person,CDC-2011-A1
+Cyclospora cayetanensis,99,Epidemiologic data,rare waterborne,Imported fresh produce major vehicle,CDC-2011-A1
+Giardia intestinalis,7,NNDSS exposure data,waterborne; person-to-person,Primarily waterborne transmission,CDC-2011-A1
+Toxoplasma gondii,50,Published studies,cat feces; congenital,Proportion varies geographically,CDC-2011-A1
+Trichinella spp.,100,Published study,none,Wild game and pork,CDC-2011-A1
+Norovirus,26,CDC outbreak analysis 2000-2005,person-to-person 74%,Leading cause of foodborne illness by volume,CDC-2011-A1
+Hepatitis A virus,7,NNDSS exposure data,person-to-person; international travel,41% travel-related,CDC-2011-A1
+Astrovirus,<1,Very few foodborne outbreaks,person-to-person,Significant illness only in children <5 years,CDC-2011-A1
+Rotavirus,<1,Very few foodborne outbreaks,person-to-person,Significant illness only in children <5 years,CDC-2011-A1
+Sapovirus,<1,Very few foodborne outbreaks,person-to-person,Similar to norovirus but less common,CDC-2011-A1

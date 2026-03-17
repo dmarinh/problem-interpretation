@@ -1,0 +1,15 @@
+pathogen,aw_min,aw_opt,aw_max,notes,source_id
+Campylobacter spp.,0.98,0.99,,Minimum aw for growth,IFT-2003-T32
+Clostridium botulinum type E,0.97,,,Non-proteolytic strains,IFT-2003-T32
+Shigella spp.,0.97,,,Minimum aw for growth,IFT-2003-T32
+Yersinia enterocolitica,0.97,,,Minimum aw for growth,IFT-2003-T32
+Vibrio vulnificus,0.96,0.98,0.99,Halophilic organism,IFT-2003-T32
+Escherichia coli O157:H7,0.95,0.99,,Enterohemorrhagic,IFT-2003-T32
+Salmonella spp.,0.94,0.99,>0.99,Common foodborne pathogen,IFT-2003-T32
+Vibrio parahaemolyticus,0.94,0.98,0.99,Halophilic organism,IFT-2003-T32
+Bacillus cereus,0.93,,,Spore-forming,IFT-2003-T32
+Clostridium botulinum types A and B,0.93,,,Proteolytic strains,IFT-2003-T32
+Clostridium perfringens,0.943,0.95,0.97,Spore-forming,IFT-2003-T32
+Listeria monocytogenes,0.92,,,Psychrotrophic pathogen,IFT-2003-T32
+Staphylococcus aureus growth,0.83,0.98,0.99,Growth minimum,IFT-2003-T32
+Staphylococcus aureus toxin,0.88,0.98,0.99,Toxin production minimum,IFT-2003-T32
