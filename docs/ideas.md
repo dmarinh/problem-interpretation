@@ -1,0 +1,3 @@
+- Need to implement a study to compare the performance of the system against human experts in parameterizing ComBase Predictor from natural language queries.
+- Need to do a study of human variability: Is human variability the dominant source of uncertainty?
+- Evaluate the idea of including lag estimation in RAG sourced from ComBAse database conditions and descritions, obesrvations of lags

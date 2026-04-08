@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent.parent / ".env")
 
+populate_store = False
 
 async def main():
     from app.core.orchestrator import Orchestrator
@@ -26,28 +27,30 @@ async def main():
     engine.load_models(Path("data/combase_models.csv"))
     print(f"Loaded {len(engine.registry)} ComBase models")
     
+
     # Initialize and populate vector store
     store = get_vector_store()
     store.initialize()
     
-    pipeline = IngestionPipeline(vector_store=store)
-    
-    # Add some test data
-    pipeline.ingest_text(
-        "Raw chicken has pH 5.9-6.2 and water activity 0.99. "
-        "Salmonella is commonly associated with raw poultry.",
-        doc_type="food_properties",
-        metadata={"food": "chicken"},
-    )
-    pipeline.ingest_text(
-        "Salmonella grows between 5-47°C with optimal growth at 37°C. "
-        "Common in poultry, eggs, and unpasteurized milk.",
-        doc_type="pathogen_hazards",
-        metadata={"pathogen": "salmonella"},
-    )
-    
-    print(f"Vector store has {store.get_count()} documents")
-    print()
+    if populate_store:
+        pipeline = IngestionPipeline(vector_store=store)
+        
+        # Add some test data
+        pipeline.ingest_text(
+            "Raw chicken has pH 5.9-6.2 and water activity 0.99. "
+            "Salmonella is commonly associated with raw poultry.",
+            doc_type="food_properties",
+            metadata={"food": "chicken"},
+        )
+        pipeline.ingest_text(
+            "Salmonella grows between 5-47°C with optimal growth at 37°C. "
+            "Common in poultry, eggs, and unpasteurized milk.",
+            doc_type="pathogen_hazards",
+            metadata={"pathogen": "salmonella"},
+        )
+        
+        print(f"Vector store has {store.get_count()} documents")
+        print()
     
     # Create orchestrator
     orchestrator = Orchestrator(combase_engine=engine)

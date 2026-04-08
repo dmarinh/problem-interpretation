@@ -4,9 +4,77 @@ This document tracks all official sources used to populate the RAG knowledge bas
 
 ---
 
-## Primary Epidemiology Source
+## Primary Epidemiology Source (Current)
 
-### CDC Scallan et al. 2011
+### CDC Scallan Walter et al. 2025 (Data Circa 2019)
+
+| Field | Value |
+|-------|-------|
+| **Title** | Foodborne Illness Acquired in the United States—Major Pathogens, 2019 |
+| **Authors** | Elaine J. Scallan Walter, Zhaohui Cui, Reese Tierney, Patricia M. Griffin, Robert M. Hoekstra, Daniel C. Payne, Erica B. Rose, Carey Devine, Angella Sandra Namwase, Sara A. Mirza, Anita K. Kambhampati, Anne Straily, Beau B. Bruce |
+| **Journal** | Emerging Infectious Diseases |
+| **Volume/Issue** | Vol. 31, No. 4, April 2025 |
+| **DOI** | 10.3201/eid3104.240913 |
+| **Publisher** | Centers for Disease Control and Prevention |
+| **URL** | https://wwwnc.cdc.gov/eid/article/31/4/24-0913_article |
+| **Local File** | `data/sources/24-0913-combined.pdf` |
+| **Extraction Date** | 2026-04-02 |
+| **Format** | PDF with Appendices 1-3 |
+| **Status** | **CURRENT** - Official CDC peer-reviewed publication; supersedes CDC 2011 for 7 major pathogens |
+
+#### Why This Update Matters
+
+The 2019 estimates reflect:
+1. **Culture-independent diagnostic tests (CIDTs)** — Increased pathogen detection compared to culture-based methods
+2. **Improved underdiagnosis multipliers** — More factors considered (age, race, fever, bloody diarrhea)
+3. **Updated foodborne attribution** — Based on structured expert judgment (Beshearse et al. 2021)
+4. **Real reductions** — Some pathogens show genuine decreases (e.g., Toxoplasma due to antiretroviral availability)
+
+#### Data Extracted
+
+| Table/Appendix | Content | Output File |
+|----------------|---------|-------------|
+| Table 1 | Annual domestically acquired foodborne illnesses with 90% CrI | `pathogen_characteristics.csv` (merged) |
+| Table 2 | Annual hospitalizations and deaths with 90% CrI | `pathogen_characteristics.csv` (merged) |
+| Appendix 3 | Unrounded totals for precision | `pathogen_characteristics.csv` (merged) |
+| — | 2019-only extract for reference | `pathogen_characteristics_cdc2019.csv` |
+
+#### Key Statistics (7 Major Pathogens, US 2017-2019 population)
+
+| Metric | Total | Top Contributors |
+|--------|-------|------------------|
+| **Annual Illnesses** | 9.9 million (90% CrI: 5.9-15.4M) | Norovirus 56%, Campylobacter 19%, Salmonella 13% |
+| **Annual Hospitalizations** | 53,300 (90% CrI: 35,700-74,500) | Norovirus 42%, Campylobacter 24%, Salmonella 24% |
+| **Annual Deaths** | 931 (90% CrI: 530-1,460) | Salmonella 26%, Campylobacter 21%, Norovirus 19%, Listeria 18% |
+
+#### Key Changes from 2011 to 2019 Estimates
+
+| Pathogen | 2011 Deaths | 2019 Deaths | Change | Reason |
+|----------|-------------|-------------|--------|--------|
+| Campylobacter spp. | 76 | 197 | **↑ 159%** | Better diagnostic detection via CIDTs |
+| Salmonella nontyphoidal | 378 | 238 | **↓ 37%** | Improved food safety interventions |
+| Listeria monocytogenes | 255 | 172 | **↓ 33%** | Lower underdiagnosis multiplier |
+| Norovirus | 149 | 174 | ↑ 17% | Updated data sources |
+| STEC O157 | 20 | 40 | **↑ 100%** | Better CIDT detection |
+| Toxoplasma gondii | 327 | 44 | **↓ 87%** | Antiretroviral availability |
+
+**Critical Ranking Change**: Campylobacter now causes MORE deaths than norovirus (197 vs 174), reversing the 2011 ranking.
+
+#### Citation Format
+
+**APA:**
+```
+Scallan Walter, E. J., Cui, Z., Tierney, R., Griffin, P. M., Hoekstra, R. M., Payne, D. C.,
+Rose, E. B., Devine, C., Namwase, A. S., Mirza, S. A., Kambhampati, A. K., Straily, A., 
+& Bruce, B. B. (2025). Foodborne illness acquired in the United States—major pathogens, 
+2019. Emerging Infectious Diseases, 31(4), 669-677. https://doi.org/10.3201/eid3104.240913
+```
+
+---
+
+## Historical Epidemiology Source
+
+### CDC Scallan et al. 2011 (Data Circa 2006)
 
 | Field | Value |
 |-------|-------|
@@ -20,15 +88,16 @@ This document tracks all official sources used to populate the RAG knowledge bas
 | **Local File** | `data/sources/p1-1101-combined.pdf` |
 | **Extraction Date** | 2026-03-12 |
 | **Format** | PDF with Technical Appendices |
-| **Status** | Authoritative - Official CDC peer-reviewed publication |
+| **Status** | **HISTORICAL** - Superseded by CDC 2019 for 7 major pathogens; retained for 22 other pathogens and trend analysis |
 
 #### Data Extracted
 
 | Table/Appendix | Content | Output File |
 |----------------|---------|-------------|
-| Table 2 | Annual illnesses by pathogen with 90% credible intervals | `pathogen_characteristics.csv` |
-| Table 3 | Annual hospitalizations and deaths by pathogen | `pathogen_characteristics.csv` |
+| Table 2 | Annual illnesses by pathogen with 90% credible intervals | `pathogen_characteristics.csv` (merged, for non-updated pathogens) |
+| Table 3 | Annual hospitalizations and deaths by pathogen | `pathogen_characteristics.csv` (merged, for non-updated pathogens) |
 | Technical Appendix 1 | Transmission routes, percent foodborne, data sources | `pathogen_transmission_details.csv` |
+| — | 2011-only extract for reference | `pathogen_characteristics_cdc2011.csv` |
 
 #### Key Statistics (31 Pathogens, US 2006 population)
 
@@ -88,6 +157,21 @@ https://doi.org/10.3201/eid1701.P11101
 | Table 3-3 | pH ranges of common foods | `food_properties.csv` |
 | Table 1 | Pathogens of concern by food category | `pathogen_food_associations.csv` |
 | Figure 1, Tables A & B | pH/aw interaction for TCS classification | `tcs_classification_tables.csv` |
+
+#### Citation Format
+
+**APA:**
+```
+Institute of Food Technologists. (2003). Evaluation and definition of potentially 
+hazardous foods. Comprehensive Reviews in Food Science and Food Safety, 2(Supplement), 
+1-108. https://doi.org/10.1111/j.1541-4337.2003.tb00051.x
+```
+
+**Chicago:**
+```
+Institute of Food Technologists. "Evaluation and Definition of Potentially Hazardous 
+Foods." Comprehensive Reviews in Food Science and Food Safety 2, Supplement (2003): 1-108.
+```
 
 ---
 
@@ -191,21 +275,6 @@ Food and Drug Administration. (2012). Bad Bug Book: Foodborne Pathogenic Microor
 and Natural Toxins Handbook (2nd ed.). Center for Food Safety and Applied Nutrition.
 ```
 
-#### Citation Format
-
-**APA:**
-```
-Institute of Food Technologists. (2003). Evaluation and definition of potentially 
-hazardous foods. Comprehensive Reviews in Food Science and Food Safety, 2(Supplement), 
-1-108. https://doi.org/10.1111/j.1541-4337.2003.tb00051.x
-```
-
-**Chicago:**
-```
-Institute of Food Technologists. "Evaluation and Definition of Potentially Hazardous 
-Foods." Comprehensive Reviews in Food Science and Food Safety 2, Supplement (2003): 1-108.
-```
-
 ---
 
 ## Secondary Source
@@ -296,6 +365,7 @@ All sources included in this knowledge base meet the following criteria:
 | 1.1 | 2026-03-12 | Added pathogen_characteristics.csv from Bad Bug Book; fixed CSV format (removed comment headers); added severity scoring for pathogen ranking |
 | 1.2 | 2026-03-12 | Expanded food_properties.csv from 92 to 259 items using complete FDA pH list; added comprehensive shellfish, fish, fruits, vegetables, grains, condiments coverage |
 | 1.3 | 2026-03-12 | Added food_pathogen_hazards.csv - denormalized table linking specific foods directly to pathogens with severity scores; enables "most dangerous pathogen for X" queries |
+| 1.4 | 2026-04-02 | **CDC 2019 data update**: Added Scallan Walter et al. 2025 (EID 31(4):669-677) as primary epidemiology source for 7 major pathogens. Created merged `pathogen_characteristics.csv` with 2019 data for 8 pathogens + 2011 data for 22 others. Added `data_year` and `notes` columns for provenance. Retained `pathogen_characteristics_cdc2011.csv` and `pathogen_characteristics_cdc2019.csv` as reference files. Key changes: Campylobacter deaths ↑159%, Salmonella deaths ↓37%, Toxoplasma deaths ↓87%. |
 
 ---
 

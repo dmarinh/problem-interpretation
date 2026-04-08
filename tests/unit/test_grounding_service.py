@@ -22,7 +22,7 @@ from app.models.extraction import (
 )
 from app.models.metadata import ValueSource
 
-from app.models.enums import ComBaseOrganism, RetrievalConfidenceLevel
+from app.models.enums import ComBaseOrganism, RetrievalConfidenceLevel, ModelType
 
 
 @pytest.fixture
@@ -231,7 +231,7 @@ class TestGroundTemperature:
             single_step_temperature=ExtractedTemperature(value_celsius=25.0),
             single_step_duration=ExtractedDuration(value_minutes=60.0),
         )
-        service._ground_temperature(scenario, grounded)
+        service._ground_temperature(scenario, grounded, ModelType.GROWTH)
         
         assert grounded.get("temperature_celsius") == 25.0
         assert grounded.provenance["temperature_celsius"].source == ValueSource.USER_EXPLICIT
@@ -249,7 +249,7 @@ class TestGroundTemperature:
             ),
             single_step_duration=ExtractedDuration(value_minutes=60.0),
         )
-        service._ground_temperature(scenario, grounded)
+        service._ground_temperature(scenario, grounded, ModelType.GROWTH)
         
         assert grounded.get("temperature_celsius") == 25.0
         assert grounded.provenance["temperature_celsius"].source == ValueSource.USER_INFERRED
@@ -263,7 +263,7 @@ class TestGroundTemperature:
             single_step_temperature=ExtractedTemperature(description="room temperature"),
             single_step_duration=ExtractedDuration(value_minutes=60.0),
         )
-        service._ground_temperature(scenario, grounded)
+        service._ground_temperature(scenario, grounded, ModelType.GROWTH)
         
         assert grounded.get("temperature_celsius") == 25.0
         assert grounded.provenance["temperature_celsius"].source == ValueSource.USER_INFERRED
@@ -277,7 +277,7 @@ class TestGroundTemperature:
             single_step_temperature=ExtractedTemperature(description="xyz123"),
             single_step_duration=ExtractedDuration(value_minutes=60.0),
         )
-        service._ground_temperature(scenario, grounded)
+        service._ground_temperature(scenario, grounded, ModelType.GROWTH)
         
         assert not grounded.has("temperature_celsius")
         assert "temperature_celsius" in grounded.ungrounded_fields
@@ -295,7 +295,7 @@ class TestGroundDuration:
             single_step_temperature=ExtractedTemperature(value_celsius=25.0),
             single_step_duration=ExtractedDuration(value_minutes=180.0),
         )
-        service._ground_duration(scenario, grounded)
+        service._ground_duration(scenario, grounded, ModelType.GROWTH)
         
         assert grounded.get("duration_minutes") == 180.0
         assert grounded.provenance["duration_minutes"].source == ValueSource.USER_EXPLICIT
@@ -312,7 +312,7 @@ class TestGroundDuration:
                 range_max_minutes=120.0,
             ),
         )
-        service._ground_duration(scenario, grounded)
+        service._ground_duration(scenario, grounded, ModelType.GROWTH)
         
         assert grounded.get("duration_minutes") == 120.0
     
@@ -325,7 +325,7 @@ class TestGroundDuration:
             single_step_temperature=ExtractedTemperature(value_celsius=25.0),
             single_step_duration=ExtractedDuration(description="overnight"),
         )
-        service._ground_duration(scenario, grounded)
+        service._ground_duration(scenario, grounded, ModelType.GROWTH)
         
         assert grounded.get("duration_minutes") == 480.0  # 8 hours
 

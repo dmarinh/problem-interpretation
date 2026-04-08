@@ -2,6 +2,25 @@
 Grounding Service
 
 Resolves extracted values to grounded, validated values.
+
+This service sits between the SemanticParser (which extracts raw user input)
+and the StandardizationService (which prepares execution payloads).
+
+IMPORTANT: Range Bound Selection
+================================
+When a user provides a range (e.g., "between 65 and 70°C"), the grounding
+service must select which bound to use. This selection depends on the
+model type:
+
+- GROWTH models: Use UPPER bound (more temperature/time = more growth)
+- THERMAL INACTIVATION models: Use LOWER bound (less temperature/time = less kill)
+- NON_THERMAL SURVIVAL models: Use UPPER bound (same as growth)
+
+This ensures we always err toward the worse food safety outcome.
+
+Note: The GroundingService handles range selection during grounding.
+The StandardizationService handles bias corrections AFTER grounding.
+Both must use model-type-aware logic for correct conservative behavior.
 """
 
 import re
@@ -11,7 +30,7 @@ from app.config.rules import (
     find_temperature_interpretation_with_fallback,
     find_duration_interpretation,
 )
-from app.models.enums import ComBaseOrganism, RetrievalConfidenceLevel
+from app.models.enums import ComBaseOrganism, RetrievalConfidenceLevel, ModelType
 from app.models.extraction import (
     ExtractedScenario,
     ExtractedEnvironmentalConditions,
@@ -49,7 +68,20 @@ class ExtractedNumericValue:
 
 
 class GroundedValues:
-    """Container for grounded values with provenance."""
+    """
+    Container for grounded values with provenance.
+    
+    This class holds the resolved values along with metadata about where
+    each value came from (source) and how confident we are (confidence).
+    
+    Usage:
+        grounded = GroundedValues()
+        grounded.set("ph", 6.0, ValueSource.RAG_RETRIEVAL, confidence=0.85)
+        
+        if grounded.has("ph"):
+            ph_value = grounded.get("ph")
+            ph_provenance = grounded.provenance["ph"]
+    """
     
     def __init__(self):
         self.values: dict = {}
@@ -91,6 +123,22 @@ class GroundedValues:
 class GroundingService:
     """
     Service for grounding extracted values using RAG and interpretation rules.
+    
+    The grounding process resolves vague user descriptions into precise numeric
+    values suitable for predictive models. It follows a strict priority hierarchy:
+    
+    1. USER_EXPLICIT: Values directly stated by user ("25°C", "3 hours")
+    2. USER_INFERRED: Values interpreted from descriptions ("room temperature" → 25°C)
+    3. RAG_RETRIEVAL: Values retrieved from knowledge base (chicken pH → 6.0)
+    4. Defaults are NOT applied here - that's the StandardizationService's job
+    
+    IMPORTANT: Range Selection
+    --------------------------
+    When values are given as ranges, the bound selection depends on the model type.
+    This is passed to ground_scenario() via the optional model_type parameter.
+    
+    - Growth models: Use upper bound (more growth = worse)
+    - Inactivation models: Use lower bound (less kill = worse)
     """
     
     def __init__(
@@ -106,9 +154,30 @@ class GroundingService:
     async def ground_scenario(
         self,
         scenario: ExtractedScenario,
+        model_type: ModelType | None = None,
     ) -> GroundedValues:
-        """Ground all values in an extracted scenario."""
+        """
+        Ground all values in an extracted scenario.
+        
+        Args:
+            scenario: The extracted scenario from SemanticParser
+            model_type: Optional model type for range bound selection.
+                       If None, inferred from scenario.implied_model_type.
+                       Defaults to GROWTH if not determinable.
+        
+        Returns:
+            GroundedValues with resolved values and provenance
+        
+        Note on model_type:
+            The model_type affects how ranges are resolved:
+            - For GROWTH: ranges use upper bound (more growth = worse)
+            - For THERMAL_INACTIVATION: ranges use lower bound (less kill = worse)
+            - For NON_THERMAL_SURVIVAL: same as growth (more survival = worse)
+        """
         grounded = GroundedValues()
+        
+        # Determine model type for range selection
+        effective_model_type = model_type or scenario.implied_model_type or ModelType.GROWTH
         
         # Step 1: User explicit environmental conditions (highest priority)
         self._ground_environmental_conditions(
@@ -136,6 +205,7 @@ class GroundingService:
             await self._ground_food_properties(
                 scenario.food_description,
                 grounded,
+                effective_model_type,
             )
         
         # Step 4: RAG for pathogen - only if not already grounded
@@ -152,13 +222,58 @@ class GroundingService:
                 f"Could not determine pathogen for '{scenario.food_description or 'unknown food'}'"
             )
         
-        # Step 5: Temperature (interpretation rules)
-        self._ground_temperature(scenario, grounded)
+        # Step 5: Temperature (interpretation rules with model-aware range selection)
+        self._ground_temperature(scenario, grounded, effective_model_type)
         
-        # Step 6: Duration (interpretation rules)
-        self._ground_duration(scenario, grounded)
+        # Step 6: Duration (interpretation rules with model-aware range selection)
+        self._ground_duration(scenario, grounded, effective_model_type)
         
         return grounded
+    
+    # =========================================================================
+    # HELPER: RANGE BOUND SELECTION
+    # =========================================================================
+    
+    def _select_range_bound(
+        self,
+        range_min: float,
+        range_max: float,
+        model_type: ModelType,
+        field_name: str,
+    ) -> tuple[float, str]:
+        """
+        Select which bound of a range to use based on model type.
+        
+        For conservative bias:
+        - GROWTH models: Use upper bound (more temp/time = more growth = worse)
+        - THERMAL_INACTIVATION: Use lower bound (less temp/time = less kill = worse)
+        - NON_THERMAL_SURVIVAL: Use upper bound (more survival = worse)
+        
+        Args:
+            range_min: Lower bound of the range
+            range_max: Upper bound of the range
+            model_type: The type of model being used
+            field_name: Name of the field (for logging)
+            
+        Returns:
+            Tuple of (selected_value, transformation_description)
+        """
+        if model_type == ModelType.THERMAL_INACTIVATION:
+            # For cooking/inactivation: lower temp/time = less pathogen kill = worse
+            value = range_min
+            description = (
+                f"Range {range_min}-{range_max}, using LOWER bound {range_min} "
+                f"(conservative for thermal inactivation: less pathogen kill)"
+            )
+        else:
+            # For growth/survival: higher temp/time = more growth = worse
+            value = range_max
+            description = (
+                f"Range {range_min}-{range_max}, using UPPER bound {range_max} "
+                f"(conservative for {model_type.value}: more pathogen growth)"
+            )
+        
+        return value, description
     
     # =========================================================================
     # USER EXPLICIT VALUES
@@ -169,7 +284,12 @@ class GroundingService:
         conditions: ExtractedEnvironmentalConditions,
         grounded: GroundedValues,
     ) -> None:
-        """Ground explicitly provided environmental conditions."""
+        """
+        Ground explicitly provided environmental conditions.
+        
+        These are values the user directly stated (e.g., "pH 6.5").
+        They have the highest priority and confidence (0.90).
+        """
         # pH
         if conditions.ph_value is not None:
             grounded.set(
@@ -188,7 +308,7 @@ class GroundingService:
                 confidence=0.90,
             )
         
-        # Other conditions
+        # Other conditions (these don't require range selection)
         if conditions.co2_percent is not None:
             grounded.set("co2_percent", conditions.co2_percent, ValueSource.USER_EXPLICIT, 0.90)
         if conditions.nitrite_ppm is not None:
@@ -206,8 +326,15 @@ class GroundingService:
         self,
         food_description: str,
         grounded: GroundedValues,
+        model_type: ModelType,
     ) -> None:
-        """Ground food pH and water activity via RAG with hybrid extraction."""
+        """
+        Ground food pH and water activity via RAG with hybrid extraction.
+        
+        This retrieves food properties from the knowledge base and extracts
+        numeric values. When ranges are found, the bound selection depends
+        on the model type (see _select_range_bound).
+        """
         response = self._retrieval.query_food_properties(food_description)
         
         # Record retrieval attempt
@@ -266,16 +393,26 @@ class GroundingService:
                     original_text=content,
                     transformation_applied=f"Extracted via {props.extraction_method}",
                 )
-            elif props.ph_max is not None:
-                # Range - use upper bound (conservative for growth)
+            elif props.ph_min is not None and props.ph_max is not None:
+                # Range - select bound based on model type
+                # For pH: higher pH is closer to neutral, which is better for growth
+                # So for growth models, we use upper bound (more neutral = more growth)
+                # For inactivation, lower pH can be more protective, so we use
+                # the model-aware selection
+                value, transformation = self._select_range_bound(
+                    props.ph_min,
+                    props.ph_max,
+                    model_type,
+                    "ph",
+                )
                 grounded.set(
                     "ph",
-                    props.ph_max,
+                    value,
                     source=ValueSource.RAG_RETRIEVAL,
                     confidence=response.top_result.confidence * 0.9,
                     retrieval_source=response.top_result.doc_id,
                     original_text=content,
-                    transformation_applied=f"Range {props.ph_min}-{props.ph_max}, using upper bound ({props.extraction_method})",
+                    transformation_applied=f"{transformation} ({props.extraction_method})",
                 )
         
         # Set water activity if found and not already set
@@ -290,16 +427,22 @@ class GroundingService:
                     original_text=content,
                     transformation_applied=f"Extracted via {props.extraction_method}",
                 )
-            elif props.aw_max is not None:
-                # Range - use upper bound (conservative for growth)
+            elif props.aw_min is not None and props.aw_max is not None:
+                # Range - higher aw = more water = more growth/survival
+                value, transformation = self._select_range_bound(
+                    props.aw_min,
+                    props.aw_max,
+                    model_type,
+                    "water_activity",
+                )
                 grounded.set(
                     "water_activity",
-                    props.aw_max,
+                    value,
                     source=ValueSource.RAG_RETRIEVAL,
                     confidence=response.top_result.confidence * 0.9,
                     retrieval_source=response.top_result.doc_id,
                     original_text=content,
-                    transformation_applied=f"Range {props.aw_min}-{props.aw_max}, using upper bound ({props.extraction_method})",
+                    transformation_applied=f"{transformation} ({props.extraction_method})",
                 )
     
     async def _extract_food_properties(self, text: str) -> ExtractedFoodProperties:
@@ -369,7 +512,22 @@ class GroundingService:
         text: str,
         keywords: list[str],
     ) -> ExtractedNumericValue:
-        """Extract numeric value(s) near a keyword, handling ranges."""
+        """
+        Extract numeric value(s) near a keyword, handling ranges.
+        
+        Handles multiple formats:
+        - Single values: "pH 6.0", "pH: 6.5", "aw 0.98"
+        - Ranges with hyphen: "pH 5.9-6.2"
+        - Ranges with "to": "pH 5.5 to 6.0"
+        - Ranges with "and": "pH between 5.5 and 6.0"
+        
+        Args:
+            text: The text to search
+            keywords: List of keywords to look for (e.g., ["ph"], ["water activity", "aw"])
+            
+        Returns:
+            ExtractedNumericValue with the extracted value(s)
+        """
         text_lower = text.lower()
         
         for keyword in keywords:
@@ -429,7 +587,12 @@ class GroundingService:
         food_description: str,
         grounded: GroundedValues,
     ) -> None:
-        """Ground pathogen via RAG retrieval."""
+        """
+        Ground pathogen via RAG retrieval.
+        
+        Looks up the food in the pathogen hazards collection to find
+        associated pathogens (e.g., chicken → Salmonella).
+        """
         response = self._retrieval.query_pathogen_hazards(food_description)
         
         retrieval_result = RetrievalResult(
@@ -478,10 +641,19 @@ class GroundingService:
         self,
         scenario: ExtractedScenario,
         grounded: GroundedValues,
+        model_type: ModelType,
     ) -> None:
-        """Ground temperature from extraction."""
+        """
+        Ground temperature from extraction with model-type-aware range selection.
+        
+        Priority:
+        1. Explicit numeric value (e.g., "25°C") → USER_EXPLICIT
+        2. Range with model-aware bound selection → USER_INFERRED
+        3. Description interpreted via rules (e.g., "room temperature") → USER_INFERRED
+        """
         temp = scenario.single_step_temperature
         
+        # Priority 1: Explicit value
         if temp.value_celsius is not None:
             grounded.set(
                 "temperature_celsius",
@@ -491,16 +663,24 @@ class GroundingService:
             )
             return
         
-        if temp.is_range and temp.range_max_celsius is not None:
+        # Priority 2: Range - select bound based on model type
+        if temp.is_range and temp.range_min_celsius is not None and temp.range_max_celsius is not None:
+            value, transformation = self._select_range_bound(
+                temp.range_min_celsius,
+                temp.range_max_celsius,
+                model_type,
+                "temperature_celsius",
+            )
             grounded.set(
                 "temperature_celsius",
-                temp.range_max_celsius,
+                value,
                 source=ValueSource.USER_INFERRED,
                 confidence=0.80,
-                transformation_applied="Used upper bound of range (conservative)",
+                transformation_applied=transformation,
             )
             return
         
+        # Priority 3: Description interpretation
         if temp.description:
             rule = find_temperature_interpretation_with_fallback(temp.description)
             if rule:
@@ -525,10 +705,19 @@ class GroundingService:
         self,
         scenario: ExtractedScenario,
         grounded: GroundedValues,
+        model_type: ModelType,
     ) -> None:
-        """Ground duration from extraction."""
+        """
+        Ground duration from extraction with model-type-aware range selection.
+        
+        Priority:
+        1. Explicit numeric value (e.g., "3 hours") → USER_EXPLICIT
+        2. Range with model-aware bound selection → USER_INFERRED
+        3. Description interpreted via rules (e.g., "overnight") → USER_INFERRED
+        """
         dur = scenario.single_step_duration
         
+        # Priority 1: Explicit value
         if dur.value_minutes is not None:
             grounded.set(
                 "duration_minutes",
@@ -538,16 +727,24 @@ class GroundingService:
             )
             return
         
-        if dur.range_max_minutes is not None:
+        # Priority 2: Range - select bound based on model type
+        if dur.range_min_minutes is not None and dur.range_max_minutes is not None:
+            value, transformation = self._select_range_bound(
+                dur.range_min_minutes,
+                dur.range_max_minutes,
+                model_type,
+                "duration_minutes",
+            )
             grounded.set(
                 "duration_minutes",
-                dur.range_max_minutes,
+                value,
                 source=ValueSource.USER_INFERRED,
                 confidence=0.80,
-                transformation_applied="Used upper bound of range (conservative)",
+                transformation_applied=transformation,
             )
             return
         
+        # Priority 3: Description interpretation
         if dur.description:
             rule = find_duration_interpretation(dur.description)
             if rule:

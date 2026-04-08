@@ -10,6 +10,7 @@ for vector store ingestion. Each loader:
 
 Sources:
   - CDC Scallan et al. 2011: Foodborne illness epidemiology
+  - CDC 2019 (Tack et al.): Updated death estimates for major pathogens
   - IFT/FDA 2003: Evaluation and Definition of Potentially Hazardous Foods
   - FDA/CFSAN 2007: Approximate pH of Foods and Food Products
   - FDA Bad Bug Book 2nd Edition (2012)
@@ -164,9 +165,10 @@ def load_pathogen_aw_limits(pipeline: IngestionPipeline, data_dir: Path) -> Load
 
 
 def load_pathogen_characteristics(pipeline: IngestionPipeline, data_dir: Path) -> LoadResult:
-    """Load pathogen epidemiology data from CDC Scallan 2011.
-    
+    """Load pathogen epidemiology data from CDC sources.
+
     Source: CDC Scallan et al. 2011, Tables 2-3 (CDC-2011-T3)
+            CDC Tack et al. 2019, updated death estimates (CDC-2019)
     """
     file_path = data_dir / "pathogen_characteristics.csv"
     
@@ -184,39 +186,45 @@ def load_pathogen_characteristics(pipeline: IngestionPipeline, data_dir: Path) -
             
             records += 1
             source_id = row.get("source_id", "")
-            
+            data_year = row.get("data_year", "")
+            year_label = f" ({data_year} data)" if data_year else ""
+
             # Build comprehensive semantic document
             parts = [f"{row['pathogen']} epidemiology"]
-            
+
             if row.get("annual_illnesses"):
                 cri = row.get('illnesses_90pct_cri', 'unknown')
-                parts.append(f"{row['annual_illnesses']} annual US illnesses (90% CrI: {cri})")
-            
+                parts.append(f"{row['annual_illnesses']} annual US illnesses (90% CrI: {cri}){year_label}")
+
             if row.get("annual_hospitalizations"):
-                parts.append(f"{row['annual_hospitalizations']} annual hospitalizations")
+                parts.append(f"{row['annual_hospitalizations']} annual hospitalizations{year_label}")
                 if row.get("hospitalization_rate_pct"):
                     parts.append(f"hospitalization rate {row['hospitalization_rate_pct']}%")
-            
+
             if row.get("annual_deaths"):
                 cri = row.get('deaths_90pct_cri', 'unknown')
-                parts.append(f"{row['annual_deaths']} annual deaths (90% CrI: {cri})")
+                parts.append(f"{row['annual_deaths']} annual deaths (90% CrI: {cri}){year_label}")
                 if row.get("death_rate_pct"):
                     parts.append(f"case fatality rate {row['death_rate_pct']}%")
-            
+
             if row.get("percent_foodborne"):
                 parts.append(f"{row['percent_foodborne']}% foodborne transmission")
-            
+
             doc = ": ".join(parts[:2]) + ". " + ". ".join(parts[2:])
-            
+
+            if row.get("notes"):
+                doc += f" Note: {row['notes']}."
+
             if source_id:
                 doc += f" [{source_id}]"
-            
+
             result = pipeline.ingest_text(
                 text=doc,
                 doc_type=VectorStore.TYPE_PATHOGEN_HAZARDS,
                 metadata={
                     "pathogen": row["pathogen"],
                     "data_type": "cdc_epidemiology",
+                    "data_year": data_year,
                     "annual_illnesses": row.get("annual_illnesses", ""),
                     "annual_hospitalizations": row.get("annual_hospitalizations", ""),
                     "annual_deaths": row.get("annual_deaths", ""),
@@ -339,8 +347,8 @@ def load_pathogen_food_associations(pipeline: IngestionPipeline, data_dir: Path)
 
 def load_food_pathogen_hazards(pipeline: IngestionPipeline, data_dir: Path) -> LoadResult:
     """Load direct food-to-pathogen hazard mappings with CDC severity metrics.
-    
-    Source: Derived from CDC Scallan 2011 + IFT/FDA Table 1
+
+    Source: Derived from CDC Scallan 2011 & CDC Tack 2019 + IFT/FDA Table 1
     """
     file_path = data_dir / "food_pathogen_hazards.csv"
     
