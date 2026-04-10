@@ -4,7 +4,7 @@ Model-Agnostic LLM Client
 Uses LiteLLM for provider abstraction and Instructor for structured extraction.
 
 Supported providers (via LiteLLM):
-- OpenAI: gpt-4-turbo-preview, gpt-4o, gpt-3.5-turbo
+- OpenAI: gpt-4o, gpt-4-turbo, gpt-3.5-turbo
 - Anthropic: claude-3-opus, claude-3-sonnet, claude-3-haiku
 - Ollama (local): ollama/llama2, ollama/mistral
 - Azure, Bedrock, Vertex AI, etc.
@@ -64,6 +64,7 @@ class LLMClient:
         api_base: str | None = None,
         temperature: float | None = None,
         max_tokens: int | None = None,
+        instructor_mode: str | None = None,
     ):
         """
         Initialize the LLM client.
@@ -74,12 +75,21 @@ class LLMClient:
             api_base: Base URL override (default: from settings)
             temperature: Generation temperature (default: from settings)
             max_tokens: Max tokens in response (default: from settings)
+            instructor_mode: How Instructor extracts structured data.
+                None or "TOOLS" — uses the LLM's native function/tool-calling
+                    API. Most reliable for frontier models (OpenAI, Anthropic)
+                    that were specifically trained for tool use.
+                "JSON" — puts the Pydantic schema in the prompt and asks
+                    the LLM to respond with matching JSON. Works with local
+                    models (Ollama) that don't support tool calls.
+                See: https://python.useinstructor.com/concepts/modes/
         """
         self.model = model or settings.llm_model
         self.api_key = api_key or settings.llm_api_key
         self.api_base = api_base or settings.llm_api_base
         self.temperature = temperature if temperature is not None else settings.llm_temperature
         self.max_tokens = max_tokens or settings.llm_max_tokens
+        self.instructor_mode = instructor_mode
     
     async def complete(
         self,
@@ -136,6 +146,23 @@ class LLMClient:
         """
         Extract structured data from messages using Instructor.
         
+        The extraction mode is determined by self.instructor_mode (set in __init__):
+        
+        - TOOLS mode (default): The LLM uses its native function-calling API.
+          Instructor sends the Pydantic schema as a tool definition and the
+          LLM responds with a tool call whose arguments match the schema.
+          This is the most reliable mode for frontier models (OpenAI, Anthropic)
+          because they were specifically fine-tuned for tool use.
+        
+        - JSON mode: Instructor embeds the Pydantic schema in the system prompt
+          and instructs the LLM to respond with JSON matching that schema.
+          No tool calls involved — just constrained text generation.
+          This works with local models (e.g., Ollama) that don't support
+          tool calls, at the cost of slightly lower extraction reliability.
+        
+        Both modes validate the output against the Pydantic schema and retry
+        on validation errors (up to Instructor's default max_retries).
+        
         Args:
             response_model: Pydantic model class to extract
             messages: List of message dicts with 'role' and 'content'
@@ -149,7 +176,15 @@ class LLMClient:
         import instructor
         from litellm import acompletion
         
-        client = instructor.from_litellm(acompletion)
+        # Select Instructor mode based on client configuration.
+        # - None or "TOOLS": use function/tool calling (default, best for API providers)
+        # - "JSON": use JSON-in-prompt (required for most local/Ollama models)
+        if self.instructor_mode and self.instructor_mode.upper() == "JSON":
+            mode = instructor.Mode.JSON
+        else:
+            mode = instructor.Mode.TOOLS
+        
+        client = instructor.from_litellm(acompletion, mode=mode)
         
         full_messages = []
         if system_prompt:

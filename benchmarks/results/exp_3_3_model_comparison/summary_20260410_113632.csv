@@ -1,0 +1,2 @@
+model,instructor_mode,accuracy,consistency,model_type_accuracy,schema_compliance,latency_p50_s,latency_p95_s,latency_mean_s,cost_per_call_usd,total_cost_usd,input_tokens,output_tokens,tier_easy,tier_medium,tier_hard,field_aw,field_duration,field_duration_ambiguous,field_food_description,field_is_multi_step,field_model_type,field_pathogen,field_ph,field_range_preserved,field_step_count,field_temperature
+Qwen 2.5 14B,JSON,0.915,1.0,0.8,1.0,27.24,113.2,38.36,0.0,0.0,87974,5737,0.971,0.931,0.866,1.0,0.778,0.938,1.0,0.95,0.8,1.0,1.0,1.0,1.0,0.944

@@ -27,7 +27,7 @@ class TestSettings:
         
         s = Settings(_env_file=None)
         
-        assert s.llm_model == "gpt-4-turbo-preview"
+        assert s.llm_model == "gpt-4o"
         assert s.llm_temperature == 0.1
         assert s.llm_max_tokens == 4096
     

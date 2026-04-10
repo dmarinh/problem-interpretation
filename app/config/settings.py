@@ -75,8 +75,8 @@ class Settings(BaseSettings):
     # LLM Configuration (model-agnostic via LiteLLM)
     # -------------------------------------------------------------------------
     llm_model: str = Field(
-        default="gpt-4-turbo-preview",
-        description="Model identifier (e.g., gpt-4-turbo-preview, claude-3-sonnet, ollama/llama2)"
+        default="gpt-4o",
+        description="Model identifier (e.g., gpt-4o, claude-3-sonnet, ollama/llama2)"
     )
     llm_api_key: Optional[str] = Field(
         default=None,

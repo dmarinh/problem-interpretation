@@ -1,0 +1,365 @@
+{
+  "_metadata": {
+    "description": "Ground truth for semantic extraction benchmark (expanded).",
+    "annotator": "DRAFT — requires review by domain expert",
+    "version": "0.2",
+    "notes": "20 queries across 4 difficulty tiers. Ground truth defines what extract_scenario() should return. Keywords use | for alternatives (any match counts). Model type accepts a list for genuinely ambiguous cases. Range fields match ExtractedTemperature.is_range / range_min_celsius / range_max_celsius."
+  },
+  "queries": [
+
+    {
+      "id": "E1",
+      "text": "What is the growth rate of Salmonella at 25°C, pH 6.0, water activity 0.99 for 3 hours?",
+      "difficulty": "easy",
+      "notes": "Fully specified. All values explicit. Baseline accuracy test.",
+      "expected": {
+        "food_description": null,
+        "pathogen_mentioned": "Salmonella",
+        "implied_model_type": "growth",
+        "temperature_value": 25.0,
+        "temperature_is_range": false,
+        "duration_minutes": 180.0,
+        "duration_is_ambiguous": false,
+        "is_multi_step": false,
+        "ph_value": 6.0,
+        "water_activity": 0.99
+      }
+    },
+
+    {
+      "id": "E2",
+      "text": "Model Listeria monocytogenes growth on deli turkey at 4°C for 35 days.",
+      "difficulty": "easy",
+      "notes": "Explicit pathogen, temperature, duration. pH/aw not given — RAG handles it.",
+      "expected": {
+        "food_description": "deli turkey",
+        "pathogen_mentioned": "Listeria",
+        "implied_model_type": "growth",
+        "temperature_value": 4.0,
+        "temperature_is_range": false,
+        "duration_minutes": 50400.0,
+        "duration_is_ambiguous": false,
+        "is_multi_step": false
+      }
+    },
+
+    {
+      "id": "E3",
+      "text": "Calculate Salmonella thermal inactivation at 65°C for 10 minutes in chicken breast.",
+      "difficulty": "easy",
+      "notes": "Must be classified as thermal_inactivation, not growth. The word 'inactivation' is explicit.",
+      "expected": {
+        "food_description": "chicken breast",
+        "pathogen_mentioned": "Salmonella",
+        "implied_model_type": "thermal_inactivation",
+        "temperature_value": 65.0,
+        "temperature_is_range": false,
+        "duration_minutes": 10.0,
+        "duration_is_ambiguous": false,
+        "is_multi_step": false
+      }
+    },
+
+    {
+      "id": "E4",
+      "text": "Predict E. coli O157:H7 growth on ground beef at 30°C, pH 5.6, aw 0.98 for 6 hours.",
+      "difficulty": "easy",
+      "notes": "Fully specified with non-standard pathogen name. Tests organism name matching.",
+      "expected": {
+        "food_description": "ground beef",
+        "pathogen_mentioned": "E. coli",
+        "implied_model_type": "growth",
+        "temperature_value": 30.0,
+        "temperature_is_range": false,
+        "duration_minutes": 360.0,
+        "duration_is_ambiguous": false,
+        "is_multi_step": false,
+        "ph_value": 5.6,
+        "water_activity": 0.98
+      }
+    },
+
+    {
+      "id": "E5",
+      "text": "How much will Clostridium perfringens grow in cooked beef stew at 45°C over 4 hours?",
+      "difficulty": "easy",
+      "notes": "Tests C. perfringens name matching. Explicit values.",
+      "expected": {
+        "food_description": "cooked beef stew",
+        "pathogen_mentioned": "Clostridium perfringens",
+        "implied_model_type": "growth",
+        "temperature_value": 45.0,
+        "temperature_is_range": false,
+        "duration_minutes": 240.0,
+        "duration_is_ambiguous": false,
+        "is_multi_step": false
+      }
+    },
+
+    {
+      "id": "M1",
+      "text": "I left raw chicken on the counter overnight. Is it safe?",
+      "difficulty": "medium",
+      "notes": "Temperature and duration are vague. Parser should preserve descriptions. No pathogen named.",
+      "expected": {
+        "food_description": "raw chicken",
+        "pathogen_mentioned": null,
+        "implied_model_type": "growth",
+        "temperature_value": null,
+        "temperature_description_keywords": "counter|room|ambient|left out",
+        "temperature_is_range": false,
+        "duration_minutes": null,
+        "duration_description_keywords": "overnight",
+        "duration_is_ambiguous": true,
+        "is_multi_step": false
+      }
+    },
+
+    {
+      "id": "M2",
+      "text": "Ground beef was in my car for a few hours on a warm day.",
+      "difficulty": "medium",
+      "notes": "Both temperature and duration are vague. Either 'car' or 'warm' in the temperature description is acceptable.",
+      "expected": {
+        "food_description": "ground beef",
+        "pathogen_mentioned": null,
+        "implied_model_type": "growth",
+        "temperature_value": null,
+        "temperature_description_keywords": "car|warm|vehicle|hot",
+        "temperature_is_range": false,
+        "duration_minutes": null,
+        "duration_description_keywords": "few hours|couple|several",
+        "duration_is_ambiguous": true,
+        "is_multi_step": false
+      }
+    },
+
+    {
+      "id": "M3",
+      "text": "Cooked rice was sitting out all day at about 25°C.",
+      "difficulty": "medium",
+      "notes": "Temperature is explicit (25°C), duration is vague ('all day'). Mixed precision.",
+      "expected": {
+        "food_description": "cooked rice",
+        "pathogen_mentioned": null,
+        "implied_model_type": "growth",
+        "temperature_value": 25.0,
+        "temperature_is_range": false,
+        "duration_minutes": null,
+        "duration_description_keywords": "all day",
+        "duration_is_ambiguous": true,
+        "is_multi_step": false
+      }
+    },
+
+    {
+      "id": "M4",
+      "text": "Deli turkey sat out at room temperature for a while. Still OK to eat?",
+      "difficulty": "medium",
+      "notes": "'A while' is maximally vague. Tests lowest-confidence duration extraction.",
+      "expected": {
+        "food_description": "deli turkey",
+        "pathogen_mentioned": null,
+        "implied_model_type": "growth",
+        "temperature_value": null,
+        "temperature_description_keywords": "room temperature|room temp|ambient",
+        "temperature_is_range": false,
+        "duration_minutes": null,
+        "duration_description_keywords": "a while|some time",
+        "duration_is_ambiguous": true,
+        "is_multi_step": false
+      }
+    },
+
+    {
+      "id": "M5",
+      "text": "The milk was left out briefly, maybe 10 minutes. Is it still good?",
+      "difficulty": "medium",
+      "notes": "'Briefly' is vague but '10 minutes' is explicit. Tests whether the parser picks up the explicit value.",
+      "expected": {
+        "food_description": "milk",
+        "pathogen_mentioned": null,
+        "implied_model_type": "growth",
+        "temperature_value": null,
+        "temperature_description_keywords": "left out|counter|room|ambient",
+        "temperature_is_range": false,
+        "duration_minutes": 10.0,
+        "duration_is_ambiguous": false,
+        "is_multi_step": false
+      }
+    },
+
+    {
+      "id": "M6",
+      "text": "Cooked pasta has been in the fridge for a week. Safe to eat?",
+      "difficulty": "medium",
+      "notes": "Duration is explicit (1 week = 10080 min). Temperature is implied (fridge).",
+      "expected": {
+        "food_description": "cooked pasta",
+        "pathogen_mentioned": null,
+        "implied_model_type": "growth",
+        "temperature_value": null,
+        "temperature_description_keywords": "fridge|refrigerat|cold",
+        "temperature_is_range": false,
+        "duration_minutes": 10080.0,
+        "duration_is_ambiguous": false,
+        "is_multi_step": false
+      }
+    },
+
+    {
+      "id": "H1",
+      "text": "Chicken nuggets reached about 68°C instead of 74°C, held for roughly 8 minutes. Are they safe?",
+      "difficulty": "hard",
+      "notes": "CRITICAL: must be thermal_inactivation, not growth. The 'chicken nuggets bug' from the issues document. Wrong classification reverses conservative bias direction.",
+      "expected": {
+        "food_description": "chicken nuggets",
+        "pathogen_mentioned": null,
+        "implied_model_type": "thermal_inactivation",
+        "temperature_value": 68.0,
+        "temperature_is_range": false,
+        "duration_minutes": 8.0,
+        "duration_is_ambiguous": false,
+        "is_multi_step": false
+      }
+    },
+
+    {
+      "id": "H2",
+      "text": "The refrigeration chamber for the turkey broke. It was between 10 and 15 degrees for about 4 hours.",
+      "difficulty": "hard",
+      "notes": "CRITICAL: temperature must be extracted as a RANGE with is_range=true, range_min=10, range_max=15. NOT collapsed to midpoint 12.5. This is the core optimistic bias scenario.",
+      "expected": {
+        "food_description": "turkey",
+        "pathogen_mentioned": null,
+        "implied_model_type": "growth",
+        "temperature_value": null,
+        "temperature_is_range": true,
+        "temperature_range_min": 10.0,
+        "temperature_range_max": 15.0,
+        "duration_minutes": 240.0,
+        "duration_is_ambiguous": false,
+        "is_multi_step": false
+      }
+    },
+
+    {
+      "id": "H3",
+      "text": "I reheated leftover chicken in the microwave but I'm not sure it got hot enough. It was in the fridge for two days before that.",
+      "difficulty": "hard",
+      "notes": "Genuinely ambiguous scenario type. Could be about reheating adequacy (inactivation) or prior storage (growth). Both are acceptable classifications.",
+      "expected": {
+        "food_description": "leftover chicken",
+        "pathogen_mentioned": null,
+        "implied_model_type": ["thermal_inactivation", "growth"],
+        "temperature_value": null,
+        "temperature_description_keywords": "microwave|reheat|hot enough",
+        "temperature_is_range": false,
+        "duration_minutes": null,
+        "is_multi_step": false
+      }
+    },
+
+    {
+      "id": "H4",
+      "text": "After purchasing salmon fillets, I drove home for 45 minutes in a warm car at about 28°C. Then I put them in the fridge at 4°C overnight.",
+      "difficulty": "hard",
+      "notes": "Multi-step scenario. Must be extracted as two steps, not collapsed into one.",
+      "expected": {
+        "food_description": "salmon fillets|salmon",
+        "pathogen_mentioned": null,
+        "implied_model_type": "growth",
+        "is_multi_step": true,
+        "expected_step_count": 2
+      }
+    },
+
+    {
+      "id": "H5",
+      "text": "A supermarket had a 3-hour power outage. Refrigerated cases read 7 to 14°C. Mixed products: dairy, deli meats, produce.",
+      "difficulty": "hard",
+      "notes": "Wide temperature range (7-14°C). Must preserve the range. Multiple food types.",
+      "expected": {
+        "food_description_should_contain": ["dairy", "deli", "meat", "produce"],
+        "pathogen_mentioned": null,
+        "implied_model_type": "growth",
+        "temperature_value": null,
+        "temperature_is_range": true,
+        "temperature_range_min": 7.0,
+        "temperature_range_max": 14.0,
+        "duration_minutes": 180.0,
+        "duration_is_ambiguous": false,
+        "is_multi_step": false
+      }
+    },
+
+    {
+      "id": "H6",
+      "text": "We marinate chicken thighs in the walk-in cooler for about 14 hours. The product probe reads 9°C but the display says 3°C. The marinade has vinegar and citrus juice. Should we proceed?",
+      "difficulty": "hard",
+      "notes": "Conflicting temperature data (probe 9°C vs display 3°C). Tests whether the parser captures both or picks one. Either value is acceptable but both is better.",
+      "expected": {
+        "food_description": "chicken thighs",
+        "pathogen_mentioned": null,
+        "implied_model_type": "growth",
+        "temperature_value": 9.0,
+        "temperature_value_alt": 3.0,
+        "temperature_is_range": false,
+        "duration_minutes": 840.0,
+        "duration_is_ambiguous": false,
+        "is_multi_step": false,
+        "notes_on_failure": "Conflicting temps. If parser picks 9°C (probe), that's best. If it picks 3°C (display), acceptable. If it averages to 6°C, that's wrong."
+      }
+    },
+
+    {
+      "id": "H7",
+      "text": "Our pastry cream was sitting in the piping hopper at room temperature for 2 hours because of a mechanical stoppage. The cream is custard-based, made with eggs and milk. Can we still use it?",
+      "difficulty": "hard",
+      "notes": "Bakery scenario (C10 from sensitivity set). Duration explicit, temperature vague. Tests food description extraction for composite food.",
+      "expected": {
+        "food_description": "pastry cream|custard|cream",
+        "pathogen_mentioned": null,
+        "implied_model_type": "growth",
+        "temperature_value": null,
+        "temperature_description_keywords": "room temperature|room temp|ambient",
+        "temperature_is_range": false,
+        "duration_minutes": 120.0,
+        "duration_is_ambiguous": false,
+        "is_multi_step": false
+      }
+    },
+
+    {
+      "id": "H8",
+      "text": "Chicken nuggets were cooked to 74°C then left on the serving counter for about 3 hours. The counter area is roughly 22 degrees. Are they safe to serve?",
+      "difficulty": "hard",
+      "notes": "Multi-step: cooking (inactivation) then holding (growth). Tests whether parser identifies the two-phase scenario. If extracted as single-step at 22°C for 3h (growth only), that's acceptable but less complete.",
+      "expected": {
+        "food_description": "chicken nuggets",
+        "pathogen_mentioned": null,
+        "implied_model_type": "growth",
+        "is_multi_step": true,
+        "expected_step_count": 2,
+        "notes_on_failure": "If extracted as single-step growth at 22°C for 3h, that's a partial pass — the user's primary concern is the holding period."
+      }
+    },
+
+    {
+      "id": "N1",
+      "text": "What temperature kills bacteria?",
+      "difficulty": "medium",
+      "notes": "NOT a prediction request. No food, no scenario, no duration. Tests whether the parser produces a mostly-empty extraction. The system should recognize this as an information query, not a model execution request.",
+      "expected": {
+        "food_description": null,
+        "pathogen_mentioned": null,
+        "implied_model_type": null,
+        "temperature_value": null,
+        "temperature_is_range": false,
+        "duration_minutes": null,
+        "is_multi_step": false,
+        "notes_on_failure": "This query should result in minimal extraction. If the parser invents a food or pathogen, that's a hallucination."
+      }
+    }
+  ]
+}

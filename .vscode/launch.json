@@ -22,7 +22,13 @@
             "cwd": "${workspaceFolder}",
             "env": {
                 "PYTHONPATH": "${workspaceFolder}"
-            }
+            },
+            "args": [
+                "--runs",
+                "1",
+                "--models",
+                "GPT-4o"
+            ]
         }
     ]
 }

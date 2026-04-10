@@ -1,0 +1,2 @@
+model,accuracy,consistency,model_type_accuracy,schema_compliance,latency_p50_s,latency_p95_s,latency_mean_s,cost_per_call_usd,total_cost_usd,input_tokens,output_tokens,tier_easy,tier_medium,tier_hard,field_aw,field_duration,field_duration_ambiguous,field_food_description,field_is_multi_step,field_model_type,field_pathogen,field_ph,field_range_preserved,field_step_count,field_temperature
+GPT-4o,0.956,1.0,0.9,1.0,2.24,5.22,2.46,0.004836,0.0967,45901,2852,1.0,0.951,0.932,1.0,0.944,1.0,1.0,0.95,0.9,1.0,1.0,1.0,0.5,1.0

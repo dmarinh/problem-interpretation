@@ -1,0 +1,724 @@
+[
+  {
+    "model": "Qwen 2.5 14B",
+    "litellm_model": "ollama/qwen2.5:14b",
+    "instructor_mode": "JSON",
+    "queries": [
+      {
+        "query_id": "E1",
+        "difficulty": "easy",
+        "accuracy": 1.0,
+        "field_scores": {
+          "model_type": true,
+          "pathogen": true,
+          "temperature": true,
+          "duration": true,
+          "duration_ambiguous": true,
+          "is_multi_step": true,
+          "ph": true,
+          "aw": true
+        },
+        "consistency": 1.0,
+        "field_consistency": {
+          "food_description": 1.0,
+          "implied_model_type": 1.0,
+          "pathogen_mentioned": 1.0,
+          "temperature_value": 1.0,
+          "temperature_is_range": 1.0,
+          "duration_minutes": 1.0,
+          "duration_is_ambiguous": 1.0,
+          "is_multi_step": 1.0
+        },
+        "model_type_ok": true,
+        "mean_latency_s": 55.282,
+        "input_tokens": 3586,
+        "output_tokens": 298,
+        "cost_usd": 0.0,
+        "n_valid": 1,
+        "n_errors": 0,
+        "details": []
+      },
+      {
+        "query_id": "E2",
+        "difficulty": "easy",
+        "accuracy": 0.857,
+        "field_scores": {
+          "food_description": true,
+          "model_type": true,
+          "pathogen": true,
+          "temperature": true,
+          "duration": false,
+          "duration_ambiguous": true,
+          "is_multi_step": true
+        },
+        "consistency": 1.0,
+        "field_consistency": {
+          "food_description": 1.0,
+          "implied_model_type": 1.0,
+          "pathogen_mentioned": 1.0,
+          "temperature_value": 1.0,
+          "temperature_is_range": 1.0,
+          "duration_minutes": 1.0,
+          "duration_is_ambiguous": 1.0,
+          "is_multi_step": 1.0
+        },
+        "model_type_ok": true,
+        "mean_latency_s": 20.973,
+        "input_tokens": 3577,
+        "output_tokens": 154,
+        "cost_usd": 0.0,
+        "n_valid": 1,
+        "n_errors": 0,
+        "details": [
+          "duration: expected 50400.0 min, got 5040.0"
+        ]
+      },
+      {
+        "query_id": "E3",
+        "difficulty": "easy",
+        "accuracy": 1.0,
+        "field_scores": {
+          "food_description": true,
+          "model_type": true,
+          "pathogen": true,
+          "temperature": true,
+          "duration": true,
+          "duration_ambiguous": true,
+          "is_multi_step": true
+        },
+        "consistency": 1.0,
+        "field_consistency": {
+          "food_description": 1.0,
+          "implied_model_type": 1.0,
+          "pathogen_mentioned": 1.0,
+          "temperature_value": 1.0,
+          "temperature_is_range": 1.0,
+          "duration_minutes": 1.0,
+          "duration_is_ambiguous": 1.0,
+          "is_multi_step": 1.0
+        },
+        "model_type_ok": true,
+        "mean_latency_s": 14.59,
+        "input_tokens": 3574,
+        "output_tokens": 103,
+        "cost_usd": 0.0,
+        "n_valid": 1,
+        "n_errors": 0,
+        "details": []
+      },
+      {
+        "query_id": "E4",
+        "difficulty": "easy",
+        "accuracy": 1.0,
+        "field_scores": {
+          "food_description": true,
+          "model_type": true,
+          "pathogen": true,
+          "temperature": true,
+          "duration": true,
+          "duration_ambiguous": true,
+          "is_multi_step": true,
+          "ph": true,
+          "aw": true
+        },
+        "consistency": 1.0,
+        "field_consistency": {
+          "food_description": 1.0,
+          "implied_model_type": 1.0,
+          "pathogen_mentioned": 1.0,
+          "temperature_value": 1.0,
+          "temperature_is_range": 1.0,
+          "duration_minutes": 1.0,
+          "duration_is_ambiguous": 1.0,
+          "is_multi_step": 1.0
+        },
+        "model_type_ok": true,
+        "mean_latency_s": 31.325,
+        "input_tokens": 3591,
+        "output_tokens": 246,
+        "cost_usd": 0.0,
+        "n_valid": 1,
+        "n_errors": 0,
+        "details": []
+      },
+      {
+        "query_id": "E5",
+        "difficulty": "easy",
+        "accuracy": 1.0,
+        "field_scores": {
+          "food_description": true,
+          "model_type": true,
+          "pathogen": true,
+          "temperature": true,
+          "duration": true,
+          "duration_ambiguous": true,
+          "is_multi_step": true
+        },
+        "consistency": 1.0,
+        "field_consistency": {
+          "food_description": 1.0,
+          "implied_model_type": 1.0,
+          "pathogen_mentioned": 1.0,
+          "temperature_value": 1.0,
+          "temperature_is_range": 1.0,
+          "duration_minutes": 1.0,
+          "duration_is_ambiguous": 1.0,
+          "is_multi_step": 1.0
+        },
+        "model_type_ok": true,
+        "mean_latency_s": 36.088,
+        "input_tokens": 3580,
+        "output_tokens": 285,
+        "cost_usd": 0.0,
+        "n_valid": 1,
+        "n_errors": 0,
+        "details": []
+      },
+      {
+        "query_id": "M1",
+        "difficulty": "medium",
+        "accuracy": 0.857,
+        "field_scores": {
+          "food_description": true,
+          "model_type": true,
+          "pathogen": true,
+          "temperature": true,
+          "duration": true,
+          "duration_ambiguous": false,
+          "is_multi_step": true
+        },
+        "consistency": 1.0,
+        "field_consistency": {
+          "food_description": 1.0,
+          "implied_model_type": 1.0,
+          "pathogen_mentioned": 1.0,
+          "temperature_value": 1.0,
+          "temperature_is_range": 1.0,
+          "duration_minutes": 1.0,
+          "duration_is_ambiguous": 1.0,
+          "is_multi_step": 1.0
+        },
+        "model_type_ok": true,
+        "mean_latency_s": 26.508,
+        "input_tokens": 3566,
+        "output_tokens": 204,
+        "cost_usd": 0.0,
+        "n_valid": 1,
+        "n_errors": 0,
+        "details": [
+          "duration_ambiguous: expected True, got False"
+        ]
+      },
+      {
+        "query_id": "M2",
+        "difficulty": "medium",
+        "accuracy": 1.0,
+        "field_scores": {
+          "food_description": true,
+          "model_type": true,
+          "pathogen": true,
+          "temperature": true,
+          "duration": true,
+          "duration_ambiguous": true,
+          "is_multi_step": true
+        },
+        "consistency": 1.0,
+        "field_consistency": {
+          "food_description": 1.0,
+          "implied_model_type": 1.0,
+          "pathogen_mentioned": 1.0,
+          "temperature_value": 1.0,
+          "temperature_is_range": 1.0,
+          "duration_minutes": 1.0,
+          "duration_is_ambiguous": 1.0,
+          "is_multi_step": 1.0
+        },
+        "model_type_ok": true,
+        "mean_latency_s": 25.91,
+        "input_tokens": 3568,
+        "output_tokens": 204,
+        "cost_usd": 0.0,
+        "n_valid": 1,
+        "n_errors": 0,
+        "details": []
+      },
+      {
+        "query_id": "M3",
+        "difficulty": "medium",
+        "accuracy": 1.0,
+        "field_scores": {
+          "food_description": true,
+          "model_type": true,
+          "pathogen": true,
+          "temperature": true,
+          "duration": true,
+          "duration_ambiguous": true,
+          "is_multi_step": true
+        },
+        "consistency": 1.0,
+        "field_consistency": {
+          "food_description": 1.0,
+          "implied_model_type": 1.0,
+          "pathogen_mentioned": 1.0,
+          "temperature_value": 1.0,
+          "temperature_is_range": 1.0,
+          "duration_minutes": 1.0,
+          "duration_is_ambiguous": 1.0,
+          "is_multi_step": 1.0
+        },
+        "model_type_ok": true,
+        "mean_latency_s": 26.116,
+        "input_tokens": 3569,
+        "output_tokens": 204,
+        "cost_usd": 0.0,
+        "n_valid": 1,
+        "n_errors": 0,
+        "details": []
+      },
+      {
+        "query_id": "M4",
+        "difficulty": "medium",
+        "accuracy": 1.0,
+        "field_scores": {
+          "food_description": true,
+          "model_type": true,
+          "pathogen": true,
+          "temperature": true,
+          "duration": true,
+          "duration_ambiguous": true,
+          "is_multi_step": true
+        },
+        "consistency": 1.0,
+        "field_consistency": {
+          "food_description": 1.0,
+          "implied_model_type": 1.0,
+          "pathogen_mentioned": 1.0,
+          "temperature_value": 1.0,
+          "temperature_is_range": 1.0,
+          "duration_minutes": 1.0,
+          "duration_is_ambiguous": 1.0,
+          "is_multi_step": 1.0
+        },
+        "model_type_ok": true,
+        "mean_latency_s": 26.355,
+        "input_tokens": 3570,
+        "output_tokens": 206,
+        "cost_usd": 0.0,
+        "n_valid": 1,
+        "n_errors": 0,
+        "details": []
+      },
+      {
+        "query_id": "M5",
+        "difficulty": "medium",
+        "accuracy": 1.0,
+        "field_scores": {
+          "food_description": true,
+          "model_type": true,
+          "pathogen": true,
+          "temperature": true,
+          "duration": true,
+          "duration_ambiguous": true,
+          "is_multi_step": true
+        },
+        "consistency": 1.0,
+        "field_consistency": {
+          "food_description": 1.0,
+          "implied_model_type": 1.0,
+          "pathogen_mentioned": 1.0,
+          "temperature_value": 1.0,
+          "temperature_is_range": 1.0,
+          "duration_minutes": 1.0,
+          "duration_is_ambiguous": 1.0,
+          "is_multi_step": 1.0
+        },
+        "model_type_ok": true,
+        "mean_latency_s": 26.534,
+        "input_tokens": 3571,
+        "output_tokens": 206,
+        "cost_usd": 0.0,
+        "n_valid": 1,
+        "n_errors": 0,
+        "details": []
+      },
+      {
+        "query_id": "M6",
+        "difficulty": "medium",
+        "accuracy": 0.857,
+        "field_scores": {
+          "food_description": true,
+          "model_type": true,
+          "pathogen": true,
+          "temperature": true,
+          "duration": false,
+          "duration_ambiguous": true,
+          "is_multi_step": true
+        },
+        "consistency": 1.0,
+        "field_consistency": {
+          "food_description": 1.0,
+          "implied_model_type": 1.0,
+          "pathogen_mentioned": 1.0,
+          "temperature_value": 1.0,
+          "temperature_is_range": 1.0,
+          "duration_minutes": 1.0,
+          "duration_is_ambiguous": 1.0,
+          "is_multi_step": 1.0
+        },
+        "model_type_ok": true,
+        "mean_latency_s": 24.748,
+        "input_tokens": 3569,
+        "output_tokens": 191,
+        "cost_usd": 0.0,
+        "n_valid": 1,
+        "n_errors": 0,
+        "details": [
+          "duration: expected 10080.0 min, got None"
+        ]
+      },
+      {
+        "query_id": "H1",
+        "difficulty": "hard",
+        "accuracy": 0.857,
+        "field_scores": {
+          "food_description": true,
+          "model_type": true,
+          "pathogen": true,
+          "temperature": true,
+          "duration": false,
+          "duration_ambiguous": true,
+          "is_multi_step": true
+        },
+        "consistency": 1.0,
+        "field_consistency": {
+          "food_description": 1.0,
+          "implied_model_type": 1.0,
+          "pathogen_mentioned": 1.0,
+          "temperature_value": 1.0,
+          "temperature_is_range": 1.0,
+          "duration_minutes": 1.0,
+          "duration_is_ambiguous": 1.0,
+          "is_multi_step": 1.0
+        },
+        "model_type_ok": true,
+        "mean_latency_s": 27.24,
+        "input_tokens": 3582,
+        "output_tokens": 213,
+        "cost_usd": 0.0,
+        "n_valid": 1,
+        "n_errors": 0,
+        "details": [
+          "duration: expected 8.0 min, got None"
+        ]
+      },
+      {
+        "query_id": "H2",
+        "difficulty": "hard",
+        "accuracy": 1.0,
+        "field_scores": {
+          "food_description": true,
+          "model_type": true,
+          "pathogen": true,
+          "temperature": true,
+          "range_preserved": true,
+          "duration": true,
+          "duration_ambiguous": true,
+          "is_multi_step": true
+        },
+        "consistency": 1.0,
+        "field_consistency": {
+          "food_description": 1.0,
+          "implied_model_type": 1.0,
+          "pathogen_mentioned": 1.0,
+          "temperature_value": 1.0,
+          "temperature_is_range": 1.0,
+          "duration_minutes": 1.0,
+          "duration_is_ambiguous": 1.0,
+          "is_multi_step": 1.0
+        },
+        "model_type_ok": true,
+        "mean_latency_s": 27.24,
+        "input_tokens": 3579,
+        "output_tokens": 212,
+        "cost_usd": 0.0,
+        "n_valid": 1,
+        "n_errors": 0,
+        "details": []
+      },
+      {
+        "query_id": "H3",
+        "difficulty": "hard",
+        "accuracy": 0.667,
+        "field_scores": {
+          "food_description": true,
+          "model_type": true,
+          "pathogen": true,
+          "temperature": false,
+          "duration": true,
+          "is_multi_step": false
+        },
+        "consistency": 1.0,
+        "field_consistency": {
+          "food_description": 1.0,
+          "implied_model_type": 1.0,
+          "pathogen_mentioned": 1.0,
+          "temperature_value": 1.0,
+          "temperature_is_range": 1.0,
+          "duration_minutes": 1.0,
+          "duration_is_ambiguous": 1.0,
+          "is_multi_step": 1.0
+        },
+        "model_type_ok": true,
+        "mean_latency_s": 113.197,
+        "input_tokens": 7678,
+        "output_tokens": 910,
+        "cost_usd": 0.0,
+        "n_valid": 1,
+        "n_errors": 0,
+        "details": [
+          "temp: expected description with one of 'microwave|reheat|hot enough', got ''",
+          "multi-step: expected False, got True"
+        ]
+      },
+      {
+        "query_id": "H4",
+        "difficulty": "hard",
+        "accuracy": 1.0,
+        "field_scores": {
+          "food_description": true,
+          "model_type": true,
+          "pathogen": true,
+          "is_multi_step": true,
+          "step_count": true
+        },
+        "consistency": 1.0,
+        "field_consistency": {
+          "food_description": 1.0,
+          "implied_model_type": 1.0,
+          "pathogen_mentioned": 1.0,
+          "temperature_value": 1.0,
+          "temperature_is_range": 1.0,
+          "duration_minutes": 1.0,
+          "duration_is_ambiguous": 1.0,
+          "is_multi_step": 1.0
+        },
+        "model_type_ok": true,
+        "mean_latency_s": 65.907,
+        "input_tokens": 7689,
+        "output_tokens": 474,
+        "cost_usd": 0.0,
+        "n_valid": 1,
+        "n_errors": 0,
+        "details": []
+      },
+      {
+        "query_id": "H5",
+        "difficulty": "hard",
+        "accuracy": 0.75,
+        "field_scores": {
+          "food_description": true,
+          "model_type": false,
+          "pathogen": true,
+          "temperature": true,
+          "range_preserved": true,
+          "duration": false,
+          "duration_ambiguous": true,
+          "is_multi_step": true
+        },
+        "consistency": 1.0,
+        "field_consistency": {
+          "food_description": 1.0,
+          "implied_model_type": 1.0,
+          "pathogen_mentioned": 1.0,
+          "temperature_value": 1.0,
+          "temperature_is_range": 1.0,
+          "duration_minutes": 1.0,
+          "duration_is_ambiguous": 1.0,
+          "is_multi_step": 1.0
+        },
+        "model_type_ok": false,
+        "mean_latency_s": 19.205,
+        "input_tokens": 3587,
+        "output_tokens": 118,
+        "cost_usd": 0.0,
+        "n_valid": 1,
+        "n_errors": 0,
+        "details": [
+          "MODEL TYPE: expected 'growth', got '' !! SAFETY-CRITICAL",
+          "duration: expected 180.0 min, got None"
+        ]
+      },
+      {
+        "query_id": "H6",
+        "difficulty": "hard",
+        "accuracy": 0.857,
+        "field_scores": {
+          "food_description": true,
+          "model_type": false,
+          "pathogen": true,
+          "temperature": true,
+          "duration": true,
+          "duration_ambiguous": true,
+          "is_multi_step": true
+        },
+        "consistency": 1.0,
+        "field_consistency": {
+          "food_description": 1.0,
+          "implied_model_type": 1.0,
+          "pathogen_mentioned": 1.0,
+          "temperature_value": 1.0,
+          "temperature_is_range": 1.0,
+          "duration_minutes": 1.0,
+          "duration_is_ambiguous": 1.0,
+          "is_multi_step": 1.0
+        },
+        "model_type_ok": false,
+        "mean_latency_s": 39.556,
+        "input_tokens": 3600,
+        "output_tokens": 326,
+        "cost_usd": 0.0,
+        "n_valid": 1,
+        "n_errors": 0,
+        "details": [
+          "MODEL TYPE: expected 'growth', got 'non_thermal_survival' !! SAFETY-CRITICAL"
+        ]
+      },
+      {
+        "query_id": "H7",
+        "difficulty": "hard",
+        "accuracy": 1.0,
+        "field_scores": {
+          "food_description": true,
+          "model_type": true,
+          "pathogen": true,
+          "temperature": true,
+          "duration": true,
+          "duration_ambiguous": true,
+          "is_multi_step": true
+        },
+        "consistency": 1.0,
+        "field_consistency": {
+          "food_description": 1.0,
+          "implied_model_type": 1.0,
+          "pathogen_mentioned": 1.0,
+          "temperature_value": 1.0,
+          "temperature_is_range": 1.0,
+          "duration_minutes": 1.0,
+          "duration_is_ambiguous": 1.0,
+          "is_multi_step": 1.0
+        },
+        "model_type_ok": true,
+        "mean_latency_s": 23.997,
+        "input_tokens": 3596,
+        "output_tokens": 191,
+        "cost_usd": 0.0,
+        "n_valid": 1,
+        "n_errors": 0,
+        "details": []
+      },
+      {
+        "query_id": "H8",
+        "difficulty": "hard",
+        "accuracy": 0.8,
+        "field_scores": {
+          "food_description": true,
+          "model_type": false,
+          "pathogen": true,
+          "is_multi_step": true,
+          "step_count": true
+        },
+        "consistency": 1.0,
+        "field_consistency": {
+          "food_description": 1.0,
+          "implied_model_type": 1.0,
+          "pathogen_mentioned": 1.0,
+          "temperature_value": 1.0,
+          "temperature_is_range": 1.0,
+          "duration_minutes": 1.0,
+          "duration_is_ambiguous": 1.0,
+          "is_multi_step": 1.0
+        },
+        "model_type_ok": false,
+        "mean_latency_s": 69.057,
+        "input_tokens": 7688,
+        "output_tokens": 520,
+        "cost_usd": 0.0,
+        "n_valid": 1,
+        "n_errors": 0,
+        "details": [
+          "MODEL TYPE: expected 'growth', got 'thermal_inactivation' !! SAFETY-CRITICAL"
+        ]
+      },
+      {
+        "query_id": "N1",
+        "difficulty": "medium",
+        "accuracy": 0.8,
+        "field_scores": {
+          "model_type": false,
+          "pathogen": true,
+          "temperature": true,
+          "duration": true,
+          "is_multi_step": true
+        },
+        "consistency": 1.0,
+        "field_consistency": {
+          "food_description": 1.0,
+          "implied_model_type": 1.0,
+          "pathogen_mentioned": 1.0,
+          "temperature_value": 1.0,
+          "temperature_is_range": 1.0,
+          "duration_minutes": 1.0,
+          "duration_is_ambiguous": 1.0,
+          "is_multi_step": 1.0
+        },
+        "model_type_ok": false,
+        "mean_latency_s": 67.449,
+        "input_tokens": 7654,
+        "output_tokens": 472,
+        "cost_usd": 0.0,
+        "n_valid": 1,
+        "n_errors": 0,
+        "details": [
+          "MODEL TYPE: expected None, got 'thermal_inactivation'"
+        ]
+      }
+    ],
+    "summary": {
+      "overall_accuracy": 0.915,
+      "overall_consistency": 1.0,
+      "model_type_accuracy": 0.8,
+      "schema_compliance": 1.0,
+      "latency_p50_s": 27.24,
+      "latency_p95_s": 113.2,
+      "latency_mean_s": 38.36,
+      "total_input_tokens": 87974,
+      "total_output_tokens": 5737,
+      "actual_cost_per_call_usd": 0.0,
+      "total_cost_usd": 0.0,
+      "field_accuracy": {
+        "aw": 1.0,
+        "duration": 0.778,
+        "duration_ambiguous": 0.938,
+        "food_description": 1.0,
+        "is_multi_step": 0.95,
+        "model_type": 0.8,
+        "pathogen": 1.0,
+        "ph": 1.0,
+        "range_preserved": 1.0,
+        "step_count": 1.0,
+        "temperature": 0.944
+      },
+      "tier_accuracy": {
+        "easy": 0.971,
+        "medium": 0.931,
+        "hard": 0.866
+      },
+      "model_type_errors": [
+        "H5",
+        "H6",
+        "H8",
+        "N1"
+      ]
+    }
+  }
+]

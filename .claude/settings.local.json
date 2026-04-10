@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m pytest --collect-only)",
+      "Bash(python -m pytest --version)",
+      "Bash(python -c \"import sys; print\\(f'Python {sys.version}'\\)\")"
+    ]
+  }
+}
