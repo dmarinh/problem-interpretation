@@ -32,6 +32,7 @@ class ValueSource(str, Enum):
     """Where a value came from."""
     USER_EXPLICIT = "user_explicit"           # User stated directly
     USER_INFERRED = "user_inferred"           # Inferred from user input
+    FUZZY_MATCH = "fuzzy_match"               # Resolved via alias/fuzzy lookup
     RAG_RETRIEVAL = "rag_retrieval"           # Retrieved from knowledge base
     CONSERVATIVE_DEFAULT = "conservative_default"  # Safety default applied
     CLARIFICATION_RESPONSE = "clarification_response"  # From user clarification

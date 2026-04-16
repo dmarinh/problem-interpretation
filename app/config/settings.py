@@ -162,6 +162,13 @@ class Settings(BaseSettings):
         default=25.0,
         description="Conservative ambient temperature assumption (°C)"
     )
+    default_temperature_inactivation_conservative_c: float = Field(
+        default=60.0,
+        description=(
+            "Conservative cooking temperature default (°C) when none is specified. "
+            "Below typical pasteurization targets — conservative for thermal inactivation."
+        ),
+    )
     default_ph_neutral: float = Field(
         default=7.0,
         ge=0.0,

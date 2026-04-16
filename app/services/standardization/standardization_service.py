@@ -62,7 +62,8 @@ from app.models.metadata import (
     ValueSource,
 )
 from app.services.grounding.grounding_service import GroundedValues
-from app.engines.combase.models import ComBaseModelRegistry
+from app.engines.combase.models import ComBaseModelConstraints, ComBaseModelRegistry
+from pydantic import ValidationError
 
 
 class StandardizationResult:
@@ -204,7 +205,7 @@ class StandardizationService:
                     total_duration_minutes=duration,
                 ),
             )
-        except Exception as e:
+        except ValidationError as e:
             result.warnings.append(f"Failed to build payload: {e}")
         
         return result
@@ -309,7 +310,7 @@ class StandardizationService:
         self,
         grounded: GroundedValues,
         result: StandardizationResult,
-        constraints,
+        constraints: ComBaseModelConstraints | None,
         model_type: ModelType,
     ) -> float | None:
         """
@@ -333,7 +334,7 @@ class StandardizationService:
             if self._is_inactivation_model(model_type):
                 # For cooking: default to a moderate temperature that might
                 # not achieve full pasteurization (conservative = less kill)
-                temp = 60.0  # Below typical pasteurization targets
+                temp = settings.default_temperature_inactivation_conservative_c
                 result.defaults_applied.append(f"temperature (defaulted to {temp}°C for cooking)")
                 result.bias_corrections.append(BiasCorrection(
                     bias_type=BiasType.MISSING_VALUE_IMPUTED,
@@ -460,7 +461,7 @@ class StandardizationService:
         self,
         grounded: GroundedValues,
         result: StandardizationResult,
-        constraints,
+        constraints: ComBaseModelConstraints | None,
         model_type: ModelType,
     ) -> float:
         """
@@ -527,7 +528,7 @@ class StandardizationService:
         self,
         grounded: GroundedValues,
         result: StandardizationResult,
-        constraints,
+        constraints: ComBaseModelConstraints | None,
         model_type: ModelType,
     ) -> float:
         """

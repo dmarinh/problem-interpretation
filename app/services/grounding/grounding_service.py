@@ -23,6 +23,8 @@ The StandardizationService handles bias corrections AFTER grounding.
 Both must use model-type-aware logic for correct conservative behavior.
 """
 
+import asyncio
+import logging
 import re
 from dataclasses import dataclass
 
@@ -40,6 +42,7 @@ from app.models.metadata import ValueProvenance, ValueSource, RetrievalResult
 from app.rag.retrieval import RetrievalService, get_retrieval_service
 from app.services.llm.client import LLMClient, get_llm_client
 
+logger = logging.getLogger(__name__)
 
 FOOD_PROPERTIES_EXTRACTION_PROMPT = """Extract pH and water activity values from the following text about food properties.
 
@@ -84,7 +87,7 @@ class GroundedValues:
     """
     
     def __init__(self):
-        self.values: dict = {}
+        self.values: dict[str, object] = {}
         self.provenance: dict[str, ValueProvenance] = {}
         self.retrievals: list[RetrievalResult] = []
         self.warnings: list[str] = []
@@ -189,6 +192,9 @@ class GroundingService:
         if scenario.pathogen_mentioned:
             organism = ComBaseOrganism.from_string(scenario.pathogen_mentioned)
             if organism:
+                # from_string() does alias dict lookup, not true fuzzy matching,
+                # so all successful matches represent explicit user intent.
+                # FUZZY_MATCH will be used when rapidfuzz is added to from_string().
                 grounded.set(
                     "organism",
                     organism,
@@ -335,8 +341,10 @@ class GroundingService:
         numeric values. When ranges are found, the bound selection depends
         on the model type (see _select_range_bound).
         """
-        response = self._retrieval.query_food_properties(food_description)
-        
+        response = await asyncio.to_thread(
+            self._retrieval.query_food_properties, food_description
+        )
+
         # Record retrieval attempt
         retrieval_result = RetrievalResult(
             query=f"{food_description} pH water activity",
@@ -456,14 +464,17 @@ class GroundingService:
         ph = self._extract_numeric_value(text, ["ph"])
         aw = self._extract_numeric_value(text, ["water activity", "aw"])
         
-        # Build result from regex
+        # Build result from regex.
+        # ph_max/aw_max must only be set when is_range=True; setting them for
+        # single values would trigger the range-selection branch downstream with
+        # ph_min=None, causing a crash or silent wrong-value selection.
         props = ExtractedFoodProperties(
             ph_value=ph.value if ph.value and not ph.is_range else None,
             ph_min=ph.range_min,
-            ph_max=ph.range_max if ph.is_range else ph.value,
+            ph_max=ph.range_max if ph.is_range else None,
             aw_value=aw.value if aw.value and not aw.is_range else None,
             aw_min=aw.range_min,
-            aw_max=aw.range_max if aw.is_range else aw.value,
+            aw_max=aw.range_max if aw.is_range else None,
             extraction_method="regex",
         )
         
@@ -486,9 +497,11 @@ class GroundingService:
                     aw_max=props.aw_max or llm_props.aw_max,
                     extraction_method="regex+llm" if (props.has_ph or props.has_aw) else "llm",
                 )
-            except Exception:
-                # LLM failed, return regex results
-                pass
+            except Exception as exc:
+                # LLM failed — log and fall back to regex results
+                logger.warning(
+                    "LLM food property extraction failed: %s", exc, exc_info=True
+                )
         
         return props
     
@@ -593,8 +606,10 @@ class GroundingService:
         Looks up the food in the pathogen hazards collection to find
         associated pathogens (e.g., chicken → Salmonella).
         """
-        response = self._retrieval.query_pathogen_hazards(food_description)
-        
+        response = await asyncio.to_thread(
+            self._retrieval.query_pathogen_hazards, food_description
+        )
+
         retrieval_result = RetrievalResult(
             query=f"{food_description} pathogen hazard",
             confidence_level=(

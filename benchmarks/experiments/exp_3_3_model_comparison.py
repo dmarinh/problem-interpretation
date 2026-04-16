@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Experiment 3.3: LLM Model Comparison for Semantic Extraction
 
@@ -165,7 +166,10 @@ from benchmarks.config import MODELS, DATASETS_DIR, RESULTS_DIR
 # report them, our cost will be an underestimate.
 # ---------------------------------------------------------------------------
 
+import threading
+
 _token_log: list[dict] = []
+_token_log_lock = threading.Lock()
 _original_acompletion = None
 
 
@@ -202,7 +206,8 @@ def install_token_tracking():
         except Exception:
             entry["cost_usd"] = 0.0
 
-        _token_log.append(entry)
+        with _token_log_lock:
+            _token_log.append(entry)
         return response
 
     # Replace globally — Instructor calls litellm.acompletion internally
@@ -212,8 +217,9 @@ def install_token_tracking():
 def collect_and_clear_tokens() -> list[dict]:
     """Return captured token/cost entries and reset the log."""
     global _token_log
-    entries = list(_token_log)
-    _token_log = []
+    with _token_log_lock:
+        entries = list(_token_log)
+        _token_log = []
     return entries
 
 
@@ -423,14 +429,14 @@ def score_extraction(extraction: dict, expected: dict) -> dict:
             ok = act_val is not None and abs(act_val - exp_val) <= 2.0
             scores["temperature"] = ok
             if not ok:
-                details.append(f"temp: expected {exp_val}°C, got {act_val}")
+                details.append(f"temp: expected {exp_val}C, got {act_val}")
             if not ok and "temperature_value_alt" in expected:
                 alt = expected["temperature_value_alt"]
                 ok_alt = act_val is not None and abs(act_val - alt) <= 2.0
                 if ok_alt:
                     scores["temperature"] = True
                     details = [d for d in details if not d.startswith("temp:")]
-                    details.append(f"temp: got alt value {act_val}°C (acceptable)")
+                    details.append(f"temp: got alt value {act_val}C (acceptable)")
         else:
             desc = (extraction.get("temperature_description") or "").lower()
             keywords_str = expected.get("temperature_description_keywords", "")
@@ -464,10 +470,10 @@ def score_extraction(extraction: dict, expected: dict) -> dict:
             is_bound = abs(act_val - exp_max) < 1.0 or abs(act_val - exp_min) < 1.0
             if is_midpoint and not is_bound:
                 scores["range_preserved"] = False
-                details.append(f"RANGE COLLAPSED to midpoint {act_val}°C — should be {exp_min}-{exp_max}°C")
+                details.append(f"RANGE COLLAPSED to midpoint {act_val}C -- should be {exp_min}-{exp_max}C")
             else:
                 scores["range_preserved"] = True
-                details.append(f"range: collapsed to {act_val}°C (bound, acceptable)")
+                details.append(f"range: collapsed to {act_val}C (bound, acceptable)")
         else:
             scores["range_preserved"] = True
 
@@ -640,9 +646,16 @@ async def run_experiment(models: list[dict], queries: list[dict], n_runs: int):
                 })
                 continue
 
-            scoring = score_extraction(valid[0], query["expected"])
-            accuracies.append(scoring["accuracy"])
-            if not scoring["model_type_ok"]:
+            # Score all valid runs and average — scoring only valid[0] would
+            # give full credit to a model that's correct on run 0 but wrong
+            # on the remaining runs, and zero credit to a model that gets it
+            # right on runs 1-4 but wrong on run 0.
+            all_scorings = [score_extraction(v, query["expected"]) for v in valid]
+            avg_accuracy = sum(s["accuracy"] for s in all_scorings) / len(all_scorings)
+            # Use the highest-scoring run for per-field details and display.
+            scoring = max(all_scorings, key=lambda s: s["accuracy"])
+            accuracies.append(avg_accuracy)
+            if not all(s["model_type_ok"] for s in all_scorings):
                 model_type_errors.append(qid)
 
             for field_name, correct in scoring["scores"].items():
@@ -655,23 +668,23 @@ async def run_experiment(models: list[dict], queries: list[dict], n_runs: int):
             avg_in = run_input_tokens // max(len(valid), 1)
             avg_out = run_output_tokens // max(len(valid), 1)
 
-            status = "OK" if scoring["accuracy"] >= 0.8 else "~" if scoring["accuracy"] >= 0.5 else "X"
-            mt_flag = " !!MT" if not scoring["model_type_ok"] else ""
-            print(f"    {status} acc={scoring['accuracy']:.0%}  "
+            status = "OK" if avg_accuracy >= 0.8 else "~" if avg_accuracy >= 0.5 else "X"
+            mt_flag = " !!MT" if not all(s["model_type_ok"] for s in all_scorings) else ""
+            print(f"    {status} acc={avg_accuracy:.0%}  "
                   f"cons={consistency['overall']:.0%}  "
                   f"lat={mean_lat:.1f}s  "
-                  f"tok={avg_in}→{avg_out}{mt_flag}")
+                  f"tok={avg_in}->{avg_out}{mt_flag}")
             for detail in scoring["details"]:
-                print(f"      → {detail}")
+                print(f"      -> {detail}")
 
             model_results["queries"].append({
                 "query_id": qid,
                 "difficulty": query["difficulty"],
-                "accuracy": scoring["accuracy"],
+                "accuracy": avg_accuracy,
                 "field_scores": scoring["scores"],
                 "consistency": consistency["overall"],
                 "field_consistency": consistency["field_consistency"],
-                "model_type_ok": scoring["model_type_ok"],
+                "model_type_ok": all(s["model_type_ok"] for s in all_scorings),
                 "mean_latency_s": round(mean_lat, 3),
                 "input_tokens": run_input_tokens,
                 "output_tokens": run_output_tokens,
@@ -794,9 +807,9 @@ def save_results(results: list[dict], run_timestamp: str) -> Path:
     shutil.copy2(csv_path, latest_csv)
 
     print(f"\n  Results saved to {out_dir}/")
-    print(f"    {json_path.name}  — full data")
-    print(f"    {csv_path.name}   — unified summary")
-    print(f"    latest.json / latest.csv — most recent run")
+    print(f"    {json_path.name}  -- full data")
+    print(f"    {csv_path.name}   -- unified summary")
+    print(f"    latest.json / latest.csv -- most recent run")
 
     return out_dir
 
@@ -818,7 +831,7 @@ def log_to_mlflow(results: list[dict], out_dir: Path,
     try:
         import mlflow
     except ImportError:
-        print("\n  MLflow not installed — skipping tracking.")
+        print("\n  MLflow not installed -- skipping tracking.")
         print("  Install with: pip install mlflow")
         return
 
@@ -942,7 +955,7 @@ def print_summary(results: list[dict]):
               f"${s['total_cost_usd']:>9.4f}")
 
     # --- Recommendation ---
-    print(f"\n  {'─'*55}")
+    print(f"\n  {'-'*55}")
     best = max(results, key=lambda r: (
         r["summary"]["model_type_accuracy"],
         r["summary"]["overall_accuracy"],

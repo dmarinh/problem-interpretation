@@ -30,11 +30,11 @@
           "is_multi_step": 1.0
         },
         "model_type_ok": true,
-        "mean_latency_s": 55.282,
-        "input_tokens": 3586,
-        "output_tokens": 298,
+        "mean_latency_s": 39.029,
+        "input_tokens": 7172,
+        "output_tokens": 596,
         "cost_usd": 0.0,
-        "n_valid": 1,
+        "n_valid": 2,
         "n_errors": 0,
         "details": []
       },
@@ -63,11 +63,11 @@
           "is_multi_step": 1.0
         },
         "model_type_ok": true,
-        "mean_latency_s": 20.973,
-        "input_tokens": 3577,
-        "output_tokens": 154,
+        "mean_latency_s": 19.202,
+        "input_tokens": 7154,
+        "output_tokens": 308,
         "cost_usd": 0.0,
-        "n_valid": 1,
+        "n_valid": 2,
         "n_errors": 0,
         "details": [
           "duration: expected 50400.0 min, got 5040.0"
@@ -98,11 +98,11 @@
           "is_multi_step": 1.0
         },
         "model_type_ok": true,
-        "mean_latency_s": 14.59,
-        "input_tokens": 3574,
-        "output_tokens": 103,
+        "mean_latency_s": 11.391,
+        "input_tokens": 7148,
+        "output_tokens": 168,
         "cost_usd": 0.0,
-        "n_valid": 1,
+        "n_valid": 2,
         "n_errors": 0,
         "details": []
       },
@@ -133,11 +133,11 @@
           "is_multi_step": 1.0
         },
         "model_type_ok": true,
-        "mean_latency_s": 31.325,
-        "input_tokens": 3591,
-        "output_tokens": 246,
+        "mean_latency_s": 28.966,
+        "input_tokens": 7182,
+        "output_tokens": 492,
         "cost_usd": 0.0,
-        "n_valid": 1,
+        "n_valid": 2,
         "n_errors": 0,
         "details": []
       },
@@ -166,11 +166,11 @@
           "is_multi_step": 1.0
         },
         "model_type_ok": true,
-        "mean_latency_s": 36.088,
-        "input_tokens": 3580,
-        "output_tokens": 285,
+        "mean_latency_s": 33.165,
+        "input_tokens": 7160,
+        "output_tokens": 570,
         "cost_usd": 0.0,
-        "n_valid": 1,
+        "n_valid": 2,
         "n_errors": 0,
         "details": []
       },
@@ -199,11 +199,11 @@
           "is_multi_step": 1.0
         },
         "model_type_ok": true,
-        "mean_latency_s": 26.508,
-        "input_tokens": 3566,
-        "output_tokens": 204,
+        "mean_latency_s": 23.792,
+        "input_tokens": 7132,
+        "output_tokens": 409,
         "cost_usd": 0.0,
-        "n_valid": 1,
+        "n_valid": 2,
         "n_errors": 0,
         "details": [
           "duration_ambiguous: expected True, got False"
@@ -234,11 +234,11 @@
           "is_multi_step": 1.0
         },
         "model_type_ok": true,
-        "mean_latency_s": 25.91,
-        "input_tokens": 3568,
-        "output_tokens": 204,
+        "mean_latency_s": 24.245,
+        "input_tokens": 7136,
+        "output_tokens": 417,
         "cost_usd": 0.0,
-        "n_valid": 1,
+        "n_valid": 2,
         "n_errors": 0,
         "details": []
       },
@@ -267,11 +267,11 @@
           "is_multi_step": 1.0
         },
         "model_type_ok": true,
-        "mean_latency_s": 26.116,
-        "input_tokens": 3569,
-        "output_tokens": 204,
+        "mean_latency_s": 25.123,
+        "input_tokens": 7138,
+        "output_tokens": 434,
         "cost_usd": 0.0,
-        "n_valid": 1,
+        "n_valid": 2,
         "n_errors": 0,
         "details": []
       },
@@ -300,11 +300,11 @@
           "is_multi_step": 1.0
         },
         "model_type_ok": true,
-        "mean_latency_s": 26.355,
-        "input_tokens": 3570,
-        "output_tokens": 206,
+        "mean_latency_s": 24.212,
+        "input_tokens": 7140,
+        "output_tokens": 416,
         "cost_usd": 0.0,
-        "n_valid": 1,
+        "n_valid": 2,
         "n_errors": 0,
         "details": []
       },
@@ -333,48 +333,46 @@
           "is_multi_step": 1.0
         },
         "model_type_ok": true,
-        "mean_latency_s": 26.534,
-        "input_tokens": 3571,
-        "output_tokens": 206,
+        "mean_latency_s": 23.085,
+        "input_tokens": 7142,
+        "output_tokens": 395,
         "cost_usd": 0.0,
-        "n_valid": 1,
+        "n_valid": 2,
         "n_errors": 0,
         "details": []
       },
       {
         "query_id": "M6",
         "difficulty": "medium",
-        "accuracy": 0.857,
+        "accuracy": 0.9285,
         "field_scores": {
           "food_description": true,
           "model_type": true,
           "pathogen": true,
           "temperature": true,
-          "duration": false,
+          "duration": true,
           "duration_ambiguous": true,
           "is_multi_step": true
         },
-        "consistency": 1.0,
+        "consistency": 0.938,
         "field_consistency": {
           "food_description": 1.0,
           "implied_model_type": 1.0,
           "pathogen_mentioned": 1.0,
           "temperature_value": 1.0,
           "temperature_is_range": 1.0,
-          "duration_minutes": 1.0,
+          "duration_minutes": 0.5,
           "duration_is_ambiguous": 1.0,
           "is_multi_step": 1.0
         },
         "model_type_ok": true,
-        "mean_latency_s": 24.748,
-        "input_tokens": 3569,
-        "output_tokens": 191,
+        "mean_latency_s": 23.75,
+        "input_tokens": 7138,
+        "output_tokens": 408,
         "cost_usd": 0.0,
-        "n_valid": 1,
+        "n_valid": 2,
         "n_errors": 0,
-        "details": [
-          "duration: expected 10080.0 min, got None"
-        ]
+        "details": []
       },
       {
         "query_id": "H1",
@@ -401,11 +399,11 @@
           "is_multi_step": 1.0
         },
         "model_type_ok": true,
-        "mean_latency_s": 27.24,
-        "input_tokens": 3582,
-        "output_tokens": 213,
+        "mean_latency_s": 24.861,
+        "input_tokens": 7164,
+        "output_tokens": 426,
         "cost_usd": 0.0,
-        "n_valid": 1,
+        "n_valid": 2,
         "n_errors": 0,
         "details": [
           "duration: expected 8.0 min, got None"
@@ -437,11 +435,11 @@
           "is_multi_step": 1.0
         },
         "model_type_ok": true,
-        "mean_latency_s": 27.24,
-        "input_tokens": 3579,
-        "output_tokens": 212,
+        "mean_latency_s": 24.562,
+        "input_tokens": 7158,
+        "output_tokens": 424,
         "cost_usd": 0.0,
-        "n_valid": 1,
+        "n_valid": 2,
         "n_errors": 0,
         "details": []
       },
@@ -469,11 +467,11 @@
           "is_multi_step": 1.0
         },
         "model_type_ok": true,
-        "mean_latency_s": 113.197,
-        "input_tokens": 7678,
-        "output_tokens": 910,
+        "mean_latency_s": 104.406,
+        "input_tokens": 15356,
+        "output_tokens": 1852,
         "cost_usd": 0.0,
-        "n_valid": 1,
+        "n_valid": 2,
         "n_errors": 0,
         "details": [
           "temp: expected description with one of 'microwave|reheat|hot enough', got ''",
@@ -503,21 +501,21 @@
           "is_multi_step": 1.0
         },
         "model_type_ok": true,
-        "mean_latency_s": 65.907,
-        "input_tokens": 7689,
-        "output_tokens": 474,
+        "mean_latency_s": 60.036,
+        "input_tokens": 15378,
+        "output_tokens": 948,
         "cost_usd": 0.0,
-        "n_valid": 1,
+        "n_valid": 2,
         "n_errors": 0,
         "details": []
       },
       {
         "query_id": "H5",
         "difficulty": "hard",
-        "accuracy": 0.75,
+        "accuracy": 0.875,
         "field_scores": {
           "food_description": true,
-          "model_type": false,
+          "model_type": true,
           "pathogen": true,
           "temperature": true,
           "range_preserved": true,
@@ -536,15 +534,14 @@
           "duration_is_ambiguous": 1.0,
           "is_multi_step": 1.0
         },
-        "model_type_ok": false,
-        "mean_latency_s": 19.205,
-        "input_tokens": 3587,
-        "output_tokens": 118,
+        "model_type_ok": true,
+        "mean_latency_s": 17.337,
+        "input_tokens": 7174,
+        "output_tokens": 260,
         "cost_usd": 0.0,
-        "n_valid": 1,
+        "n_valid": 2,
         "n_errors": 0,
         "details": [
-          "MODEL TYPE: expected 'growth', got '' !! SAFETY-CRITICAL",
           "duration: expected 180.0 min, got None"
         ]
       },
@@ -573,11 +570,11 @@
           "is_multi_step": 1.0
         },
         "model_type_ok": false,
-        "mean_latency_s": 39.556,
-        "input_tokens": 3600,
-        "output_tokens": 326,
+        "mean_latency_s": 35.713,
+        "input_tokens": 7200,
+        "output_tokens": 650,
         "cost_usd": 0.0,
-        "n_valid": 1,
+        "n_valid": 2,
         "n_errors": 0,
         "details": [
           "MODEL TYPE: expected 'growth', got 'non_thermal_survival' !! SAFETY-CRITICAL"
@@ -608,11 +605,11 @@
           "is_multi_step": 1.0
         },
         "model_type_ok": true,
-        "mean_latency_s": 23.997,
-        "input_tokens": 3596,
-        "output_tokens": 191,
+        "mean_latency_s": 23.029,
+        "input_tokens": 7192,
+        "output_tokens": 382,
         "cost_usd": 0.0,
-        "n_valid": 1,
+        "n_valid": 2,
         "n_errors": 0,
         "details": []
       },
@@ -639,11 +636,11 @@
           "is_multi_step": 1.0
         },
         "model_type_ok": false,
-        "mean_latency_s": 69.057,
-        "input_tokens": 7688,
-        "output_tokens": 520,
+        "mean_latency_s": 2396.123,
+        "input_tokens": 15376,
+        "output_tokens": 1181,
         "cost_usd": 0.0,
-        "n_valid": 1,
+        "n_valid": 2,
         "n_errors": 0,
         "details": [
           "MODEL TYPE: expected 'growth', got 'thermal_inactivation' !! SAFETY-CRITICAL"
@@ -672,11 +669,11 @@
           "is_multi_step": 1.0
         },
         "model_type_ok": false,
-        "mean_latency_s": 67.449,
-        "input_tokens": 7654,
-        "output_tokens": 472,
+        "mean_latency_s": 46.239,
+        "input_tokens": 11212,
+        "output_tokens": 676,
         "cost_usd": 0.0,
-        "n_valid": 1,
+        "n_valid": 2,
         "n_errors": 0,
         "details": [
           "MODEL TYPE: expected None, got 'thermal_inactivation'"
@@ -684,24 +681,24 @@
       }
     ],
     "summary": {
-      "overall_accuracy": 0.915,
-      "overall_consistency": 1.0,
-      "model_type_accuracy": 0.8,
+      "overall_accuracy": 0.925,
+      "overall_consistency": 0.997,
+      "model_type_accuracy": 0.85,
       "schema_compliance": 1.0,
-      "latency_p50_s": 27.24,
-      "latency_p95_s": 113.2,
-      "latency_mean_s": 38.36,
-      "total_input_tokens": 87974,
-      "total_output_tokens": 5737,
+      "latency_p50_s": 24.98,
+      "latency_p95_s": 107.78,
+      "latency_mean_s": 150.41,
+      "total_input_tokens": 171852,
+      "total_output_tokens": 11412,
       "actual_cost_per_call_usd": 0.0,
       "total_cost_usd": 0.0,
       "field_accuracy": {
         "aw": 1.0,
-        "duration": 0.778,
+        "duration": 0.833,
         "duration_ambiguous": 0.938,
         "food_description": 1.0,
         "is_multi_step": 0.95,
-        "model_type": 0.8,
+        "model_type": 0.85,
         "pathogen": 1.0,
         "ph": 1.0,
         "range_preserved": 1.0,
@@ -710,11 +707,10 @@
       },
       "tier_accuracy": {
         "easy": 0.971,
-        "medium": 0.931,
-        "hard": 0.866
+        "medium": 0.941,
+        "hard": 0.882
       },
       "model_type_errors": [
-        "H5",
         "H6",
         "H8",
         "N1"

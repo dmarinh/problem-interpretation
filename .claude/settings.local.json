@@ -3,7 +3,32 @@
     "allow": [
       "Bash(python -m pytest --collect-only)",
       "Bash(python -m pytest --version)",
-      "Bash(python -c \"import sys; print\\(f'Python {sys.version}'\\)\")"
+      "Bash(python -c \"import sys; print\\(f'Python {sys.version}'\\)\")",
+      "Bash(python -m pytest tests/unit/test_viz_data_loader.py -v)",
+      "Bash(python -m pytest tests/unit/test_viz_overview.py -v)",
+      "Bash(python -m pytest tests/unit/test_viz_data_loader.py tests/unit/test_viz_overview.py -v)",
+      "Bash(.venv/Scripts/python.exe -m pytest tests/unit/test_viz_charts.py -v)",
+      "Bash(pytest tests/unit/ -v)",
+      "Bash(python -m pytest tests/unit/ -v)",
+      "Bash(ls .venv/Scripts/python*)",
+      "Bash(python -m pytest tests/unit/ -v --ignore=tests/unit/test_viz_charts.py)",
+      "Bash(venv/Scripts/python.exe -m pip install plotly)",
+      "Bash(venv/Scripts/python.exe -c ' *)",
+      "Bash(venv/Scripts/python.exe -m pytest tests/unit/test_viz_charts.py -v)",
+      "Bash(venv/Scripts/python.exe -m pytest tests/unit/test_viz_experiment_runner.py -v)",
+      "Bash(python -m pytest tests/unit/test_viz_experiment_runner.py -v)",
+      "Bash(python -m pytest tests/unit/ --ignore=tests/unit/test_viz_charts.py -q)",
+      "Bash(python -m pytest tests/unit/test_viz_runner_page.py -v)",
+      "Bash(python -m pytest tests/unit/test_viz_runner_page.py -q)",
+      "Bash(python -m pytest tests/unit/test_viz_charts.py tests/unit/test_viz_runner_page.py tests/unit/test_viz_experiment_runner.py tests/unit/test_viz_overview.py -q)",
+      "Bash(python -m pytest tests/unit/test_viz_charts.py -v)",
+      "Bash(python -m pytest tests/unit/test_viz_charts.py tests/unit/test_viz_model_comparison.py -v)",
+      "Bash(python -m pytest tests/unit/test_viz_charts.py -q)",
+      "Bash(python -c ' *)",
+      "Bash(python -m grep -n \"save_results\\\\|to_csv\\\\|DataFrame\\\\|summary\\\\[\" benchmarks/experiments/exp_3_3_model_comparison.py)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('benchmarks/visualizations/pages/2_model_comparison.py', encoding='utf-8'\\).read\\(\\)\\); print\\('OK'\\)\")",
+      "Bash(python -m pytest tests/unit/test_viz_charts.py::test_accuracy_by_tier_bars_colors_follow_tier_palette -v)",
+      "Bash(python -c \"from benchmarks.config import MODELS; print\\([m['name'] for m in MODELS]\\)\")"
     ]
   }
 }
