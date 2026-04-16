@@ -1,0 +1,1 @@
+- [Project Architecture & Safety Invariants](project_architecture.md) — Core pipeline, safety invariants, provenance model, and defect patterns found in Phase 2 review
