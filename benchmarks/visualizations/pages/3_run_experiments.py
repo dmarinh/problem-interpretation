@@ -37,6 +37,19 @@ from benchmarks.visualizations.lib.experiment_runner import (
 
 _COST_THRESHOLD_USD = 0.001  # matches charts.py COST_THRESHOLD
 
+# Maps each experiment to the dashboard page where its results are displayed.
+# Experiments not listed fall back to the model comparison page.
+_RESULTS_PAGE: dict[str, tuple[str, str]] = {
+    "exp_1_1_ph_stochasticity": (
+        "pages/4_ph_stochasticity.py",
+        "View pH Stochasticity Results",
+    ),
+    "exp_3_3_model_comparison": (
+        "pages/2_model_comparison.py",
+        "View Results in Model Comparison",
+    ),
+}
+
 
 def estimate_calls(model_names: list[str], runs: int, query_count: int | None) -> str:
     """Total LLM calls = models × runs × queries."""
@@ -164,6 +177,34 @@ with col_runs:
 with col_mlflow:
     no_mlflow = st.checkbox("Skip MLflow logging", value=False)
 
+# Experiment-specific parameters — shown only for experiments that support them.
+exp_extra_args: dict[str, str] = {}
+if selected_experiment["id"] == "exp_1_1_ph_stochasticity":
+    st.subheader("Exp 1.1 parameters")
+    col_temp, col_thresh = st.columns(2)
+    with col_temp:
+        temperature = st.slider(
+            "LLM temperature",
+            min_value=0.0,
+            max_value=1.0,
+            value=0.7,
+            step=0.05,
+            help="Higher temperature increases pH variance between runs.",
+        )
+    with col_thresh:
+        exp_log_threshold = st.slider(
+            "Log growth threshold (CFU/g)",
+            min_value=0.1,
+            max_value=3.0,
+            value=1.0,
+            step=0.1,
+            help="Growth exceeding this threshold is flagged as a safety impact.",
+        )
+    exp_extra_args = {
+        "--temperature": str(temperature),
+        "--log-threshold": str(exp_log_threshold),
+    }
+
 # Live estimate row
 query_count = get_query_count(selected_experiment["id"])
 col_calls, col_time, col_cost = st.columns(3)
@@ -202,6 +243,7 @@ if st.button("Run Experiment", disabled=run_disabled, type="primary"):
             models=selected_model_names,
             runs=runs,
             no_mlflow=no_mlflow,
+            extra_args=exp_extra_args or None,  # {} → None so run_experiment skips the loop
         )
 
         # Stream stdout line by line — Popen is synchronous by design;
@@ -214,11 +256,11 @@ if st.button("Run Experiment", disabled=run_disabled, type="primary"):
         if proc.returncode == 0:
             status.update(label="Experiment complete!", state="complete", expanded=False)
             st.success("Run finished successfully.")
-            st.page_link(
-                "pages/2_model_comparison.py",
-                label="View Results in Model Comparison",
-                icon="🔍",
+            results_page, results_label = _RESULTS_PAGE.get(
+                selected_experiment["id"],
+                ("pages/2_model_comparison.py", "View Results"),
             )
+            st.page_link(results_page, label=results_label, icon="🔍")
         else:
             status.update(label="Experiment failed", state="error", expanded=True)
             st.error(
@@ -242,34 +284,50 @@ if not runs_history:
 else:
     # Cap at 10 rows to avoid slow loads on large result sets.
     history_rows = []
+    is_comparison = False  # set True on the first run that has comparison columns
+    is_per_food = False    # set True on the first run that has per-food columns
     for run_info in runs_history[:10]:
         ts = run_info["timestamp"]
         _, run_df = load_run_by_timestamp(selected_experiment["id"], ts)
-        if run_df is not None and not run_df.empty:
-            try:
-                models_str = ", ".join(run_df["model"].tolist())
-                best_acc = f"{run_df['accuracy'].max():.1%}"
-                # Total cost sums cost_per_call across all models in that run.
+        if run_df is not None and not run_df.empty and "model" in run_df.columns:
+            # Unique model names regardless of CSV schema (per-model or per-food).
+            models_str = ", ".join(sorted(run_df["model"].unique().tolist()))
+            if "accuracy" in run_df.columns and "cost_per_call_usd" in run_df.columns:
+                # Comparison experiment (exp_3_3) — per-model CSV.
+                is_comparison = True
+                col2_val = f"{run_df['accuracy'].max():.1%}"
                 total_cost = run_df["cost_per_call_usd"].sum()
-                cost_str = f"${total_cost:.5f}"
-            except KeyError:
-                models_str = best_acc = cost_str = "—"
+                col3_val = f"${total_cost:.5f}"
+            elif "ph_mae" in run_df.columns:
+                # Per-food experiment (exp_1_1) — show MAE and safety impacts.
+                is_per_food = True
+                col2_val = f"{run_df['ph_mae'].mean():.3f}"
+                n_impacted = int(run_df["crosses_safety_threshold"].sum()) \
+                    if "crosses_safety_threshold" in run_df.columns else 0
+                col3_val = str(n_impacted)
+            else:
+                col2_val = col3_val = "—"
         else:
-            models_str = best_acc = cost_str = "—"
+            models_str = col2_val = col3_val = "—"
 
         history_rows.append(
             {
                 "Timestamp": format_timestamp(ts),
                 "Models": models_str,
-                "Best accuracy": best_acc,
-                "Total cost/call": cost_str,
+                "col2": col2_val,
+                "col3": col3_val,
             }
         )
 
-    st.dataframe(
-        pd.DataFrame(history_rows),
-        use_container_width=True,
-        hide_index=True,
+    # Column headers depend on the experiment schema detected across all runs.
+    if is_per_food:
+        col2_label, col3_label = "Avg MAE", "Safety impacts"
+    else:
+        col2_label, col3_label = "Best accuracy", "Total cost/call"
+
+    history_df = pd.DataFrame(history_rows).rename(
+        columns={"col2": col2_label, "col3": col3_label}
     )
+    st.dataframe(history_df, use_container_width=True, hide_index=True)
     if len(runs_history) > 10:
         st.caption(f"Showing 10 of {len(runs_history)} runs.")

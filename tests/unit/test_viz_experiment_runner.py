@@ -48,14 +48,14 @@ def test_get_available_experiments_isolated_dir(monkeypatch, tmp_path):
 
 def test_humanize_experiment_id_formats_version_and_title():
     assert (
-        experiment_runner._humanize_experiment_id("exp_3_3_model_comparison")
+        experiment_runner.humanize_experiment_id("exp_3_3_model_comparison")
         == "Exp 3.3 — Model Comparison"
     )
-    assert experiment_runner._humanize_experiment_id("exp_1_ph_test") == "Exp 1 — Ph Test"
+    assert experiment_runner.humanize_experiment_id("exp_1_ph_test") == "Exp 1 — Ph Test"
     # Version-only (no trailing name parts).
-    assert experiment_runner._humanize_experiment_id("exp_4") == "Exp 4"
+    assert experiment_runner.humanize_experiment_id("exp_4") == "Exp 4"
     # Unexpected shape falls back to the raw id rather than raising.
-    assert experiment_runner._humanize_experiment_id("weird_name") == "weird_name"
+    assert experiment_runner.humanize_experiment_id("weird_name") == "weird_name"
 
 
 # ---------------------------------------------------------------------------

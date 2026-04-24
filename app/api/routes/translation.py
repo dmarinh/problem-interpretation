@@ -14,6 +14,8 @@ from app.api.schemas.translation import (
     TranslationResponse,
     PredictionResult,
     ProvenanceInfo,
+    StepInput,
+    StepPrediction,
     WarningInfo,
 )
 from app.core.orchestrator import get_orchestrator, TranslationResult
@@ -138,21 +140,41 @@ async def translate_query(request: TranslationRequest) -> TranslationResponse:
         
         # Build response
         prediction = None
-        if result.success and result.execution_result:
+        if result.success and result.execution_result and result.state.execution_payload:
             exec_result = result.execution_result
             model_result = exec_result.model_result
-            
+            profile = result.state.execution_payload.time_temperature_profile
+
             prediction = PredictionResult(
                 organism=model_result.organism.name if model_result.organism else "Unknown",
                 model_type=model_result.model_type.value if model_result.model_type else "growth",
                 engine=model_result.engine_type.value if model_result.engine_type else "unknown",
                 temperature_celsius=model_result.temperature_used,
-                duration_minutes=result.state.execution_payload.time_temperature_profile.total_duration_minutes,
+                duration_minutes=profile.total_duration_minutes,
                 ph=model_result.ph_used,
                 water_activity=model_result.aw_used,
                 mu_max=model_result.mu_max,
                 doubling_time_hours=model_result.doubling_time_hours,
                 total_log_increase=exec_result.total_log_increase,
+                is_multi_step=profile.is_multi_step,
+                steps=[
+                    StepInput(
+                        step_order=s.step_order,
+                        temperature_celsius=s.temperature_celsius,
+                        duration_minutes=s.duration_minutes,
+                    )
+                    for s in profile.steps
+                ],
+                step_predictions=[
+                    StepPrediction(
+                        step_order=sp.step_order,
+                        temperature_celsius=sp.temperature_celsius,
+                        duration_minutes=sp.duration_minutes,
+                        mu_max=sp.mu_max,
+                        log_increase=sp.log_increase,
+                    )
+                    for sp in exec_result.step_predictions
+                ],
                 growth_description=_format_growth_description(exec_result.total_log_increase),
             )
         

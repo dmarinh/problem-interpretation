@@ -116,15 +116,17 @@ def _compute_recommendation(df: pd.DataFrame) -> dict:
 # Page
 # ---------------------------------------------------------------------------
 
+_EXPERIMENT_ID = "exp_3_3_model_comparison"
+
 st.title("Experiment 3.3 — LLM Model Comparison")
 
 # ── 4a: Data loading ─────────────────────────────────────────────────────────
 # Respect sidebar run selection (app.py stores it in session_state).
-selected_run = st.session_state.get("selected_run")
+selected_run = st.session_state.get(f"selected_run:{_EXPERIMENT_ID}")
 if selected_run:
-    results, df = load_run_by_timestamp("exp_3_3_model_comparison", selected_run)
+    results, df = load_run_by_timestamp(_EXPERIMENT_ID, selected_run)
 else:
-    results, df = load_latest_results("exp_3_3_model_comparison")
+    results, df = load_latest_results(_EXPERIMENT_ID)
 
 # Safety-critical banner (Phase 7): any model_type_ok failure → red alert.
 # model_type misclassification (GROWTH vs THERMAL_INACTIVATION) reverses the

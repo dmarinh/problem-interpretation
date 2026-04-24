@@ -13,7 +13,11 @@ from app.config import settings
 from app.core.state import SessionState, SessionManager, get_session_manager
 from app.models.enums import SessionStatus, IntentType, ModelType
 from app.services.extraction.semantic_parser import SemanticParser, get_semantic_parser
-from app.services.grounding.grounding_service import GroundingService, get_grounding_service
+from app.services.grounding.grounding_service import (
+    GroundedValues,
+    GroundingService,
+    get_grounding_service,
+)
 from app.services.standardization.standardization_service import (
     StandardizationService,
     get_standardization_service,
@@ -115,7 +119,12 @@ class Orchestrator:
                     f"Missing required values: {', '.join(std_result.missing_required)}"
                 )
                 return TranslationResult(state)
-            
+
+            if std_result.payload is None:
+                error_detail = "; ".join(std_result.warnings) if std_result.warnings else "Failed to build execution payload"
+                state.set_error(error_detail)
+                return TranslationResult(state)
+
             state.execution_payload = std_result.payload
             
             # Record corrections in metadata

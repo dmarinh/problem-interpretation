@@ -10,15 +10,22 @@ import pandas as pd
 
 # ---------------------------------------------------------------------------
 # Streamlit page files execute UI calls on import, so we can't import
-# best_cost_efficient_model directly. We duplicate the pure helper here.
-# The page file's copy is authoritative; this test ensures the LOGIC is
-# correct. If the function is ever moved to lib/, update the import.
+# best_cost_efficient_model directly. We duplicate the pure helpers here.
+# The page file's copies are authoritative; these tests ensure the LOGIC is
+# correct. If the functions are ever moved to lib/, update the import.
 # ---------------------------------------------------------------------------
+
+_COMPARISON_COLS = {"accuracy", "cost_per_call_usd", "model"}
+
+
+def _is_comparison_df(df: pd.DataFrame) -> bool:
+    """Mirror of the function in pages/1_overview.py."""
+    return df is not None and not df.empty and _COMPARISON_COLS.issubset(df.columns)
 
 
 def best_cost_efficient_model(df: pd.DataFrame) -> str | None:
     """Mirror of the function in pages/1_overview.py."""
-    if df is None or df.empty:
+    if not _is_comparison_df(df):
         return None
 
     affordable = df[df["cost_per_call_usd"] < 0.001]
@@ -110,3 +117,31 @@ class TestBestCostEfficientModel:
             {"model": "JustUnder", "accuracy": 0.90, "cost_per_call_usd": 0.000999},
         ])
         assert best_cost_efficient_model(df) == "JustUnder"
+
+    def test_per_food_schema_returns_none(self):
+        """A DataFrame from Exp 1.1 (per-food columns, no 'accuracy') must return
+        None instead of raising KeyError.
+
+        This guards against the overview page crashing when experiments with
+        different CSV schemas (like pH stochasticity) are loaded alongside
+        model-comparison experiments.
+        """
+        df = pd.DataFrame([
+            {"model": "GPT-4o", "food_name": "chicken", "ph_mae": 0.3,
+             "boundary_crossing_rate": 0.0, "crosses_safety_threshold": False},
+        ])
+        assert best_cost_efficient_model(df) is None
+
+    def test_missing_only_accuracy_column_returns_none(self):
+        """DataFrame with cost but no accuracy column must return None."""
+        df = pd.DataFrame([
+            {"model": "X", "cost_per_call_usd": 0.0005},
+        ])
+        assert best_cost_efficient_model(df) is None
+
+    def test_missing_only_cost_column_returns_none(self):
+        """DataFrame with accuracy but no cost column must return None."""
+        df = pd.DataFrame([
+            {"model": "X", "accuracy": 0.9},
+        ])
+        assert best_cost_efficient_model(df) is None

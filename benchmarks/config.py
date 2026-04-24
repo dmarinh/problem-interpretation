@@ -69,16 +69,16 @@ MODELS = [
     #     "tier": 1,
     #     # Current default. Strong structured output. Baseline for comparison.
     # },
-    # {
-    #     "name": "Claude Sonnet 4",
-    #     "litellm_model": "anthropic/claude-sonnet-4-20250514",
-    #     "api_key_env_var": "ANTHROPIC_API_KEY",
-    #     "api_base": None,
-    #     "cost_per_call": 0.007,
-    #     "instructor_mode": None,
-    #     "tier": 1,
-    #     # Alternative frontier provider. Tests provider independence.
-    # },
+    {
+        "name": "Claude Sonnet 4",
+        "litellm_model": "anthropic/claude-sonnet-4-20250514",
+        "api_key_env_var": "ANTHROPIC_API_KEY",
+        "api_base": None,
+        "cost_per_call": 0.007,
+        "instructor_mode": None,
+        "tier": 1,
+        # Alternative frontier provider. Tests provider independence.
+    },
 
     # # ===================================================================
     # # TIER 2: Cost-optimized chat models (production candidates)
@@ -166,16 +166,16 @@ MODELS = [
     # All use JSON mode because most local models lack tool-call support.
     # Run `ollama pull <model>` before testing.
 
-    {
-        "name": "Qwen 2.5 14B",
-        "litellm_model": "ollama/qwen2.5:14b",
-        "api_key_env_var": None,
-        "api_base": "http://localhost:11434",
-        "cost_per_call": 0.0,
-        "instructor_mode": "JSON",
-        "tier": 4,
-        # Best open-source structured output at <=14B. Runs on 8GB VRAM + CPU offload.
-    },
+    # {
+    #     "name": "Qwen 2.5 14B",
+    #     "litellm_model": "ollama/qwen2.5:14b",
+    #     "api_key_env_var": None,
+    #     "api_base": "http://localhost:11434",
+    #     "cost_per_call": 0.0,
+    #     "instructor_mode": "JSON",
+    #     "tier": 4,
+    #     # Best open-source structured output at <=14B. Runs on 8GB VRAM + CPU offload.
+    # },
     # {
     #     "name": "Qwen 2.5 7B",
     #     "litellm_model": "ollama/qwen2.5:7b",
@@ -186,26 +186,26 @@ MODELS = [
     #     "tier": 4,
     #     # Fits entirely in 8GB VRAM. Fastest local option. Tests minimum viable size.
     # },
-    {
-        "name": "Gemma 3 12B",
-        "litellm_model": "ollama/gemma3:12b",
-        "api_key_env_var": None,
-        "api_base": "http://localhost:11434",
-        "cost_per_call": 0.0,
-        "instructor_mode": "JSON",
-        "tier": 4,
-        # Google's open source model
-    },
-    {
-        "name": "Llama 3.2 Latest",
-        "litellm_model": "ollama/llama3.2:latest",
-        "api_key_env_var": None,
-        "api_base": "http://localhost:11434",
-        "cost_per_call": 0.0,
-        "instructor_mode": "JSON",
-        "tier": 4,
-        # Google's open source model
-    },
+    # {
+    #     "name": "Gemma 3 12B",
+    #     "litellm_model": "ollama/gemma3:12b",
+    #     "api_key_env_var": None,
+    #     "api_base": "http://localhost:11434",
+    #     "cost_per_call": 0.0,
+    #     "instructor_mode": "JSON",
+    #     "tier": 4,
+    #     # Google's open source model
+    # },
+    # {
+    #     "name": "Llama 3.2 Latest",
+    #     "litellm_model": "ollama/llama3.2:latest",
+    #     "api_key_env_var": None,
+    #     "api_base": "http://localhost:11434",
+    #     "cost_per_call": 0.0,
+    #     "instructor_mode": "JSON",
+    #     "tier": 4,
+    #     # Google's open source model
+    # },
     # TODO: Test the top open source models:
     #  Qwen3.5-397B-A17B
     # Gemma 4

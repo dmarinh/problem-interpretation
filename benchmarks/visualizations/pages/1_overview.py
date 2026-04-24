@@ -19,12 +19,26 @@ from benchmarks.visualizations.lib.data_loader import (
 # ---------------------------------------------------------------------------
 
 
+_COMPARISON_COLS = {"accuracy", "cost_per_call_usd", "model"}
+
+
+def _is_comparison_df(df: pd.DataFrame) -> bool:
+    """Return True when df has the model-comparison schema (accuracy + cost columns).
+
+    Exp 1.1 produces a per-food CSV without these columns; Exp 3.3 produces a
+    per-model CSV that does.  The overview uses this to skip experiments whose
+    results don't carry cross-experiment accuracy/cost metrics.
+    """
+    return df is not None and not df.empty and _COMPARISON_COLS.issubset(df.columns)
+
+
 def best_cost_efficient_model(df: pd.DataFrame) -> str | None:
     """Highest accuracy among models with cost < $0.001/call.
 
-    Returns model name, or None if no model qualifies.
+    Returns model name, or None if no model qualifies or df lacks the
+    required columns.
     """
-    if df is None or df.empty:
+    if not _is_comparison_df(df):
         return None
 
     affordable = df[df["cost_per_call_usd"] < 0.001]
@@ -85,7 +99,9 @@ else:
 
     for summary in experiment_summaries.values():
         df = summary["df"]
-        if df is None or df.empty:
+        if not _is_comparison_df(df):
+            # Experiments like Exp 1.1 produce per-food CSVs without an
+            # accuracy column — skip them for cross-experiment accuracy stats.
             continue
 
         top_idx = df["accuracy"].idxmax()
@@ -120,12 +136,19 @@ else:
 
         if summary and summary["df"] is not None and not summary["df"].empty:
             df = summary["df"]
+            if _is_comparison_df(df):
+                models_tested = df["model"].nunique()
+                best_acc = f"{df['accuracy'].max():.1%}"
+            else:
+                # Per-food experiments (e.g. Exp 1.1) — show food count instead.
+                models_tested = df["model"].nunique() if "model" in df.columns else "—"
+                best_acc = "—"
             rows.append(
                 {
                     "Experiment": eid,
                     "Last run": _format_timestamp(exp["latest_timestamp"]),
-                    "Models tested": len(df),
-                    "Best accuracy": f"{df['accuracy'].max():.1%}",
+                    "Models tested": models_tested,
+                    "Best accuracy": best_acc,
                     "Status": "Has results",
                 }
             )

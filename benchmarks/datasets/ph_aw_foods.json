@@ -1,0 +1,208 @@
+{
+  "_metadata": {
+    "description": "Ground truth pH and water activity values for Monte Carlo stochasticity test. 15 foods across 3 difficulty tiers. ALL values sourced from the project's corrected food_properties.csv, which was audited against original PDF sources.",
+    "version": "1.0",
+    "rebuild_date": "2026-04-17",
+    "rebuild_reason": "Previous version (v0.1) contained values from LLM training data with fabricated source attributions. This version uses ONLY values from the audited food_properties.csv.",
+    "source_files": [
+      "data/rag/food_properties.csv (audited 2026-04-17)",
+      "FDA-PH-2007: pH-FDAapproximatepHoffoodslacf-phs.pdf",
+      "IFT-2003: Evaluation-and-Definition-of-Potentially-Hazardous-Foods.pdf"
+    ],
+    "notes": "Difficulty tiers reflect how consistently LLMs reproduce the correct pH from training data. Easy foods are heavily represented in food safety literature. Hard foods are fermented, less common, or have unusually wide pH ranges that LLMs struggle to pin down."
+  },
+  "foods": [
+
+    {
+      "id": "F01",
+      "name": "chicken",
+      "difficulty": "easy",
+      "reference_ph": 6.3,
+      "reference_ph_range": [6.2, 6.4],
+      "reference_aw": 0.99,
+      "aw_note": "Category-level: 'fresh poultry 0.99-1.00' from IFT-2003-T31",
+      "source": "IFT-2003-T33",
+      "csv_entry": "chicken,poultry,6.2,6.4,,,Raw chicken,IFT-2003-T33",
+      "notes": "Raw chicken. Well-documented in food safety literature. pH well above 4.6 boundary."
+    },
+    {
+      "id": "F02",
+      "name": "whole cow milk",
+      "difficulty": "easy",
+      "reference_ph": 6.6,
+      "reference_ph_range": [6.4, 6.8],
+      "reference_aw": 0.99,
+      "aw_note": "Typical for fresh dairy; no food-specific aw in source CSV",
+      "source": "FDA-PH-2007",
+      "csv_entry": "milk cow,dairy,6.4,6.8,,,Whole cow milk,FDA-PH-2007",
+      "notes": "Common food, stable pH, well above 4.6. Baseline for low-variance reference."
+    },
+    {
+      "id": "F03",
+      "name": "apple (eating)",
+      "difficulty": "easy",
+      "reference_ph": 3.6,
+      "reference_ph_range": [3.33, 3.90],
+      "reference_aw": 0.98,
+      "aw_note": "Category-level: 'fresh fruits 0.97-1.00' from IFT-2003-T31",
+      "source": "FDA-PH-2007",
+      "csv_entry": "Range across apple varieties: Delicious 3.90, Golden Delicious 3.60, Jonathan 3.33, McIntosh 3.34, Winesap 3.47",
+      "notes": "Range spans multiple apple varieties in the FDA list. pH clearly below 4.6 TCS threshold."
+    },
+    {
+      "id": "F04",
+      "name": "ground beef",
+      "difficulty": "easy",
+      "reference_ph": 5.65,
+      "reference_ph_range": [5.1, 6.2],
+      "reference_aw": 0.99,
+      "aw_note": "Category-level: 'fresh meat 0.99-1.00' from IFT-2003-T31",
+      "source": "IFT-2003-T33",
+      "csv_entry": "beef ground,meat,5.1,6.2,,,Raw ground beef,IFT-2003-T33",
+      "notes": "Raw ground beef. Wide range in source (5.1-6.2) but well above 4.6."
+    },
+    {
+      "id": "F05",
+      "name": "eggs (whole, fresh)",
+      "difficulty": "easy",
+      "reference_ph": 6.58,
+      "reference_ph_range": [6.58, 6.58],
+      "reference_aw": 0.97,
+      "aw_note": "Food-specific: eggs 0.97 from IFT-2003-T31",
+      "source": "FDA-PH-2007",
+      "csv_entry": "eggs whole new laid,eggs,6.58,6.58,,,Whole fresh eggs,FDA-PH-2007",
+      "notes": "Single value in source (not a range). Well above 4.6."
+    },
+
+    {
+      "id": "F06",
+      "name": "yogurt",
+      "difficulty": "medium",
+      "reference_ph": 4.0,
+      "reference_ph_range": [3.8, 4.2],
+      "reference_aw": 0.98,
+      "aw_note": "Typical for fresh dairy; no food-specific aw in source CSV",
+      "source": "IFT-2003-T33",
+      "csv_entry": "yogurt,dairy,3.8,4.2,,,Plain cultured,IFT-2003-T33",
+      "notes": "Fermented dairy. Below 4.6 but close enough that LLM variance could approach boundary. LLMs may confuse plain vs Greek vs flavored yogurt pH."
+    },
+    {
+      "id": "F07",
+      "name": "cottage cheese",
+      "difficulty": "medium",
+      "reference_ph": 4.89,
+      "reference_ph_range": [4.75, 5.02],
+      "reference_aw": 0.98,
+      "aw_note": "Typical for fresh dairy; no food-specific aw in source CSV",
+      "source": "FDA-PH-2007",
+      "csv_entry": "cheese cottage,dairy,4.75,5.02,,,Fresh cheese,FDA-PH-2007",
+      "notes": "Just ABOVE the 4.6 boundary. If an LLM returns pH 4.3, it incorrectly classifies this as an acid food."
+    },
+    {
+      "id": "F08",
+      "name": "buttermilk",
+      "difficulty": "medium",
+      "reference_ph": 4.62,
+      "reference_ph_range": [4.41, 4.83],
+      "reference_aw": 0.98,
+      "aw_note": "Typical for fresh dairy; no food-specific aw in source CSV",
+      "source": "FDA-PH-2007",
+      "csv_entry": "buttermilk,dairy,4.41,4.83,,,Cultured,FDA-PH-2007",
+      "notes": "CRITICAL: Range straddles pH 4.6 boundary. Even the authoritative source shows this food spans acid/low-acid. LLM variance here is guaranteed to produce boundary crossings."
+    },
+    {
+      "id": "F09",
+      "name": "fresh salmon",
+      "difficulty": "medium",
+      "reference_ph": 6.18,
+      "reference_ph_range": [5.85, 6.5],
+      "reference_aw": 0.99,
+      "aw_note": "Category-level: 'fresh fish 0.99-1.00' from IFT-2003-T31",
+      "source": "FDA-PH-2007",
+      "csv_entry": "salmon fresh,fish,5.85,6.5,,,Fresh salmon,FDA-PH-2007",
+      "notes": "Fresh salmon (not smoked or canned). Wide range. LLMs may confuse fresh vs smoked vs canned salmon pH."
+    },
+    {
+      "id": "F10",
+      "name": "tomatoes",
+      "difficulty": "medium",
+      "reference_ph": 4.6,
+      "reference_ph_range": [4.3, 4.9],
+      "reference_aw": 0.99,
+      "aw_note": "Category-level: 'fresh vegetables 0.97-1.00' from IFT-2003-T31",
+      "source": "FDA-PH-2007",
+      "csv_entry": "tomatoes,vegetable,4.3,4.9,,,Fresh tomatoes,FDA-PH-2007",
+      "notes": "THE classic boundary food. Range straddles 4.6. Subject of decades of food safety debate. LLMs will reflect the controversy with high variance."
+    },
+
+    {
+      "id": "F11",
+      "name": "sauerkraut",
+      "difficulty": "hard",
+      "reference_ph": 3.45,
+      "reference_ph_range": [3.3, 3.6],
+      "reference_aw": 0.96,
+      "aw_note": "Estimated for fermented vegetable; not in source CSV",
+      "source": "FDA-PH-2007",
+      "csv_entry": "sauerkraut,vegetable,3.3,3.6,,,Sauerkraut,FDA-PH-2007",
+      "notes": "Fermented cabbage. Narrow range in source but LLMs may confuse with fresh cabbage (pH 5.2-6.8) or with pre-fermentation pH."
+    },
+    {
+      "id": "F12",
+      "name": "soy sauce",
+      "difficulty": "hard",
+      "reference_ph": 4.9,
+      "reference_ph_range": [4.4, 5.4],
+      "reference_aw": 0.80,
+      "aw_note": "Estimated for fermented condiment; not in source CSV. High salt content lowers aw significantly.",
+      "source": "FDA-PH-2007",
+      "csv_entry": "soy sauce,condiment,4.4,5.4,,,Fermented soy sauce,FDA-PH-2007",
+      "notes": "Fermented condiment. Very wide range (1.0 pH unit). Straddles 4.6 boundary. LLMs may conflate different types (light vs dark vs tamari)."
+    },
+    {
+      "id": "F13",
+      "name": "olives (green, fermented)",
+      "difficulty": "hard",
+      "reference_ph": 4.1,
+      "reference_ph_range": [3.6, 4.6],
+      "reference_aw": 0.95,
+      "aw_note": "Estimated for brined olives; not in source CSV",
+      "source": "FDA-PH-2007",
+      "csv_entry": "olives green fermented,vegetable,3.6,4.6,,,Green fermented olives,FDA-PH-2007",
+      "notes": "Fermented food with very wide range (1.0 pH unit). Upper bound is exactly at 4.6 boundary. LLMs may confuse with black olives (pH 6.0-7.0) or ripe olives (pH 6.0-7.5)."
+    },
+    {
+      "id": "F14",
+      "name": "persimmons",
+      "difficulty": "hard",
+      "reference_ph": 4.56,
+      "reference_ph_range": [4.42, 4.70],
+      "reference_aw": 0.98,
+      "aw_note": "Category-level: 'fresh fruits 0.97-1.00' from IFT-2003-T31",
+      "source": "FDA-PH-2007",
+      "csv_entry": "persimmons,fruit,4.42,4.70,,,Fresh persimmons,FDA-PH-2007",
+      "notes": "Uncommon fruit that straddles the 4.6 boundary. LLMs have limited training data on persimmon pH. High expected variance."
+    },
+    {
+      "id": "F15",
+      "name": "mangoes (ripe)",
+      "difficulty": "hard",
+      "reference_ph": 4.1,
+      "reference_ph_range": [3.4, 4.8],
+      "reference_aw": 0.98,
+      "aw_note": "Category-level: 'fresh fruits 0.97-1.00' from IFT-2003-T31",
+      "source": "FDA-PH-2007",
+      "csv_entry": "mangoes ripe,fruit,3.4,4.8,,,Ripe mangoes,FDA-PH-2007",
+      "notes": "Widest range of any fruit in the FDA list (1.4 pH units). Depends heavily on variety and ripeness. Range crosses 4.6 boundary. LLMs will give highly variable answers."
+    }
+  ],
+
+  "propagation_scenario": {
+    "description": "Fixed scenario for propagating pH variance to growth predictions. We hold everything constant except pH, then compute mu_max for each sampled pH value. This isolates the effect of pH uncertainty on the prediction.",
+    "organism": "Salmonella",
+    "temperature_celsius": 25.0,
+    "water_activity": 0.99,
+    "duration_hours": 4.0,
+    "notes": "25C for 4 hours is a common room-temperature abuse scenario. Salmonella growth rate is sensitive to pH in the 4.0-7.0 range. Holding aw constant at 0.99 isolates the pH effect."
+  }
+}

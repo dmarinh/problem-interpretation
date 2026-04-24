@@ -26,7 +26,7 @@ Both must use model-type-aware logic for correct conservative behavior.
 import asyncio
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from app.config.rules import (
     find_temperature_interpretation_with_fallback,
@@ -37,6 +37,8 @@ from app.models.extraction import (
     ExtractedScenario,
     ExtractedEnvironmentalConditions,
     ExtractedFoodProperties,
+    ExtractedTemperature,
+    ExtractedDuration,
 )
 from app.models.metadata import ValueProvenance, ValueSource, RetrievalResult
 from app.rag.retrieval import RetrievalService, get_retrieval_service
@@ -70,6 +72,16 @@ class ExtractedNumericValue:
     original_text: str | None = None
 
 
+@dataclass
+class GroundedStep:
+    """A single grounded time-temperature step for multi-step scenarios."""
+    step_order: int
+    temperature_celsius: float | None
+    duration_minutes: float | None
+    temp_provenance: ValueProvenance | None = None
+    dur_provenance: ValueProvenance | None = None
+
+
 class GroundedValues:
     """
     Container for grounded values with provenance.
@@ -92,7 +104,29 @@ class GroundedValues:
         self.retrievals: list[RetrievalResult] = []
         self.warnings: list[str] = []
         self.ungrounded_fields: list[str] = []
-    
+        self.steps: list[GroundedStep] = []
+
+    @property
+    def has_steps(self) -> bool:
+        return len(self.steps) > 0
+
+    def add_step(
+        self,
+        step_order: int,
+        temperature_celsius: float | None,
+        duration_minutes: float | None,
+        temp_provenance: ValueProvenance | None = None,
+        dur_provenance: ValueProvenance | None = None,
+    ) -> None:
+        """Append a grounded time-temperature step."""
+        self.steps.append(GroundedStep(
+            step_order=step_order,
+            temperature_celsius=temperature_celsius,
+            duration_minutes=duration_minutes,
+            temp_provenance=temp_provenance,
+            dur_provenance=dur_provenance,
+        ))
+
     def set(
         self,
         field: str,
@@ -228,12 +262,13 @@ class GroundingService:
                 f"Could not determine pathogen for '{scenario.food_description or 'unknown food'}'"
             )
         
-        # Step 5: Temperature (interpretation rules with model-aware range selection)
-        self._ground_temperature(scenario, grounded, effective_model_type)
-        
-        # Step 6: Duration (interpretation rules with model-aware range selection)
-        self._ground_duration(scenario, grounded, effective_model_type)
-        
+        # Step 5 & 6: Temperature and duration
+        if scenario.is_multi_step and scenario.time_temperature_steps:
+            self._ground_multi_step_profile(scenario, grounded, effective_model_type)
+        else:
+            self._ground_temperature(scenario, grounded, effective_model_type)
+            self._ground_duration(scenario, grounded, effective_model_type)
+
         return grounded
     
     # =========================================================================
@@ -298,21 +333,33 @@ class GroundingService:
         """
         # pH
         if conditions.ph_value is not None:
-            grounded.set(
-                "ph",
-                conditions.ph_value,
-                source=ValueSource.USER_EXPLICIT,
-                confidence=0.90,
-            )
+            if 0.0 <= conditions.ph_value <= 14.0:
+                grounded.set(
+                    "ph",
+                    conditions.ph_value,
+                    source=ValueSource.USER_EXPLICIT,
+                    confidence=0.90,
+                )
+            else:
+                grounded.warnings.append(
+                    f"Ignoring extracted ph_value={conditions.ph_value} "
+                    f"(must be 0–14; likely LLM field confusion)"
+                )
         
         # Water activity
         if conditions.water_activity is not None:
-            grounded.set(
-                "water_activity",
-                conditions.water_activity,
-                source=ValueSource.USER_EXPLICIT,
-                confidence=0.90,
-            )
+            if 0.0 <= conditions.water_activity <= 1.0:
+                grounded.set(
+                    "water_activity",
+                    conditions.water_activity,
+                    source=ValueSource.USER_EXPLICIT,
+                    confidence=0.90,
+                )
+            else:
+                grounded.warnings.append(
+                    f"Ignoring extracted water_activity={conditions.water_activity} "
+                    f"(must be 0–1; likely LLM field confusion)"
+                )
         
         # Other conditions (these don't require range selection)
         if conditions.co2_percent is not None:
@@ -426,15 +473,21 @@ class GroundingService:
         # Set water activity if found and not already set
         if not grounded.has("water_activity") and props.has_aw:
             if props.aw_value is not None:
-                grounded.set(
-                    "water_activity",
-                    props.aw_value,
-                    source=ValueSource.RAG_RETRIEVAL,
-                    confidence=response.top_result.confidence,
-                    retrieval_source=response.top_result.doc_id,
-                    original_text=content,
-                    transformation_applied=f"Extracted via {props.extraction_method}",
-                )
+                if 0.0 <= props.aw_value <= 1.0:
+                    grounded.set(
+                        "water_activity",
+                        props.aw_value,
+                        source=ValueSource.RAG_RETRIEVAL,
+                        confidence=response.top_result.confidence,
+                        retrieval_source=response.top_result.doc_id,
+                        original_text=content,
+                        transformation_applied=f"Extracted via {props.extraction_method}",
+                    )
+                else:
+                    grounded.warnings.append(
+                        f"Discarding invalid aw={props.aw_value} extracted from RAG "
+                        f"(must be 0–1; regex/LLM extraction error)"
+                    )
             elif props.aw_min is not None and props.aw_max is not None:
                 # Range - higher aw = more water = more growth/survival
                 value, transformation = self._select_range_bound(
@@ -468,13 +521,22 @@ class GroundingService:
         # ph_max/aw_max must only be set when is_range=True; setting them for
         # single values would trigger the range-selection branch downstream with
         # ph_min=None, causing a crash or silent wrong-value selection.
+        # Domain constraints are applied here so physically impossible regex
+        # results (e.g. aw=200 from a citation year) are treated as "not found",
+        # which lets the LLM fallback run and recover the real value.
+        def _valid_ph(v: float | None) -> float | None:
+            return v if v is not None and 0.0 <= v <= 14.0 else None
+
+        def _valid_aw(v: float | None) -> float | None:
+            return v if v is not None and 0.0 <= v <= 1.0 else None
+
         props = ExtractedFoodProperties(
-            ph_value=ph.value if ph.value and not ph.is_range else None,
-            ph_min=ph.range_min,
-            ph_max=ph.range_max if ph.is_range else None,
-            aw_value=aw.value if aw.value and not aw.is_range else None,
-            aw_min=aw.range_min,
-            aw_max=aw.range_max if aw.is_range else None,
+            ph_value=_valid_ph(ph.value) if not ph.is_range else None,
+            ph_min=_valid_ph(ph.range_min),
+            ph_max=_valid_ph(ph.range_max) if ph.is_range else None,
+            aw_value=_valid_aw(aw.value) if not aw.is_range else None,
+            aw_min=_valid_aw(aw.range_min),
+            aw_max=_valid_aw(aw.range_max) if aw.is_range else None,
             extraction_method="regex",
         )
         
@@ -542,15 +604,17 @@ class GroundingService:
             ExtractedNumericValue with the extracted value(s)
         """
         text_lower = text.lower()
-        
+
         for keyword in keywords:
             keyword_lower = keyword.lower()
-            keyword_pos = text_lower.find(keyword_lower)
-            if keyword_pos == -1:
+            # Use word-boundary matching so short tokens like "aw" don't match
+            # inside longer words (e.g. "raw", "thaw", "draw").
+            m = re.search(rf'\b{re.escape(keyword_lower)}\b', text_lower)
+            if m is None:
                 continue
-            
-            after_keyword = text_lower[keyword_pos + len(keyword):]
-            
+
+            after_keyword = text_lower[m.end():]
+
             # Pattern 1: "between X and Y" or "from X to Y"
             range_pattern1 = r'(?:between|from)?\s*(\d+\.?\d*)\s*(?:and|to|-)\s*(\d+\.?\d*)'
             match = re.search(range_pattern1, after_keyword[:50])
@@ -564,7 +628,7 @@ class GroundingService:
                     range_max=max(val1, val2),
                     original_text=match.group(0).strip(),
                 )
-            
+
             # Pattern 2: "X-Y" or "X - Y"
             range_pattern2 = r'[:\s]*(\d+\.?\d*)\s*[-–]\s*(\d+\.?\d*)'
             match = re.search(range_pattern2, after_keyword[:30])
@@ -578,17 +642,20 @@ class GroundingService:
                     range_max=max(val1, val2),
                     original_text=match.group(0).strip(),
                 )
-            
-            # Pattern 3: Single value
-            single_pattern = r'(?:is|:|of)?\s*(\d+\.?\d*)'
-            match = re.search(single_pattern, after_keyword[:20])
-            if match:
+
+            # Pattern 3: Single value — must appear immediately after the keyword
+            # (optional connector: colon, equals, whitespace, "is", "of").
+            # Anchored with re.match so a number buried in unrelated text (e.g.
+            # a citation year like "[FDA-PH-2007]") is never captured.
+            single_pattern = r'^[:\s=]*(?:(?:is|of)\s+)?(\d+\.?\d*)'
+            match = re.match(single_pattern, after_keyword)
+            if match and match.group(1):
                 return ExtractedNumericValue(
                     value=float(match.group(1)),
                     is_range=False,
                     original_text=match.group(0).strip(),
                 )
-        
+
         return ExtractedNumericValue()
     
     # =========================================================================
@@ -651,34 +718,28 @@ class GroundingService:
     # =========================================================================
     # INTERPRETATION RULES
     # =========================================================================
-    
-    def _ground_temperature(
+
+    def _resolve_temperature_value(
         self,
-        scenario: ExtractedScenario,
-        grounded: GroundedValues,
+        temp: ExtractedTemperature,
         model_type: ModelType,
-    ) -> None:
+    ) -> tuple[float | None, ValueProvenance | None]:
         """
-        Ground temperature from extraction with model-type-aware range selection.
-        
+        Resolve an ExtractedTemperature to a numeric value with provenance.
+
         Priority:
-        1. Explicit numeric value (e.g., "25°C") → USER_EXPLICIT
-        2. Range with model-aware bound selection → USER_INFERRED
-        3. Description interpreted via rules (e.g., "room temperature") → USER_INFERRED
+        1. Explicit numeric value → USER_EXPLICIT, confidence 0.90
+        2. Range with model-aware bound selection → USER_INFERRED, confidence 0.80
+        3. Description via interpretation rules → USER_INFERRED, rule confidence
+
+        Returns (value, provenance) or (None, None) if unresolvable.
         """
-        temp = scenario.single_step_temperature
-        
-        # Priority 1: Explicit value
         if temp.value_celsius is not None:
-            grounded.set(
-                "temperature_celsius",
-                temp.value_celsius,
+            return temp.value_celsius, ValueProvenance(
                 source=ValueSource.USER_EXPLICIT,
                 confidence=0.90,
             )
-            return
-        
-        # Priority 2: Range - select bound based on model type
+
         if temp.is_range and temp.range_min_celsius is not None and temp.range_max_celsius is not None:
             value, transformation = self._select_range_bound(
                 temp.range_min_celsius,
@@ -686,63 +747,45 @@ class GroundingService:
                 model_type,
                 "temperature_celsius",
             )
-            grounded.set(
-                "temperature_celsius",
-                value,
+            return value, ValueProvenance(
                 source=ValueSource.USER_INFERRED,
                 confidence=0.80,
                 transformation_applied=transformation,
             )
-            return
-        
-        # Priority 3: Description interpretation
+
         if temp.description:
             rule = find_temperature_interpretation_with_fallback(temp.description)
             if rule:
-                grounded.set(
-                    "temperature_celsius",
-                    rule.value,
+                return rule.value, ValueProvenance(
                     source=ValueSource.USER_INFERRED,
                     confidence=rule.confidence,
                     original_text=temp.description,
                     transformation_applied=f"Interpreted as {rule.value}°C ({rule.notes})",
                 )
-                return
-            else:
-                grounded.mark_ungrounded(
-                    "temperature_celsius",
-                    f"Could not interpret: '{temp.description}'"
-                )
-        else:
-            grounded.mark_ungrounded("temperature_celsius", "No temperature specified")
-    
-    def _ground_duration(
+
+        return None, None
+
+    def _resolve_duration_value(
         self,
-        scenario: ExtractedScenario,
-        grounded: GroundedValues,
+        dur: ExtractedDuration,
         model_type: ModelType,
-    ) -> None:
+    ) -> tuple[float | None, ValueProvenance | None]:
         """
-        Ground duration from extraction with model-type-aware range selection.
-        
+        Resolve an ExtractedDuration to a numeric value with provenance.
+
         Priority:
-        1. Explicit numeric value (e.g., "3 hours") → USER_EXPLICIT
-        2. Range with model-aware bound selection → USER_INFERRED
-        3. Description interpreted via rules (e.g., "overnight") → USER_INFERRED
+        1. Explicit numeric value → USER_EXPLICIT, confidence 0.90
+        2. Range with model-aware bound selection → USER_INFERRED, confidence 0.80
+        3. Description via interpretation rules → USER_INFERRED, rule confidence
+
+        Returns (value, provenance) or (None, None) if unresolvable.
         """
-        dur = scenario.single_step_duration
-        
-        # Priority 1: Explicit value
         if dur.value_minutes is not None:
-            grounded.set(
-                "duration_minutes",
-                dur.value_minutes,
+            return dur.value_minutes, ValueProvenance(
                 source=ValueSource.USER_EXPLICIT,
                 confidence=0.90,
             )
-            return
-        
-        # Priority 2: Range - select bound based on model type
+
         if dur.range_min_minutes is not None and dur.range_max_minutes is not None:
             value, transformation = self._select_range_bound(
                 dur.range_min_minutes,
@@ -750,35 +793,123 @@ class GroundingService:
                 model_type,
                 "duration_minutes",
             )
-            grounded.set(
-                "duration_minutes",
-                value,
+            return value, ValueProvenance(
                 source=ValueSource.USER_INFERRED,
                 confidence=0.80,
                 transformation_applied=transformation,
             )
-            return
-        
-        # Priority 3: Description interpretation
+
         if dur.description:
             rule = find_duration_interpretation(dur.description)
             if rule:
-                grounded.set(
-                    "duration_minutes",
-                    rule.value,
+                return rule.value, ValueProvenance(
                     source=ValueSource.USER_INFERRED,
                     confidence=rule.confidence,
                     original_text=dur.description,
                     transformation_applied=f"Interpreted as {rule.value} min ({rule.notes})",
                 )
-                return
-            else:
-                grounded.mark_ungrounded(
-                    "duration_minutes",
-                    f"Could not interpret: '{dur.description}'"
-                )
+
+        return None, None
+
+    def _ground_temperature(
+        self,
+        scenario: ExtractedScenario,
+        grounded: GroundedValues,
+        model_type: ModelType,
+    ) -> None:
+        """Ground single-step temperature into grounded.temperature_celsius."""
+        value, prov = self._resolve_temperature_value(
+            scenario.single_step_temperature, model_type
+        )
+        if value is not None and prov is not None:
+            grounded.set(
+                "temperature_celsius",
+                value,
+                source=prov.source,
+                confidence=prov.confidence,
+                original_text=prov.original_text,
+                transformation_applied=prov.transformation_applied,
+            )
         else:
-            grounded.mark_ungrounded("duration_minutes", "No duration specified")
+            desc = scenario.single_step_temperature.description
+            if desc:
+                grounded.mark_ungrounded(
+                    "temperature_celsius", f"Could not interpret: '{desc}'"
+                )
+            else:
+                grounded.mark_ungrounded("temperature_celsius", "No temperature specified")
+
+    def _ground_duration(
+        self,
+        scenario: ExtractedScenario,
+        grounded: GroundedValues,
+        model_type: ModelType,
+    ) -> None:
+        """Ground single-step duration into grounded.duration_minutes."""
+        value, prov = self._resolve_duration_value(
+            scenario.single_step_duration, model_type
+        )
+        if value is not None and prov is not None:
+            grounded.set(
+                "duration_minutes",
+                value,
+                source=prov.source,
+                confidence=prov.confidence,
+                original_text=prov.original_text,
+                transformation_applied=prov.transformation_applied,
+            )
+        else:
+            desc = scenario.single_step_duration.description
+            if desc:
+                grounded.mark_ungrounded(
+                    "duration_minutes", f"Could not interpret: '{desc}'"
+                )
+            else:
+                grounded.mark_ungrounded("duration_minutes", "No duration specified")
+
+    def _ground_multi_step_profile(
+        self,
+        scenario: ExtractedScenario,
+        grounded: GroundedValues,
+        model_type: ModelType,
+    ) -> None:
+        """
+        Ground each step in a multi-step time-temperature profile.
+
+        Iterates scenario.time_temperature_steps in sequence order, resolves
+        temperature and duration for each step using the same priority rules as
+        the single-step path, and appends each result to grounded.steps.
+
+        Steps with unresolvable values store None; the standardization service
+        will apply defaults for temperature and flag missing durations.
+        """
+        sorted_steps = sorted(
+            scenario.time_temperature_steps,
+            key=lambda s: s.sequence_order if s.sequence_order is not None else 999,
+        )
+        for idx, step in enumerate(sorted_steps, start=1):
+            order = step.sequence_order if step.sequence_order is not None else idx
+
+            temp_val, temp_prov = self._resolve_temperature_value(step.temperature, model_type)
+            dur_val, dur_prov = self._resolve_duration_value(step.duration, model_type)
+
+            if temp_val is None:
+                desc = step.temperature.description or ""
+                reason = f"Could not interpret: '{desc}'" if desc else "No temperature specified"
+                grounded.warnings.append(f"Step {order} temperature: {reason}")
+
+            if dur_val is None:
+                desc = step.duration.description or ""
+                reason = f"Could not interpret: '{desc}'" if desc else "No duration specified"
+                grounded.warnings.append(f"Step {order} duration: {reason}")
+
+            grounded.add_step(
+                step_order=order,
+                temperature_celsius=temp_val,
+                duration_minutes=dur_val,
+                temp_provenance=temp_prov,
+                dur_provenance=dur_prov,
+            )
 
 
 # =============================================================================

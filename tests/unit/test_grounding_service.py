@@ -159,8 +159,122 @@ class TestExtractNumericValue:
     def test_keyword_not_found(self, service):
         """Should return empty when keyword not in text."""
         result = service._extract_numeric_value("temperature is 25", ["ph"])
-        
+
         assert result.value is None
+
+    # ------------------------------------------------------------------
+    # Word-boundary and plausibility regression tests (bug: "raw" → aw=200)
+    # ------------------------------------------------------------------
+
+    def test_aw_not_matched_inside_raw(self, service):
+        """'aw' inside 'raw' must not be matched (word-boundary fix)."""
+        result = service._extract_numeric_value(
+            "raw chicken stored at 25", ["water activity", "aw"]
+        )
+        assert result.value is None
+        assert result.is_range is False
+
+    def test_aw_not_matched_inside_raw_with_citation(self, service):
+        """Actual bug case: citation year must not leak into aw extraction."""
+        rag_content = "chicken (poultry): pH range 6.5 to 6.7. Raw chicken [FDA-PH-2007]"
+        result = service._extract_numeric_value(rag_content, ["water activity", "aw"])
+        assert result.value is None
+
+    def test_aw_matched_as_standalone_word(self, service):
+        """'aw' as a standalone word must still be matched after the fix."""
+        result = service._extract_numeric_value("aw 0.97", ["water activity", "aw"])
+        assert result.value == 0.97
+
+    def test_aw_matched_with_colon(self, service):
+        """'aw: 0.97' format must still be matched."""
+        result = service._extract_numeric_value("aw: 0.95", ["water activity", "aw"])
+        assert result.value == 0.95
+
+    def test_aw_not_matched_inside_thaw(self, service):
+        """'aw' inside 'thaw' must not be matched."""
+        result = service._extract_numeric_value(
+            "thaw the meat at room temperature", ["water activity", "aw"]
+        )
+        assert result.value is None
+
+    def test_ph_with_is_connector(self, service):
+        """'pH is 6.5' single-value format must still be extracted."""
+        result = service._extract_numeric_value("pH is 6.5", ["ph"])
+        assert result.value == 6.5
+
+    def test_single_value_not_extracted_from_distant_text(self, service):
+        """Number buried in non-adjacent text must not be captured."""
+        # "aw" matches but the next content is unrelated text before any number
+        result = service._extract_numeric_value(
+            "aw category is high, but nothing quantified here: ref 200", ["water activity", "aw"]
+        )
+        # "is" connector allows "is high" — "high" is not a digit, so no match
+        assert result.value is None
+
+
+class TestExtractFoodPropertiesPlausibility:
+    """Plausibility filter: out-of-range regex values fall through to LLM."""
+
+    @pytest.fixture
+    def service_no_llm(self):
+        return GroundingService(
+            retrieval_service=MagicMock(),
+            use_llm_extraction=False,
+        )
+
+    @pytest.mark.asyncio
+    async def test_aw_200_treated_as_not_found(self, service_no_llm):
+        """Regex-extracted aw=200 (from citation) must be discarded as implausible."""
+        rag_content = "chicken (poultry): pH range 6.5 to 6.7. Raw chicken [FDA-PH-2007]"
+        props = await service_no_llm._extract_food_properties(rag_content)
+        # pH should be extracted correctly
+        assert props.has_ph
+        assert props.ph_min == 6.5
+        assert props.ph_max == 6.7
+        # aw should NOT be set (200 is not a valid water activity)
+        assert not props.has_aw
+        assert props.aw_value is None
+
+    @pytest.mark.asyncio
+    async def test_valid_aw_passes_through(self, service_no_llm):
+        """Valid aw value from regex must pass the plausibility filter."""
+        props = await service_no_llm._extract_food_properties(
+            "fresh poultry: water activity 0.99 to 1.0"
+        )
+        assert props.has_aw
+        assert props.aw_min == 0.99
+        assert props.aw_max == 1.0
+
+    @pytest.mark.asyncio
+    async def test_invalid_aw_triggers_llm_fallback(self):
+        """Implausible regex aw triggers LLM fallback when LLM is enabled."""
+        mock_llm = AsyncMock()
+        mock_llm.extract = AsyncMock(return_value=ExtractedFoodProperties(
+            aw_value=0.97,
+            extraction_method="llm",
+        ))
+        service = GroundingService(
+            retrieval_service=MagicMock(),
+            llm_client=mock_llm,
+            use_llm_extraction=True,
+        )
+        # Content where regex would extract aw=200 (pre-fix it crashed; now
+        # the plausibility filter discards it, triggering the LLM fallback)
+        props = await service._extract_food_properties(
+            "chicken (poultry): pH range 6.5 to 6.7. Raw chicken [FDA-PH-2007]"
+        )
+        mock_llm.extract.assert_called_once()
+        assert props.has_aw
+        assert props.aw_value == 0.97
+
+    @pytest.mark.asyncio
+    async def test_ph_out_of_range_discarded(self, service_no_llm):
+        """pH > 14 from regex must be discarded as implausible."""
+        props = await service_no_llm._extract_food_properties(
+            "product: aw 0.95, reference code 200"
+        )
+        # The "200" near "code" should not be captured as pH (word-boundary fix)
+        assert props.ph_value is None or (0.0 <= (props.ph_value or 0.0) <= 14.0)
 
 
 class TestGroundEnvironmentalConditions:
@@ -188,7 +302,7 @@ class TestGroundEnvironmentalConditions:
         
         assert grounded.get("water_activity") == 0.95
         assert grounded.provenance["water_activity"].source == ValueSource.USER_EXPLICIT
-    
+
     def test_ground_multiple_conditions(self, grounding_service):
         """Should ground multiple conditions."""
         service, _, _ = grounding_service

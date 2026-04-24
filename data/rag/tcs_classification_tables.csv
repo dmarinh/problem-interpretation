@@ -1,26 +1,26 @@
 table_type,aw_category,aw_min,aw_max,ph_category,ph_min,ph_max,classification,notes,source_id
-A,low,0.00,0.92,low,0.00,4.6,Non-TCS,Safe at any aw <= 0.92 when pH <= 4.6,IFT-2003-TA
-A,low,0.00,0.92,medium,4.6,5.6,Non-TCS,Safe at any aw <= 0.92 when pH 4.6-5.6,IFT-2003-TA
-A,low,0.00,0.92,high,5.6,14.0,Non-TCS,Safe at any aw <= 0.92 when pH > 5.6,IFT-2003-TA
-A,medium,0.92,0.95,low,0.00,4.6,Non-TCS,Safe at aw 0.92-0.95 when pH <= 4.6,IFT-2003-TA
+A,low,0.0,0.92,low,0.0,4.6,Non-TCS,Safe at any aw <= 0.92 when pH <= 4.6,IFT-2003-TA
+A,low,0.0,0.92,medium,4.6,5.6,Non-TCS,Safe at any aw <= 0.92 when pH 4.6-5.6,IFT-2003-TA
+A,low,0.0,0.92,high,5.6,14.0,Non-TCS,Safe at any aw <= 0.92 when pH > 5.6,IFT-2003-TA
+A,medium,0.92,0.95,low,0.0,4.6,Non-TCS,Safe at aw 0.92-0.95 when pH <= 4.6,IFT-2003-TA
 A,medium,0.92,0.95,medium,4.6,5.6,Non-TCS,Safe at aw 0.92-0.95 when pH 4.6-5.6,IFT-2003-TA
 A,medium,0.92,0.95,high,5.6,14.0,PA,Product assessment required - aw 0.92-0.95 and pH > 5.6,IFT-2003-TA
-A,high,0.95,1.00,low,0.00,4.6,Non-TCS,Safe at aw > 0.95 when pH <= 4.6,IFT-2003-TA
-A,high,0.95,1.00,medium,4.6,5.6,PA,Product assessment required - aw > 0.95 and pH 4.6-5.6,IFT-2003-TA
-A,high,0.95,1.00,high,5.6,14.0,PA,Product assessment required - aw > 0.95 and pH > 5.6,IFT-2003-TA
-B,very_low,0.00,0.88,very_low,0.00,4.2,Non-TCS,Safe at aw < 0.88 when pH < 4.2,IFT-2003-TB
-B,very_low,0.00,0.88,low,4.2,4.6,Non-TCS,Safe at aw < 0.88 when pH 4.2-4.6,IFT-2003-TB
-B,very_low,0.00,0.88,medium,4.6,5.0,Non-TCS,Safe at aw < 0.88 when pH 4.6-5.0,IFT-2003-TB
-B,very_low,0.00,0.88,high,5.0,14.0,Non-TCS,Safe at aw < 0.88 when pH > 5.0,IFT-2003-TB
-B,low,0.88,0.90,very_low,0.00,4.2,Non-TCS,Safe at aw 0.88-0.90 when pH < 4.2,IFT-2003-TB
-B,low,0.88,0.90,low,4.2,4.6,Non-TCS,Safe at aw 0.88-0.90 when pH 4.2-4.6,IFT-2003-TB
-B,low,0.88,0.90,medium,4.6,5.0,Non-TCS,Safe at aw 0.88-0.90 when pH 4.6-5.0,IFT-2003-TB
-B,low,0.88,0.90,high,5.0,14.0,PA,Product assessment required - aw 0.88-0.90 and pH > 5.0,IFT-2003-TB
-B,medium,0.90,0.92,very_low,0.00,4.2,Non-TCS,Safe at aw 0.90-0.92 when pH < 4.2,IFT-2003-TB
-B,medium,0.90,0.92,low,4.2,4.6,Non-TCS,Safe at aw 0.90-0.92 when pH 4.2-4.6,IFT-2003-TB
-B,medium,0.90,0.92,medium,4.6,5.0,PA,Product assessment required - aw 0.90-0.92 and pH 4.6-5.0,IFT-2003-TB
-B,medium,0.90,0.92,high,5.0,14.0,PA,Product assessment required - aw 0.90-0.92 and pH > 5.0,IFT-2003-TB
-B,high,0.92,1.00,very_low,0.00,4.2,Non-TCS,Safe at aw > 0.92 when pH < 4.2,IFT-2003-TB
-B,high,0.92,1.00,low,4.2,4.6,PA,Product assessment required - aw > 0.92 and pH 4.2-4.6,IFT-2003-TB
-B,high,0.92,1.00,medium,4.6,5.0,PA,Product assessment required - aw > 0.92 and pH 4.6-5.0,IFT-2003-TB
-B,high,0.92,1.00,high,5.0,14.0,PA,Product assessment required - aw > 0.92 and pH > 5.0,IFT-2003-TB
+A,high,0.95,1.0,low,0.0,4.6,Non-TCS,Safe at aw > 0.95 when pH <= 4.6,IFT-2003-TA
+A,high,0.95,1.0,medium,4.6,5.6,PA,Product assessment required - aw > 0.95 and pH 4.6-5.6,IFT-2003-TA
+A,high,0.95,1.0,high,5.6,14.0,PA,Product assessment required - aw > 0.95 and pH > 5.6,IFT-2003-TA
+B,very_low,0.0,0.88,very_low,0.0,4.2,Non-TCS,Safe at aw < 0.88 when pH < 4.2,IFT-2003-TB
+B,very_low,0.0,0.88,low,4.2,4.6,Non-TCS,Safe at aw < 0.88 when pH 4.2-4.6,IFT-2003-TB
+B,very_low,0.0,0.88,medium,4.6,5.0,Non-TCS,Safe at aw < 0.88 when pH 4.6-5.0,IFT-2003-TB
+B,very_low,0.0,0.88,high,5.0,14.0,Non-TCS,Safe at aw < 0.88 when pH > 5.0,IFT-2003-TB
+B,low,0.88,0.9,very_low,0.0,4.2,Non-TCS,Safe at aw 0.88-0.90 when pH < 4.2,IFT-2003-TB
+B,low,0.88,0.9,low,4.2,4.6,Non-TCS,Safe at aw 0.88-0.90 when pH 4.2-4.6,IFT-2003-TB
+B,low,0.88,0.9,medium,4.6,5.0,Non-TCS,Safe at aw 0.88-0.90 when pH 4.6-5.0,IFT-2003-TB
+B,low,0.88,0.9,high,5.0,14.0,PA,Product assessment required - aw 0.88-0.90 and pH > 5.0,IFT-2003-TB
+B,medium,0.9,0.92,very_low,0.0,4.2,Non-TCS,Safe at aw 0.90-0.92 when pH < 4.2,IFT-2003-TB
+B,medium,0.9,0.92,low,4.2,4.6,Non-TCS,Safe at aw 0.90-0.92 when pH 4.2-4.6,IFT-2003-TB
+B,medium,0.9,0.92,medium,4.6,5.0,PA,Product assessment required - aw 0.90-0.92 and pH 4.6-5.0,IFT-2003-TB
+B,medium,0.9,0.92,high,5.0,14.0,PA,Product assessment required - aw 0.90-0.92 and pH > 5.0,IFT-2003-TB
+B,high,0.92,1.0,very_low,0.0,4.2,Non-TCS,Safe at aw > 0.92 when pH < 4.2,IFT-2003-TB
+B,high,0.92,1.0,low,4.2,4.6,PA,Product assessment required - aw > 0.92 and pH 4.2-4.6,IFT-2003-TB
+B,high,0.92,1.0,medium,4.6,5.0,PA,Product assessment required - aw > 0.92 and pH 4.6-5.0,IFT-2003-TB
+B,high,0.92,1.0,high,5.0,14.0,PA,Product assessment required - aw > 0.92 and pH > 5.0,IFT-2003-TB

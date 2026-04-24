@@ -1,5 +1,5 @@
 food_name,food_category,ph_min,ph_max,aw_min,aw_max,notes,source_id
-butter,dairy,6.1,6.4,,,Fresh butter,FDA-PH-2007
+butter,dairy,6.1,6.4,,,Fresh butter,IFT-2003-T33
 buttermilk,dairy,4.41,4.83,,,Cultured,FDA-PH-2007
 milk cow,dairy,6.4,6.8,,,Whole cow milk,FDA-PH-2007
 milk goat,dairy,6.48,6.48,,,Goat milk,FDA-PH-2007
@@ -13,25 +13,21 @@ cheese camembert,dairy,7.44,7.44,,,Soft ripened cheese,FDA-PH-2007
 cheese cheddar,dairy,5.9,5.9,,,Natural cheese,FDA-PH-2007
 cheese cottage,dairy,4.75,5.02,,,Fresh cheese,FDA-PH-2007
 cheese cream,dairy,4.1,4.79,,,Cream cheese,FDA-PH-2007
-cheese parmesan,dairy,5.2,5.3,0.68,0.76,Hard aged cheese,FDA-PH-2007
+cheese parmesan,dairy,5.2,5.3,0.68,0.76,"Hard aged cheese; pH from FDA-PH-2007, aw from IFT-2003-T31 Table 3-1",FDA-PH-2007
 cheese roquefort,dairy,5.1,5.98,,,Blue cheese,FDA-PH-2007
 cheese swiss gruyere,dairy,5.68,6.62,,,Swiss cheese,FDA-PH-2007
 yogurt,dairy,3.8,4.2,,,Plain cultured,IFT-2003-T33
-natural cheeses,dairy,,,0.95,1.00,Variable by type,IFT-2003-T31
+natural cheeses,dairy,,,0.95,1.0,Variable by type,IFT-2003-T31
 sweetened condensed milk,dairy,,,0.83,0.83,Shelf stable,IFT-2003-T31
 pudding,dairy,,,0.97,0.99,Fresh prepared,IFT-2003-T31
-beef ground,meat,5.1,6.2,,,Raw ground beef,FDA-PH-2007
-beef ripened,meat,5.8,5.8,,,Aged beef,FDA-PH-2007
-ham,meat,5.9,6.1,,,Cured ham,FDA-PH-2007
-veal,meat,6.0,6.0,,,Raw veal,FDA-PH-2007
-lamb,meat,5.4,6.7,,,Raw lamb,FDA-PH-2007
-pork,meat,5.3,6.9,,,Raw pork,FDA-PH-2007
-chicken,poultry,6.5,6.7,,,Raw chicken,FDA-PH-2007
-turkey roasted,poultry,5.7,6.8,,,Roasted turkey,FDA-PH-2007
-fresh meat,meat,,,0.99,1.00,All fresh meats,IFT-2003-T31
-fresh poultry,poultry,,,0.99,1.00,All fresh poultry,IFT-2003-T31
+beef ground,meat,5.1,6.2,,,Raw ground beef,IFT-2003-T33
+ham,meat,5.9,6.1,,,Cured ham,IFT-2003-T33
+veal,meat,6.0,6.0,,,Raw veal,IFT-2003-T33
+chicken,poultry,6.2,6.4,,,Raw chicken,IFT-2003-T33
+fresh meat,meat,,,0.99,1.0,All fresh meats,IFT-2003-T31
+fresh poultry,poultry,,,0.99,1.0,All fresh poultry,IFT-2003-T31
 cured meat,meat,,,0.87,0.95,Variable by cure level,IFT-2003-T31
-fish fresh most,fish,6.6,6.8,,,Fresh fish general,FDA-PH-2007
+fish fresh most,fish,6.6,6.8,,,Fresh fish general,IFT-2003-T33
 bass sea broiled,fish,6.58,6.78,,,Sea bass,FDA-PH-2007
 bass striped broiled,fish,6.5,6.7,,,Striped bass,FDA-PH-2007
 bluefish filet broiled,fish,6.09,6.5,,,Bluefish,FDA-PH-2007
@@ -56,12 +52,12 @@ shrimp,shellfish,6.5,7.0,,,Fresh shrimp,FDA-PH-2007
 conch,shellfish,7.52,8.4,,,Conch,FDA-PH-2007
 squid calamari,shellfish,5.8,6.5,,,Squid,FDA-PH-2007
 octopus,shellfish,6.0,6.5,,,Octopus,FDA-PH-2007
-fresh fish,fish,,,0.99,1.00,All fresh fish,IFT-2003-T31
+fresh fish,fish,,,0.99,1.0,All fresh fish,IFT-2003-T31
 eggs whole new laid,eggs,6.58,6.58,,,Whole fresh eggs,FDA-PH-2007
 eggs white,eggs,7.96,7.96,,,Albumen only,FDA-PH-2007
 eggs yolk,eggs,6.1,6.1,,,Yolk only,FDA-PH-2007
 eggs,eggs,,,0.97,0.97,Whole fresh eggs,IFT-2003-T31
-dried whole egg,eggs,,,0.40,0.40,Dehydrated,IFT-2003-T31
+dried whole egg,eggs,,,0.4,0.4,Dehydrated,IFT-2003-T31
 apples delicious,fruit,3.9,3.9,,,Red Delicious,FDA-PH-2007
 apples golden delicious,fruit,3.6,3.6,,,Golden Delicious,FDA-PH-2007
 apples jonathan,fruit,3.33,3.33,,,Jonathan,FDA-PH-2007
@@ -120,8 +116,8 @@ raisins seedless,fruit,3.8,4.1,,,Seedless raisins,FDA-PH-2007
 strawberries,fruit,3.0,3.9,,,Fresh strawberries,FDA-PH-2007
 tangerine,fruit,3.32,4.48,,,Fresh tangerine,FDA-PH-2007
 watermelon,fruit,5.18,5.6,,,Fresh watermelon,FDA-PH-2007
-fresh fruits,fruit,,,0.97,1.00,Most fresh fruits,IFT-2003-T31
-dried fruit,fruit,,,0.55,0.80,Dehydrated fruits,IFT-2003-T31
+fresh fruits,fruit,,,0.97,1.0,Most fresh fruits,IFT-2003-T31
+dried fruit,fruit,,,0.55,0.8,Dehydrated fruits,IFT-2003-T31
 fruit juice concentrates,fruit,,,0.79,0.84,Concentrated juice,IFT-2003-T31
 jam fruit,fruit,3.5,4.5,,,Fruit jam,FDA-PH-2007
 jellies fruit,fruit,3.0,3.5,,,Fruit jellies,FDA-PH-2007
@@ -129,7 +125,6 @@ artichokes,vegetable,5.5,6.0,,,Fresh artichokes,FDA-PH-2007
 artichokes canned acidified,vegetable,4.3,4.6,,,Acidified canned artichokes,FDA-PH-2007
 asparagus,vegetable,6.0,6.7,,,Fresh asparagus,FDA-PH-2007
 asparagus canned,vegetable,5.0,6.0,,,Canned asparagus,FDA-PH-2007
-avocados,vegetable,6.27,6.58,,,Fresh avocados,FDA-PH-2007
 baby corn,vegetable,5.2,5.2,,,Baby corn,FDA-PH-2007
 bamboo shoots,vegetable,5.1,6.2,,,Fresh bamboo shoots,FDA-PH-2007
 beans black,vegetable,5.78,6.02,,,Black beans,FDA-PH-2007
@@ -214,8 +209,8 @@ water chestnut,vegetable,6.0,6.2,,,Water chestnuts,FDA-PH-2007
 watercress,vegetable,5.88,6.18,,,Fresh watercress,FDA-PH-2007
 yams cooked,vegetable,5.5,6.81,,,Cooked yams,FDA-PH-2007
 zucchini cooked,vegetable,5.69,6.1,,,Cooked zucchini,FDA-PH-2007
-fresh vegetables,vegetable,,,0.97,1.00,Most fresh vegetables,IFT-2003-T31
-bread white,grain,5.0,6.2,0.93,0.97,White bread,FDA-PH-2007
+fresh vegetables,vegetable,,,0.97,1.0,Most fresh vegetables,IFT-2003-T31
+bread white,grain,5.0,6.2,0.94,0.97,"White bread; pH from FDA-PH-2007, aw 0.94-0.97 from IFT-2003-T31 Table 3-1",FDA-PH-2007
 bread boston brown,grain,6.53,6.53,,,Boston brown bread,FDA-PH-2007
 bread cracked wheat,grain,5.43,5.5,,,Cracked wheat bread,FDA-PH-2007
 bread pumpernickel,grain,5.4,5.4,,,Pumpernickel bread,FDA-PH-2007
@@ -231,14 +226,14 @@ macaroni cooked,grain,5.1,6.41,,,Cooked macaroni,FDA-PH-2007
 spaghetti cooked,grain,5.97,6.4,,,Cooked spaghetti,FDA-PH-2007
 crackers graham,grain,7.1,7.92,,,Graham crackers,FDA-PH-2007
 crackers soda,grain,5.65,7.32,,,Soda crackers,FDA-PH-2007
-bread crust,grain,,,0.30,0.30,Dried bread crust,IFT-2003-T31
-baked cake,grain,,,0.90,0.94,Fresh baked cake,IFT-2003-T31
-uncooked rice,grain,,,0.80,0.87,Dry rice,IFT-2003-T31
+bread crust,grain,,,0.3,0.3,Dried bread crust,IFT-2003-T31
+baked cake,grain,,,0.9,0.94,Fresh baked cake,IFT-2003-T31
+uncooked rice,grain,,,0.8,0.87,Dry rice,IFT-2003-T31
 flour,grain,,,0.67,0.87,Wheat flour,IFT-2003-T31
-cereal dry,grain,,,0.10,0.20,Dry breakfast cereal,IFT-2003-T31
-crackers dry,grain,,,0.10,0.10,Dry crackers,IFT-2003-T31
-honey,sweetener,3.7,4.2,0.75,0.75,Raw honey,FDA-PH-2007
-maple syrup,sweetener,5.15,5.15,0.85,0.90,Pure maple syrup,FDA-PH-2007
+cereal dry,grain,,,0.1,0.2,Dry breakfast cereal,IFT-2003-T31
+crackers dry,grain,,,0.1,0.1,Dry crackers,IFT-2003-T31
+honey,sweetener,3.7,4.2,0.75,0.75,"Raw honey; pH from FDA-PH-2007, aw 0.75 from IFT-2003-T31 Table 3-1",FDA-PH-2007
+maple syrup,sweetener,5.15,5.15,0.85,0.85,"Pure maple syrup; pH from FDA-PH-2007, aw 0.85 from IFT-2003-T31 Table 3-1",FDA-PH-2007
 molasses,sweetener,4.9,5.4,,,Molasses,FDA-PH-2007
 sugar,sweetener,,,0.19,0.19,Granulated sugar,IFT-2003-T31
 chili sauce acidified,condiment,2.77,3.7,,,Acidified chili sauce,FDA-PH-2007
@@ -246,9 +241,7 @@ curry paste acidified,condiment,4.6,4.8,,,Acidified curry paste,FDA-PH-2007
 enchilada sauce,condiment,4.4,4.7,,,Enchilada sauce,FDA-PH-2007
 fish sauce,condiment,4.93,5.02,,,Fish sauce,FDA-PH-2007
 ketchup,condiment,3.89,3.92,,,Commercial ketchup,FDA-PH-2007
-mayonnaise,condiment,4.2,4.5,,,Commercial mayonnaise,FDA-PH-2007
 mustard,condiment,3.55,6.0,,,Prepared mustard,FDA-PH-2007
-salsa,condiment,3.8,4.2,,,Commercial salsa,FDA-PH-2007
 soy sauce,condiment,4.4,5.4,,,Fermented soy sauce,FDA-PH-2007
 vinegar,condiment,2.4,3.4,,,Variable by type,FDA-PH-2007
 vinegar cider,condiment,3.1,3.1,,,Cider vinegar,FDA-PH-2007

@@ -58,7 +58,6 @@ from app.models.execution.combase import (
 from app.models.metadata import (
     BiasCorrection,
     RangeClamp,
-    ValueProvenance,
     ValueSource,
 )
 from app.services.grounding.grounding_service import GroundedValues
@@ -143,42 +142,60 @@ class StandardizationService:
             - ModelType.NON_THERMAL_SURVIVAL: same as growth (bias toward more survival)
         """
         result = StandardizationResult()
-        
+
         # Determine organism
         organism = self._get_organism(grounded, result)
         if organism is None:
             result.missing_required.append("organism")
             return result
-        
+
         # Determine factor4
         factor4_type, factor4_value = self._get_factor4(grounded)
-        
+
         # Get model constraints if registry available
         constraints = None
         if self._registry:
             model = self._registry.get_model(organism, model_type, factor4_type)
             if model:
                 constraints = model.constraints
-        
-        # Get and standardize temperature (model-type aware)
-        temperature = self._get_temperature(grounded, result, constraints, model_type)
-        if temperature is None:
-            result.missing_required.append("temperature")
-            return result
-        
-        # Get and standardize duration (model-type aware)
-        duration = self._get_duration(grounded, result, model_type)
-        if duration is None:
-            result.missing_required.append("duration")
-            return result
-        
-        # Get and standardize pH (model-type aware for defaults)
+
+        # Get and standardize pH and water activity (shared across all steps)
         ph = self._get_ph(grounded, result, constraints, model_type)
-        
-        # Get and standardize water activity (model-type aware for defaults)
         aw = self._get_water_activity(grounded, result, constraints, model_type)
-        
-        # Build payload
+
+        if grounded.has_steps:
+            # Multi-step path: build profile from per-step grounded data
+            profile = self._build_multi_step_profile(grounded, result, constraints, model_type)
+            if profile is None:
+                return result  # missing_required already populated
+            # Use first step's (post-correction) temperature for ComBaseParameters;
+            # the engine iterates the profile steps and uses each step's own temperature.
+            representative_temp = profile.steps[0].temperature_celsius
+        else:
+            # Single-step path
+            temperature = self._get_temperature(grounded, result, constraints, model_type)
+            if temperature is None:
+                result.missing_required.append("temperature")
+                return result
+
+            duration = self._get_duration(grounded, result, model_type)
+            if duration is None:
+                result.missing_required.append("duration")
+                return result
+
+            representative_temp = temperature
+            profile = TimeTemperatureProfile(
+                is_multi_step=False,
+                steps=[
+                    TimeTemperatureStep(
+                        temperature_celsius=temperature,
+                        duration_minutes=duration,
+                        step_order=1,
+                    )
+                ],
+                total_duration_minutes=duration,
+            )
+
         try:
             result.payload = ComBaseExecutionPayload(
                 model_selection=ComBaseModelSelection(
@@ -187,27 +204,17 @@ class StandardizationService:
                     factor4_type=factor4_type,
                 ),
                 parameters=ComBaseParameters(
-                    temperature_celsius=temperature,
+                    temperature_celsius=representative_temp,
                     ph=ph,
                     water_activity=aw,
                     factor4_type=factor4_type,
                     factor4_value=factor4_value,
                 ),
-                time_temperature_profile=TimeTemperatureProfile(
-                    is_multi_step=False,
-                    steps=[
-                        TimeTemperatureStep(
-                            temperature_celsius=temperature,
-                            duration_minutes=duration,
-                            step_order=1,
-                        )
-                    ],
-                    total_duration_minutes=duration,
-                ),
+                time_temperature_profile=profile,
             )
         except ValidationError as e:
             result.warnings.append(f"Failed to build payload: {e}")
-        
+
         return result
     
     # =========================================================================
@@ -482,7 +489,15 @@ class StandardizationService:
             - Generally: neutral pH allows more survival
         """
         ph = grounded.get("ph")
-        
+
+        # Reject physically impossible values (LLM field confusion / regex mismatch)
+        if ph is not None and not (0.0 <= ph <= 14.0):
+            result.warnings.append(
+                f"Extracted ph={ph} is outside valid range [0, 14]; "
+                f"discarding and using neutral default."
+            )
+            ph = None
+
         if ph is None:
             # Apply neutral default (conservative for most scenarios)
             # Neutral pH is near-optimal for pathogen growth and doesn't
@@ -554,7 +569,15 @@ class StandardizationService:
         - Survival: high aw = more survival
         """
         aw = grounded.get("water_activity")
-        
+
+        # Reject physically impossible values (LLM field confusion / regex mismatch)
+        if aw is not None and not (0.0 <= aw <= 1.0):
+            result.warnings.append(
+                f"Extracted water_activity={aw} is outside valid range [0, 1]; "
+                f"discarding and using conservative default."
+            )
+            aw = None
+
         if aw is None:
             # Apply conservative (high) default
             aw = settings.default_water_activity
@@ -593,6 +616,132 @@ class StandardizationService:
             ))
         
         return aw
+
+
+    def _build_multi_step_profile(
+        self,
+        grounded: "GroundedValues",
+        result: StandardizationResult,
+        constraints: "ComBaseModelConstraints | None",
+        model_type: ModelType,
+    ) -> TimeTemperatureProfile | None:
+        """
+        Build a multi-step TimeTemperatureProfile from grounded.steps.
+
+        Applies the same per-value bias corrections as the single-step path:
+        - Temperature: low-confidence bump, then range clamp
+        - Duration: inferred-value margin (+20% growth / -20% inactivation)
+
+        Returns None and populates result.missing_required if any step is
+        missing a duration (temperature falls back to the conservative default).
+        """
+        built_steps: list[TimeTemperatureStep] = []
+        total_duration = 0.0
+
+        # Sort by original step_order so physical sequence is preserved,
+        # then re-number 1, 2, 3 … to satisfy TimeTemperatureProfile's
+        # sequential-order validator (LLM may return gaps like [1, 2, 4]).
+        ordered_steps = sorted(grounded.steps, key=lambda s: s.step_order)
+
+        for new_order, gs in enumerate(ordered_steps, start=1):
+            # --- Temperature ---
+            temp = gs.temperature_celsius
+            if temp is None:
+                # Apply same model-type-aware default as single-step path
+                if self._is_inactivation_model(model_type):
+                    temp = settings.default_temperature_inactivation_conservative_c
+                else:
+                    temp = settings.default_temperature_abuse_c
+                result.bias_corrections.append(BiasCorrection(
+                    bias_type=BiasType.MISSING_VALUE_IMPUTED,
+                    field_name=f"temperature_celsius (step {gs.step_order})",
+                    original_value=None,
+                    corrected_value=temp,
+                    correction_reason=(
+                        f"Step {gs.step_order}: no temperature specified. "
+                        f"Using conservative default {temp}°C."
+                    ),
+                ))
+            elif (
+                gs.temp_provenance is not None
+                and gs.temp_provenance.confidence < self.LOW_CONFIDENCE_THRESHOLD
+            ):
+                original = temp
+                bump = self._get_temperature_bump(model_type)
+                temp = temp + bump
+                direction = "warmer" if bump > 0 else "cooler"
+                result.bias_corrections.append(BiasCorrection(
+                    bias_type=BiasType.OPTIMISTIC_TEMPERATURE,
+                    field_name=f"temperature_celsius (step {gs.step_order})",
+                    original_value=original,
+                    corrected_value=temp,
+                    correction_reason=(
+                        f"Step {gs.step_order}: low confidence "
+                        f"({gs.temp_provenance.confidence:.2f}) temperature. "
+                        f"Adjusted {abs(bump):.1f}°C {direction} for conservative estimate."
+                    ),
+                    correction_magnitude=bump,
+                ))
+
+            if constraints and not constraints.is_temperature_valid(temp):
+                original = temp
+                temp = constraints.clamp_temperature(temp)
+                result.range_clamps.append(RangeClamp(
+                    field_name=f"temperature_celsius (step {gs.step_order})",
+                    original_value=original,
+                    clamped_value=temp,
+                    valid_min=constraints.temp_min,
+                    valid_max=constraints.temp_max,
+                    reason=f"Model constraint for {model_type.value}",
+                ))
+
+            # --- Duration ---
+            dur = gs.duration_minutes
+            if dur is None:
+                result.missing_required.append(f"duration (step {gs.step_order})")
+                return None
+
+            if (
+                gs.dur_provenance is not None
+                and gs.dur_provenance.source == ValueSource.USER_INFERRED
+            ):
+                original = dur
+                margin = self._get_duration_margin(model_type)
+                dur = dur * margin
+                direction_desc = (
+                    f"+{(margin - 1.0) * 100:.0f}%"
+                    if margin > 1.0
+                    else f"-{(1.0 - margin) * 100:.0f}%"
+                )
+                safety_desc = (
+                    "assuming longer exposure (more growth)"
+                    if margin > 1.0
+                    else "assuming shorter cooking (less pathogen kill)"
+                )
+                result.bias_corrections.append(BiasCorrection(
+                    bias_type=BiasType.OPTIMISTIC_DURATION,
+                    field_name=f"duration_minutes (step {gs.step_order})",
+                    original_value=original,
+                    corrected_value=dur,
+                    correction_reason=(
+                        f"Step {gs.step_order}: inferred duration adjusted "
+                        f"{direction_desc} for {model_type.value} model: {safety_desc}."
+                    ),
+                    correction_magnitude=dur - original,
+                ))
+
+            total_duration += dur
+            built_steps.append(TimeTemperatureStep(
+                temperature_celsius=temp,
+                duration_minutes=dur,
+                step_order=new_order,
+            ))
+
+        return TimeTemperatureProfile(
+            is_multi_step=True,
+            steps=built_steps,
+            total_duration_minutes=total_duration,
+        )
 
 
 # =============================================================================

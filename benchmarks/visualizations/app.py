@@ -16,7 +16,11 @@ if str(_PROJECT_ROOT) not in sys.path:
 
 import streamlit as st
 
-from benchmarks.visualizations.lib.data_loader import list_available_runs
+from benchmarks.visualizations.lib.data_loader import (
+    list_available_runs,
+    list_experiments_with_results,
+)
+from benchmarks.visualizations.lib.experiment_runner import humanize_experiment_id
 
 
 def _fmt_run_ts(ts: str) -> str:
@@ -41,27 +45,37 @@ def main():
         "on food safety scenario extraction."
     )
 
-    # Sidebar: run selector for Exp 3.3
-    st.sidebar.divider()
-    st.sidebar.subheader("Exp 3.3 — Results")
+    # Sidebar: per-experiment run selectors (auto-discovered)
     try:
-        runs = list_available_runs("exp_3_3_model_comparison")
+        experiments_with_results = list_experiments_with_results()
     except Exception:
-        runs = []
+        experiments_with_results = []
 
-    if runs:
+    for exp in experiments_with_results:
+        exp_id = exp["experiment_id"]
+        if not exp["has_results"]:
+            st.session_state[f"selected_run:{exp_id}"] = None
+            continue
+
+        runs = list_available_runs(exp_id)
+        if len(runs) < 2:
+            # Only one run — no selector needed, default to latest.
+            st.session_state[f"selected_run:{exp_id}"] = None
+            continue
+
+        st.sidebar.divider()
+        st.sidebar.subheader(humanize_experiment_id(exp_id))
+
         run_labels = ["Latest"] + [r["timestamp"] for r in runs]
         selected = st.sidebar.selectbox(
             "Run",
             options=run_labels,
             format_func=lambda ts: "Latest" if ts == "Latest" else _fmt_run_ts(ts),
-            key="sidebar_run_selector",
+            key=f"sidebar_run_selector_{exp_id}",
         )
-        # Store in session_state so Page 2 reads the same selection.
-        st.session_state["selected_run"] = None if selected == "Latest" else selected
-    else:
-        st.sidebar.caption("No runs yet.")
-        st.session_state["selected_run"] = None  # clear any stale selection
+        st.session_state[f"selected_run:{exp_id}"] = (
+            None if selected == "Latest" else selected
+        )
 
     overview = st.Page("pages/1_overview.py", title="Overview", icon="📊", default=True)
     model_comparison = st.Page(
@@ -70,8 +84,11 @@ def main():
     run_experiments = st.Page(
         "pages/3_run_experiments.py", title="Run Experiments", icon="▶"
     )
+    ph_stochasticity = st.Page(
+        "pages/4_ph_stochasticity.py", title="pH Stochasticity", icon="⚗️"
+    )
 
-    nav = st.navigation([overview, model_comparison, run_experiments])
+    nav = st.navigation([overview, model_comparison, ph_stochasticity, run_experiments])
     # page_link must come after st.navigation() so the target page is registered.
     st.sidebar.page_link(
         "pages/3_run_experiments.py",
