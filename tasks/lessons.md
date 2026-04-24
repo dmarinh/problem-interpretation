@@ -2,9 +2,17 @@
 
 Prevention rules collected after corrections. Newest first.
 
+## 2026-04-21 â€” Ensure models used in type hints are imported
+
+**Context:** `app/core/orchestrator.py` used `"GroundedValues"` in a type hint but did not import it. This caused a "Could not find name" error in static analysis/IDEs, even though it was a quoted forward reference.
+
+**Rule:** Always import classes used in type hints, even if they are referenced as strings (forward references). Quoted strings prevent runtime `NameError` for circular dependencies but do not satisfy static analysis if the name is not in the module's scope.
+
+**Prevention:** Check for missing imports even when using forward references. Align imports with the classes used in methods' signatures.
+
 ---
 
-## 2026-04-16 — Phase 8 smoke-test results and deviations
+## 2026-04-16 â€” Phase 8 smoke-test results and deviations
 
 **Context:** End-to-end smoke test for the benchmark visualization UI
 (`streamlit run benchmarks/visualizations/app.py`).
@@ -18,23 +26,23 @@ Prevention rules collected after corrections. Newest first.
 
 | # | Item | Status |
 |---|------|--------|
-| 1 | App launches without errors | ✅ Verified (syntax clean, imports resolve) |
-| 2 | Model Comparison with no results → friendly message | ✅ Implemented (page 2 shows info + link to runner) |
-| 3 | Run experiment `--runs 1 --models "GPT-4o"` | ⚠ Requires `OPENAI_API_KEY` in `.env` |
-| 4 | Model Comparison shows all sections after run | ❌ Blocked — Phase 4 not yet implemented |
-| 5 | Sort summary table by each numeric column | ❌ Blocked — Phase 4 not yet implemented |
-| 6 | Per-query deep dive; raw JSON expander | ❌ Blocked — Phase 4 not yet implemented |
-| 7 | Overview shows updated "last run" and "best model" | ✅ Implemented (overview scans results dir) |
+| 1 | App launches without errors | âœ… Verified (syntax clean, imports resolve) |
+| 2 | Model Comparison with no results â†’ friendly message | âœ… Implemented (page 2 shows info + link to runner) |
+| 3 | Run experiment `--runs 1 --models "GPT-4o"` | âš  Requires `OPENAI_API_KEY` in `.env` |
+| 4 | Model Comparison shows all sections after run | âŒ Blocked â€” Phase 4 not yet implemented |
+| 5 | Sort summary table by each numeric column | âŒ Blocked â€” Phase 4 not yet implemented |
+| 6 | Per-query deep dive; raw JSON expander | âŒ Blocked â€” Phase 4 not yet implemented |
+| 7 | Overview shows updated "last run" and "best model" | âœ… Implemented (overview scans results dir) |
 
 **Root cause of blocked items:** The implementation sequence skipped Phase 4
-(Model Comparison full page). Phases completed: 0 → 1 → 2 → 3 → 5 → 6 → 7 → 8.
-Phase 4 sections 4a–4k remain as a placeholder stub in
+(Model Comparison full page). Phases completed: 0 â†’ 1 â†’ 2 â†’ 3 â†’ 5 â†’ 6 â†’ 7 â†’ 8.
+Phase 4 sections 4aâ€“4k remain as a placeholder stub in
 `pages/2_model_comparison.py` (currently shows safety-critical banner + info message).
 
 **Follow-ups required before advisory board demo:**
-1. Implement Phase 4 (`pages/2_model_comparison.py`) — sections 4a–4k per
+1. Implement Phase 4 (`pages/2_model_comparison.py`) â€” sections 4aâ€“4k per
    `tasks/todo_visualizations.md`.
-2. Run smoke-test items 4–6 manually after Phase 4 is complete.
+2. Run smoke-test items 4â€“6 manually after Phase 4 is complete.
 3. If `OPENAI_API_KEY` is unavailable, use `GPT-4o-mini` or any model whose
    key is set; update item 3 accordingly.
 
@@ -45,7 +53,7 @@ a final-phase task.
 
 ---
 
-## 2026-04-15 — Safety-critical defaults must fail closed
+## 2026-04-15 â€” Safety-critical defaults must fail closed
 
 **Context:** `benchmarks/visualizations/lib/charts.py::model_type_matrix`
 originally used `q.get("model_type_ok", q["field_scores"]["model_type"])`
@@ -56,7 +64,7 @@ A malformed result lacking `model_type_ok` would silently render a green
 
 **Rule:** For any safety-critical metric (model type classification,
 conservative defaults, safety gates), missing data must default to the
-worst-case interpretation — never borrow a semantically-different field
+worst-case interpretation â€” never borrow a semantically-different field
 as a fallback. Use `.get(key, False)` / the spec's conservative default,
 not `.get(key, some_other_field)`.
 
@@ -70,7 +78,7 @@ field omitted and asserts the failure path is taken.
 
 ---
 
-## 2026-04-15 — Plotly Express `color_discrete_map` keys must be strings
+## 2026-04-15 â€” Plotly Express `color_discrete_map` keys must be strings
 
 **Context:** `cost_vs_accuracy_scatter` passed an integer `tier` column
 to `px.scatter` with an integer-keyed `color_discrete_map`. Plotly

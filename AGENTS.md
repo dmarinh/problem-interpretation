@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
 
 # Predictive Microbiology Translation Module
 
@@ -42,14 +42,9 @@ User Query → Intent → Extraction → Model Type → Grounding (RAG) → Stan
 
 ### Key service responsibilities
 - **SemanticParser** (`app/services/extraction/semantic_parser.py`): LLM + Instructor → `ExtractedScenario`. Free text is allowed here. Populates `time_temperature_steps[]` for multi-step scenarios.
-- **GroundingService** (`app/services/grounding/grounding_service.py`): Resolves `ExtractedScenario` → `GroundedValues`. Uses RAG for food pH/aw; uses `config/rules.py` for linguistic terms ("room temperature" → 25°C). Applies model-type-aware range bound selection. Dispatches to `_ground_multi_step_profile` when `scenario.is_multi_step and scenario.time_temperature_steps` is truthy; falls back to single-step otherwise. Multi-step results land in `grounded.steps` (`GroundedStep` objects), not in the flat key-value store.
-- **StandardizationService** (`app/services/standardization/standardization_service.py`): `GroundedValues` → `ComBaseExecutionPayload`. Applies conservative bias corrections and safety defaults. Dispatches to `_build_multi_step_profile` when `grounded.has_steps`; applies identical per-step temperature defaults, confidence bumps, range clamps, and duration margins as the single-step path. pH/aw/pathogen remain global (per-step environmental conditions are not supported by the ComBase polynomial models).
-- **ComBaseEngine** (`app/engines/combase/engine.py`): Iterates over `TimeTemperatureProfile.steps`, accumulating log growth per step via `GrowthPrediction` objects into `step_predictions[]`.
-
-### API response schema
-`GET /api/v1/translate` returns `TranslationResponse` → `PredictionResult`. The prediction includes:
-- Scalar summary: `temperature_celsius`, `mu_max`, `doubling_time_hours` (first-step values for multi-step scenarios — kept for back-compat)
-- Multi-step breakdown: `is_multi_step: bool`, `steps: list[StepInput]`, `step_predictions: list[StepPrediction]` — always populated (length 1 for single-step). Schemas in `app/api/schemas/translation.py`.
+- **GroundingService** (`app/services/grounding/grounding_service.py`): Resolves `ExtractedScenario` → `GroundedValues`. Uses RAG for food pH/aw; uses `config/rules.py` for linguistic terms ("room temperature" → 25°C). Applies model-type-aware range bound selection. **Does NOT handle multi-step profiles** — only reads `single_step_temperature` / `single_step_duration`.
+- **StandardizationService** (`app/services/standardization/standardization_service.py`): `GroundedValues` → `ComBaseExecutionPayload`. Applies conservative bias corrections and safety defaults. **Builds single-step `TimeTemperatureProfile` only** — multi-step support is not yet implemented.
+- **ComBaseEngine** (`app/engines/combase/engine.py`): Already iterates over `TimeTemperatureProfile.steps`, accumulating log growth per step. Engine is multi-step-ready; the gap is upstream.
 
 ### Model type determination priority (orchestrator.py)
 explicit param → LLM inference (`implied_model_type`) → temperature heuristic (>50°C → thermal) → scenario flags → environmental conditions → default GROWTH
@@ -67,7 +62,7 @@ GROWTH (1), THERMAL_INACTIVATION (2), NON_THERMAL_SURVIVAL (3).
 LiteLLM + Instructor. Model via `LLM_MODEL` env var (default `gpt-4o`). See `.env.example`. Temperature defaults to 0.1 for determinism.
 
 ### RAG data sources
-CSV files in `data/rag/` (food properties, pathogen hazards, aw limits, TCS classification) are the authoritative knowledge base. Ingested into ChromaDB at `data/vector_store/`. CDC 2019 is primary; CDC 2011 is fallback with explicit notation. All changes to these CSVs must be logged in `data/rag/rag_audit_changelog.md` with source citation — values are cross-checked against FDA-PH-2007 and IFT-2003 source PDFs in `data/sources/`.
+CSV files in `data/rag/` (food properties, pathogen hazards, aw limits, TCS classification) are the authoritative knowledge base. Ingested into ChromaDB at `data/vector_store/`. CDC 2019 is primary; CDC 2011 is fallback with explicit notation.
 
 ### Benchmarks
 Each experiment in `benchmarks/experiments/` produces timestamped JSON/CSV under `benchmarks/results/` and optionally logs to MLflow (`mlruns.db`). Results are read by the Streamlit dashboard.
