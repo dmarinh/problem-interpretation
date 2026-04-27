@@ -6,7 +6,6 @@ Supports persistent storage and semantic search with cosine similarity.
 """
 
 from pathlib import Path
-from typing import Any
 
 import chromadb
 from chromadb.config import Settings as ChromaSettings
@@ -221,26 +220,59 @@ class VectorStore:
     def clear(self, doc_type: str | None = None) -> None:
         """
         Clear documents.
-        
+
         Args:
             doc_type: Optional type to clear (None = all documents)
         """
         self._ensure_initialized()
-        
+
         if doc_type is None:
-            # Delete and recreate collection
-            self._client.delete_collection(self.COLLECTION_NAME)
-            embedding_function = ChromaEmbeddingAdapter(self._embedding)
-            self._collection = self._client.get_or_create_collection(
-                name=self.COLLECTION_NAME,
-                embedding_function=embedding_function,
-                metadata={"hnsw:space": self.DISTANCE_METRIC},
-            )
+            # delete_collection() in ChromaDB 1.x removes the collection and
+            # segment records from SQLite but does NOT cascade to the `embeddings`
+            # table (no FK constraint). The surviving metadata segment is reused by
+            # the next get_or_create_collection() call, so old documents accumulate
+            # across re-bootstraps instead of being cleared. Deleting by ID uses
+            # ChromaDB's proper deletion path and correctly purges both the HNSW
+            # vector index and the SQLite metadata rows.
+            results = self._collection.get(include=["metadatas"])
+            if results["ids"]:
+                self._collection.delete(ids=results["ids"])
         else:
-            # Delete by type
             results = self._collection.get(where={"type": doc_type})
             if results["ids"]:
                 self._collection.delete(ids=results["ids"])
+
+
+    def get_documents(
+        self,
+        where: dict | None = None,
+    ) -> list[dict]:
+        """
+        Fetch documents by metadata filter (no embedding/ranking involved).
+
+        Args:
+            where: ChromaDB metadata filter, e.g. {"food_name": "bread white"}
+
+        Returns:
+            List of dicts with 'id', 'document', 'metadata' keys.
+        """
+        self._ensure_initialized()
+        # ChromaDB 1.x requires $and for multi-key filters; a plain dict with
+        # more than one key raises "Expected where to have exactly one operator".
+        if where and len(where) > 1:
+            chroma_where: dict = {"$and": [{k: v} for k, v in where.items()]}
+        else:
+            chroma_where = where  # type: ignore[assignment]
+        results = self._collection.get(where=chroma_where, include=["documents", "metadatas"])
+        output = []
+        if results and results["ids"]:
+            for i, doc_id in enumerate(results["ids"]):
+                output.append({
+                    "id": doc_id,
+                    "document": results["documents"][i] if results["documents"] else "",
+                    "metadata": results["metadatas"][i] if results["metadatas"] else {},
+                })
+        return output
 
 
 # =============================================================================

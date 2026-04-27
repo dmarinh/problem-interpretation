@@ -23,6 +23,7 @@ from pathlib import Path
 # Add project root to path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
+sys.stdout.reconfigure(encoding="utf-8")
 
 from app.rag.vector_store import VectorStore, get_vector_store, reset_vector_store
 from app.rag.ingestion import IngestionPipeline
@@ -69,7 +70,7 @@ def cmd_status(store: VectorStore) -> None:
 def cmd_verify(store: VectorStore) -> int:
     """Run verification queries against the database."""
     print_header("VERIFICATION QUERIES")
-    
+
     test_queries = [
         ("chicken pH", VectorStore.TYPE_FOOD_PROPERTIES, ["chicken"]),
         ("Salmonella water activity", VectorStore.TYPE_PATHOGEN_HAZARDS, ["salmonella"]),
@@ -79,22 +80,22 @@ def cmd_verify(store: VectorStore) -> int:
         ("norovirus foodborne transmission", VectorStore.TYPE_PATHOGEN_HAZARDS, ["norovirus", "foodborne"]),
         ("TCS pH 6.0 water activity 0.95", VectorStore.TYPE_CONSERVATIVE_VALUES, ["tcs", "classification"]),
     ]
-    
+
     passed = 0
     failed = 0
-    
+
     for query, doc_type, expected_terms in test_queries:
         results = store.query(query, n_results=1, doc_type=doc_type)
-        
+
         if not results:
             print(f"\n  ❌ FAIL: '{query}' - No results")
             failed += 1
             continue
-        
+
         top = results[0]
         content_lower = top["document"].lower()
         found_terms = [t for t in expected_terms if t.lower() in content_lower]
-        
+
         if found_terms:
             distance = top.get("distance", 0)
             confidence = 1.0 / (1.0 + distance) if distance else 1.0
@@ -109,19 +110,66 @@ def cmd_verify(store: VectorStore) -> int:
             preview = top["document"][:70] + "..." if len(top["document"]) > 70 else top["document"]
             print(f"     Got: {preview}")
             failed += 1
-    
+
+    # --- Audit-row consistency guard ---
+    # Each entry: (food_name, field, expected_value)
+    # Values corrected in the 2026-04-17 audit (changelog entries #8, #15, #17).
+    # If any mismatch is detected the store contains stale pre-audit data —
+    # run `python -m cli.rag_admin --clear` to re-bootstrap from the CSV.
+    AUDIT_CHECKS = [
+        ("chicken",     "ph_min", "6.2"),
+        ("chicken",     "ph_max", "6.4"),
+        ("bread white", "aw_min", "0.94"),
+        ("bread white", "aw_max", "0.97"),
+        ("maple syrup", "aw_min", "0.85"),
+        ("maple syrup", "aw_max", "0.85"),
+    ]
+
+    print_subheader("AUDIT-ROW CONSISTENCY CHECK")
+
+    for food_name, field, expected in AUDIT_CHECKS:
+        docs = store.get_documents(
+            where={"food_name": food_name, "type": VectorStore.TYPE_FOOD_PROPERTIES}
+        )
+
+        if not docs:
+            print(f"\n  ❌ FAIL: '{food_name}' — not found in store")
+            failed += 1
+            continue
+
+        if len(docs) > 1:
+            ids = [d["id"] for d in docs]
+            print(f"\n  ❌ FAIL: '{food_name}' — {len(docs)} duplicate entries (expected 1)")
+            print(f"     IDs: {ids}")
+            print(f"     Run --clear to re-bootstrap from the CSV.")
+            failed += 1
+            # Still check field value so the user sees both problems at once.
+
+        actual = docs[0]["metadata"].get(field, "")
+        if actual == expected:
+            print(f"\n  ✅ PASS: {food_name}.{field} = {actual}")
+            passed += 1
+        else:
+            print(f"\n  ❌ FAIL: {food_name}.{field}")
+            print(f"     CSV (expected): {expected}")
+            print(f"     RAG (actual):   {actual}")
+            print(f"     Run --clear to re-bootstrap from the CSV.")
+            failed += 1
+
     print_subheader("SUMMARY")
     print(f"\n  Passed: {passed}")
     print(f"  Failed: {failed}")
-    
+
     return 0 if failed == 0 else 1
 
 
 def cmd_clear(store: VectorStore) -> None:
     """Clear the vector store."""
     print_header("CLEARING DATABASE")
+    before = store.get_count()
     store.clear()
-    print("\n  ✅ Database cleared.")
+    after = store.get_count()
+    print(f"\n  ✅ Store wiped: {before} documents deleted, {after} remaining.")
 
 
 def cmd_bootstrap(
@@ -151,8 +199,10 @@ def cmd_bootstrap(
     
     if clear_first:
         print("\n  Clearing existing database...")
+        before = store.get_count()
         store.clear()
-        print("  ✅ Database cleared.")
+        after = store.get_count()
+        print(f"  ✅ Store wiped: {before} documents deleted, {after} remaining.")
     
     # Load source references for citation info
     print("\n  Loading source references...")
@@ -311,6 +361,4 @@ Examples:
 
 
 if __name__ == "__main__":
-    # When run directly (e.g., in debugger), execute with defaults
-    # This makes it easy to debug without command-line args
-    sys.exit(main())
+    sys.exit(cli())
