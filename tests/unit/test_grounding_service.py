@@ -226,7 +226,7 @@ class TestExtractFoodPropertiesPlausibility:
     async def test_aw_200_treated_as_not_found(self, service_no_llm):
         """Regex-extracted aw=200 (from citation) must be discarded as implausible."""
         rag_content = "chicken (poultry): pH range 6.5 to 6.7. Raw chicken [FDA-PH-2007]"
-        props = await service_no_llm._extract_food_properties(rag_content)
+        props, _, _ = await service_no_llm._extract_food_properties(rag_content)
         # pH should be extracted correctly
         assert props.has_ph
         assert props.ph_min == 6.5
@@ -238,7 +238,7 @@ class TestExtractFoodPropertiesPlausibility:
     @pytest.mark.asyncio
     async def test_valid_aw_passes_through(self, service_no_llm):
         """Valid aw value from regex must pass the plausibility filter."""
-        props = await service_no_llm._extract_food_properties(
+        props, _, _ = await service_no_llm._extract_food_properties(
             "fresh poultry: water activity 0.99 to 1.0"
         )
         assert props.has_aw
@@ -260,7 +260,7 @@ class TestExtractFoodPropertiesPlausibility:
         )
         # Content where regex would extract aw=200 (pre-fix it crashed; now
         # the plausibility filter discards it, triggering the LLM fallback)
-        props = await service._extract_food_properties(
+        props, _, _ = await service._extract_food_properties(
             "chicken (poultry): pH range 6.5 to 6.7. Raw chicken [FDA-PH-2007]"
         )
         mock_llm.extract.assert_called_once()
@@ -270,7 +270,7 @@ class TestExtractFoodPropertiesPlausibility:
     @pytest.mark.asyncio
     async def test_ph_out_of_range_discarded(self, service_no_llm):
         """pH > 14 from regex must be discarded as implausible."""
-        props = await service_no_llm._extract_food_properties(
+        props, _, _ = await service_no_llm._extract_food_properties(
             "product: aw 0.95, reference code 200"
         )
         # The "200" near "code" should not be captured as pH (word-boundary fix)
@@ -542,10 +542,10 @@ class TestExtractFoodProperties:
         """Should extract properties using regex."""
         service, _, _ = grounding_service
         
-        props = await service._extract_food_properties(
+        props, _, _ = await service._extract_food_properties(
             "Raw chicken has pH 6.0 and water activity 0.99"
         )
-        
+
         assert props.has_ph
         assert props.has_aw
         assert props.extraction_method == "regex"
@@ -555,10 +555,10 @@ class TestExtractFoodProperties:
         """Should extract range values."""
         service, _, _ = grounding_service
         
-        props = await service._extract_food_properties(
+        props, _, _ = await service._extract_food_properties(
             "Chicken has pH between 5.9 and 6.2"
         )
-        
+
         assert props.has_ph
         assert props.ph_min == 5.9
         assert props.ph_max == 6.2

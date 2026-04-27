@@ -132,6 +132,108 @@ class PredictionResult(BaseModel):
 # RESPONSE
 # =============================================================================
 
+# =============================================================================
+# AUDIT SCHEMA (verbose=true only)
+# =============================================================================
+
+class RunnerUpInfo(BaseModel):
+    """A non-winning retrieval candidate."""
+    doc_id: str | None
+    content_preview: str | None
+    embedding_score: float | None
+    rerank_score: float | None
+
+
+class RetrievalTopMatchInfo(BaseModel):
+    """Full details of the top retrieval hit."""
+    doc_id: str | None
+    embedding_score: float | None
+    rerank_score: float | None
+    retrieved_text: str | None
+    source_ids: list[str]
+    full_citations: dict[str, str]
+
+
+class RetrievalAuditInfo(BaseModel):
+    """Retrieval details for one RAG call."""
+    query: str
+    top_match: RetrievalTopMatchInfo | None
+    runners_up: list[RunnerUpInfo]
+
+
+class ExtractionAuditInfo(BaseModel):
+    """How the numeric value was extracted from retrieved text."""
+    method: str | None
+    raw_match: str | None
+    parsed_range: list[float] | None
+
+
+class StandardizationAuditInfo(BaseModel):
+    """Which standardization rule touched this field, if any."""
+    bias_correction: str | None = Field(
+        description="Correction reason if a bias correction was applied, else null"
+    )
+    range_clamp: str | None = Field(
+        description="Clamp reason if the value was clamped, else null"
+    )
+    default_imputed: str | None = Field(
+        description="Default description if a conservative default was applied, else null"
+    )
+
+
+class FieldAuditEntry(BaseModel):
+    """Complete per-field audit record."""
+    final_value: float | str | None
+    source: str
+    field_confidence: float
+    confidence_derivation: str | None
+    retrieval: RetrievalAuditInfo | None
+    extraction: ExtractionAuditInfo | None
+    standardization: StandardizationAuditInfo | None
+
+
+class ComBaseModelAuditInfo(BaseModel):
+    """Which ComBase model was selected and why."""
+    organism: str
+    model_type: str
+    model_id: int | None
+    coefficients_str: str | None
+    valid_ranges: dict[str, tuple[float, float]] | None
+    selection_reason: str
+
+
+class SystemAuditInfo(BaseModel):
+    """Software and data state at time of prediction."""
+    rag_store_hash: str | None
+    rag_ingested_at: str | None
+    source_csv_audit_date: str | None
+    ptm_version: str | None
+    combase_model_table_hash: str | None
+
+
+class AuditSummary(BaseModel):
+    """
+    Cross-field audit summary.
+
+    Every list field uses ["(none applied)"] when empty — explicit absence
+    is information; an empty list is ambiguous in audit context.
+    """
+    bias_corrections: list[str]
+    range_clamps: list[str]
+    defaults_imputed: list[str]
+    warnings: list[str]
+    overall_confidence: float
+    confidence_formula: str | None
+
+
+class AuditDetail(BaseModel):
+    """Full verbose audit payload, returned only when verbose=true."""
+    field_audit: dict[str, FieldAuditEntry]
+    combase_model: ComBaseModelAuditInfo | None
+    audit: AuditSummary
+    system: SystemAuditInfo | None
+
+
 class TranslationResponse(BaseModel):
     """
     Response from translation endpoint.
@@ -176,6 +278,12 @@ class TranslationResponse(BaseModel):
     error: str | None = Field(
         default=None,
         description="Error message if translation failed",
+    )
+
+    # Full audit detail (only when verbose=true query parameter is set)
+    audit: "AuditDetail | None" = Field(
+        default=None,
+        description="Full per-field audit trail (populated only when verbose=true)",
     )
     
     model_config = {

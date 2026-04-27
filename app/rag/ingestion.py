@@ -4,6 +4,9 @@ Ingestion Pipeline
 Loads documents from files and adds them to the vector store.
 """
 
+import hashlib
+import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 from app.rag.vector_store import VectorStore, get_vector_store
@@ -180,6 +183,50 @@ class IngestionPipeline:
             "results": results,
         }
     
+    def write_manifest(
+        self,
+        data_dir: Path,
+        total_chunks: int,
+    ) -> None:
+        """
+        Write an ingestion manifest to data/vector_store/ingest_manifest.json.
+
+        The manifest is read at request time by the SystemAudit builder so every
+        audit record carries the RAG store fingerprint and ingestion timestamp.
+
+        rag_store_hash is the SHA-256 prefix of the concatenated sorted
+        {path:size:mtime_ns} fingerprints of every CSV in data_dir — a value
+        that changes whenever any source file is modified or replaced.
+        """
+        data_dir = Path(data_dir)
+        manifest_path = Path("data/vector_store/ingest_manifest.json")
+        manifest_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Fingerprint: sorted csv files by name → sha256 of path+size+mtime
+        csv_files = sorted(data_dir.glob("*.csv"))
+        fingerprint_input = "".join(
+            f"{p.name}:{p.stat().st_size}:{p.stat().st_mtime_ns}"
+            for p in csv_files
+        )
+        rag_store_hash = hashlib.sha256(fingerprint_input.encode()).hexdigest()[:16]
+
+        # Source CSV audit date: mtime of the audit changelog
+        changelog = data_dir / "rag_audit_changelog.md"
+        if changelog.exists():
+            source_csv_audit_date = datetime.fromtimestamp(
+                changelog.stat().st_mtime, tz=timezone.utc
+            ).isoformat()
+        else:
+            source_csv_audit_date = None
+
+        manifest = {
+            "ingested_at": datetime.now(tz=timezone.utc).isoformat(),
+            "rag_store_hash": rag_store_hash,
+            "source_csv_audit_date": source_csv_audit_date,
+            "total_chunks": total_chunks,
+        }
+        manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
     def ingest_text(
         self,
         text: str,

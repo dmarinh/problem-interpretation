@@ -233,7 +233,11 @@ def cmd_bootstrap(
     print_subheader("LOAD SUMMARY")
     print(f"\n  Total records processed: {total_records}")
     print(f"  Total chunks ingested:   {total_chunks}")
-    
+
+    # Write manifest so SystemAudit can stamp every future request
+    pipeline.write_manifest(data_dir, total_chunks)
+    print("\n  ✅ Ingestion manifest written to data/vector_store/ingest_manifest.json")
+
     # Show status
     cmd_status(store)
     

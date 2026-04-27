@@ -17,12 +17,47 @@ Sources:
 """
 
 import csv
+import re
+from functools import lru_cache
 from pathlib import Path
 from dataclasses import dataclass
 from typing import Optional
 
 from app.rag.vector_store import VectorStore
 from app.rag.ingestion import IngestionPipeline
+
+# Path to the authoritative source ID registry, relative to this file.
+_SOURCE_REF_CSV = Path(__file__).parent.parent.parent.parent / "data" / "sources" / "source_references.csv"
+
+# Two patterns that appear in notes fields when a row's values come from two sources
+# (changelog entries #14-17).  Bracket style: [IFT-2003-T31].
+# Prose style: "aw 0.94-0.97 from IFT-2003-T31 Table 3-1".
+_BRACKET_RE = re.compile(r'\[([A-Z]{2,}-\d{4}[A-Z0-9\-]*)\]')
+_PROSE_RE = re.compile(r'\bfrom\s+([A-Z]{2,}-\d{4}[A-Z0-9\-]*)')
+
+
+@lru_cache(maxsize=1)
+def _valid_source_ids() -> frozenset:
+    """Return the set of registered source IDs, loaded once per process."""
+    if not _SOURCE_REF_CSV.exists():
+        return frozenset()
+    with open(_SOURCE_REF_CSV, encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        return frozenset(row["source_id"] for row in reader if row.get("source_id"))
+
+
+def _parse_extra_source_ids(notes: str, valid_ids: frozenset) -> list[str]:
+    """
+    Extract additional source IDs embedded in a notes field and validate against
+    the registry.  Returns only IDs that appear in valid_ids so table references
+    like "Table 3-1" are not misidentified as source identifiers.
+    """
+    candidates: set[str] = set()
+    for m in _BRACKET_RE.finditer(notes):
+        candidates.add(m.group(1))
+    for m in _PROSE_RE.finditer(notes):
+        candidates.add(m.group(1))
+    return [sid for sid in candidates if sid in valid_ids]
 
 
 @dataclass
@@ -80,11 +115,20 @@ def load_food_properties(pipeline: IngestionPipeline, data_dir: Path) -> LoadRes
             
             doc = ": ".join(parts[:2]) + ". " + ". ".join(parts[2:]) if len(parts) > 2 else ": ".join(parts)
             
-            # Append source tag for LLM visibility
+            # Merge column source_id with any secondary sources cited in notes.
+            # Some rows carry values from two references but the schema has one
+            # source_id column; the secondary appears in notes as prose or bracket
+            # style (changelog entries #14-17).  Stored comma-separated so the
+            # grounding service, which already splits on comma, picks them both up.
             source_id = row.get("source_id", "")
-            if source_id:
-                doc += f" [{source_id}]"
-            
+            notes_text = row.get("notes", "")
+            extra = _parse_extra_source_ids(notes_text, _valid_source_ids())
+            all_source_ids = list(dict.fromkeys(([source_id] if source_id else []) + extra))
+            merged_source_id = ",".join(all_source_ids)
+
+            for sid in all_source_ids:
+                doc += f" [{sid}]"
+
             result = pipeline.ingest_text(
                 text=doc,
                 doc_type=VectorStore.TYPE_FOOD_PROPERTIES,
@@ -95,7 +139,7 @@ def load_food_properties(pipeline: IngestionPipeline, data_dir: Path) -> LoadRes
                     "ph_max": row.get("ph_max", ""),
                     "aw_min": row.get("aw_min", ""),
                     "aw_max": row.get("aw_max", ""),
-                    "source_id": source_id,
+                    "source_id": merged_source_id,
                 },
                 source=f"food_properties:{row['food_name']}",
             )

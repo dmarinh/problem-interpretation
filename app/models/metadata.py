@@ -43,7 +43,7 @@ class ValueSource(str, Enum):
 class ValueProvenance(BaseModel):
     """
     Tracks the origin and confidence of a single value.
-    
+
     Attached to any value that flows through the pipeline.
     """
     source: ValueSource = Field(
@@ -69,6 +69,23 @@ class ValueProvenance(BaseModel):
     transformation_applied: str | None = Field(
         default=None,
         description="Description of any transformation applied"
+    )
+    # Audit trail extensions
+    extraction_method: str | None = Field(
+        default=None,
+        description="How the value was extracted: 'regex', 'llm', 'regex+llm', 'rule', 'direct'"
+    )
+    raw_match: str | None = Field(
+        default=None,
+        description="Raw text matched before parsing (e.g. '0.94–0.97')"
+    )
+    parsed_range: list[float] | None = Field(
+        default=None,
+        description="[min, max] when value was extracted from a range"
+    )
+    confidence_derivation: str | None = Field(
+        default=None,
+        description="Human-readable explanation of how the confidence score was computed"
     )
 
 
@@ -129,6 +146,23 @@ class RangeClamp(BaseModel):
 # RETRIEVAL METADATA
 # =============================================================================
 
+class RunnerUpResult(BaseModel):
+    """A non-winning retrieval candidate kept for audit traceability."""
+    doc_id: str | None = Field(default=None, description="Document ID")
+    content_preview: str | None = Field(
+        default=None,
+        description="First ~120 characters of retrieved text"
+    )
+    embedding_score: float | None = Field(
+        default=None,
+        description="Cosine similarity score (1 − ChromaDB distance)"
+    )
+    rerank_score: float | None = Field(
+        default=None,
+        description="Reranker score if a reranker was applied"
+    )
+
+
 class RetrievalResult(BaseModel):
     """
     Metadata about a RAG retrieval operation.
@@ -159,6 +193,27 @@ class RetrievalResult(BaseModel):
     fallback_used: bool = Field(
         default=False,
         description="Whether a fallback/default was used due to low confidence"
+    )
+    # Audit trail extensions
+    embedding_score: float | None = Field(
+        default=None,
+        description="Cosine similarity of the top result (1 − ChromaDB distance)"
+    )
+    rerank_score: float | None = Field(
+        default=None,
+        description="Reranker score of the top result (distinct from embedding_score)"
+    )
+    source_ids: list[str] = Field(
+        default_factory=list,
+        description="Source IDs extracted from the retrieved document metadata"
+    )
+    full_citations: dict[str, str] = Field(
+        default_factory=dict,
+        description="Formatted bibliographic citations keyed by source_id"
+    )
+    runners_up: list[RunnerUpResult] = Field(
+        default_factory=list,
+        description="Top non-winning retrieval candidates (up to 3)"
     )
 
 
@@ -195,6 +250,63 @@ class ClarificationRecord(BaseModel):
     timestamp: datetime = Field(
         default_factory=datetime.utcnow,
         description="When this clarification occurred"
+    )
+
+
+# =============================================================================
+# COMBASE MODEL AUDIT
+# =============================================================================
+
+class ComBaseModelAudit(BaseModel):
+    """
+    Records which ComBase model was selected and why, for regulatory traceability.
+    """
+    organism: str = Field(description="Organism name used in the model lookup")
+    model_type: str = Field(description="Model type selected (growth / thermal_inactivation / non_thermal_survival)")
+    model_id: int | None = Field(default=None, description="ComBase ModelID (1=Growth, 2=Thermal, 3=Non-thermal)")
+    coefficients_str: str | None = Field(
+        default=None,
+        description="Semicolon-separated polynomial coefficients for the selected model"
+    )
+    valid_ranges: dict[str, tuple[float, float]] | None = Field(
+        default=None,
+        description="Valid input ranges for the model: {field: (min, max)}"
+    )
+    selection_reason: str = Field(
+        description="One-line explanation of why this model type was chosen"
+    )
+
+
+# =============================================================================
+# SYSTEM AUDIT
+# =============================================================================
+
+class SystemAudit(BaseModel):
+    """
+    Immutable facts about the PTM instance that produced this result.
+
+    Allows a regulator to reconstruct the exact software + data state
+    without re-running the system.
+    """
+    rag_store_hash: str | None = Field(
+        default=None,
+        description="SHA-256 prefix of sorted ChromaDB document IDs at ingestion time"
+    )
+    rag_ingested_at: str | None = Field(
+        default=None,
+        description="ISO-8601 timestamp when the RAG store was last ingested"
+    )
+    source_csv_audit_date: str | None = Field(
+        default=None,
+        description="Modification date of data/rag/rag_audit_changelog.md at ingestion time"
+    )
+    ptm_version: str | None = Field(
+        default=None,
+        description="Git SHA (short) of the running PTM codebase"
+    )
+    combase_model_table_hash: str | None = Field(
+        default=None,
+        description="SHA-256 prefix of data/combase_models.csv"
     )
 
 
@@ -266,6 +378,12 @@ class InterpretationMetadata(BaseModel):
         description="Aggregate confidence in the interpretation"
     )
     
+    # Defaults imputed by standardization (forwarded from StandardizationResult)
+    defaults_imputed: list[str] = Field(
+        default_factory=list,
+        description="Fields that had conservative defaults applied (e.g. 'pH (defaulted to 7.0)')"
+    )
+
     # Warnings and notes
     warnings: list[str] = Field(
         default_factory=list,
@@ -274,6 +392,22 @@ class InterpretationMetadata(BaseModel):
     notes: list[str] = Field(
         default_factory=list,
         description="Additional notes for transparency"
+    )
+
+    # Top-level audit blocks (populated by orchestrator)
+    combase_model: ComBaseModelAudit | None = Field(
+        default=None,
+        description="Which ComBase model was selected and why"
+    )
+    system: SystemAudit | None = Field(
+        default=None,
+        description="PTM software and data state at time of prediction"
+    )
+
+    # Confidence formula (set by compute_overall_confidence)
+    confidence_formula: str | None = Field(
+        default=None,
+        description="Human-readable derivation of overall_confidence"
     )
     
     def add_provenance(self, field_name: str, provenance: ValueProvenance) -> None:
@@ -299,35 +433,50 @@ class InterpretationMetadata(BaseModel):
     def add_warning(self, warning: str) -> None:
         """Add a warning."""
         self.warnings.append(warning)
+
+    def add_default_imputed(self, description: str) -> None:
+        """Record a conservative default that was applied."""
+        self.defaults_imputed.append(description)
     
     def compute_overall_confidence(self) -> float:
         """
         Compute aggregate confidence from all sources.
-        
+
         Uses minimum confidence across all provenance records,
         with penalties for bias corrections and low-confidence retrievals.
+        Also populates confidence_formula with a human-readable derivation.
         """
         if not self.provenance:
-            return 1.0
-        
-        # Start with minimum field confidence
-        min_confidence = min(p.confidence for p in self.provenance.values())
-        
-        # Penalty for each bias correction (5% each)
-        bias_penalty = len(self.bias_corrections) * 0.05
-        
-        # Penalty for each range clamp (10% each)
-        clamp_penalty = len(self.range_clamps) * 0.10
-        
-        # Penalty for low-confidence retrievals
+            self.overall_confidence = 1.0
+            self.confidence_formula = "1.0 (no grounded fields)"
+            return self.overall_confidence
+
+        field_confs = {k: p.confidence for k, p in self.provenance.items()}
+        min_confidence = min(field_confs.values())
+
+        n_bias = len(self.bias_corrections)
+        bias_penalty = n_bias * 0.05
+
+        n_clamp = len(self.range_clamps)
+        clamp_penalty = n_clamp * 0.10
+
         low_conf_retrievals = sum(
-            1 for r in self.retrievals 
+            1 for r in self.retrievals
             if r.confidence_level in (RetrievalConfidenceLevel.LOW, RetrievalConfidenceLevel.FAILED)
         )
         retrieval_penalty = low_conf_retrievals * 0.10
-        
-        # Compute final confidence
+
         overall = min_confidence - bias_penalty - clamp_penalty - retrieval_penalty
         self.overall_confidence = max(0.0, min(1.0, overall))
-        
+
+        # Build human-readable formula
+        confs_str = ", ".join(f"{v:.2f}" for v in field_confs.values())
+        self.confidence_formula = (
+            f"min({confs_str})"
+            f" − 0.05·{n_bias} (bias)"
+            f" − 0.10·{n_clamp} (clamps)"
+            f" − 0.10·{low_conf_retrievals} (low-conf retrievals)"
+            f" = {self.overall_confidence:.2f}"
+        )
+
         return self.overall_confidence

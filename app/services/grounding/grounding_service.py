@@ -40,8 +40,9 @@ from app.models.extraction import (
     ExtractedTemperature,
     ExtractedDuration,
 )
-from app.models.metadata import ValueProvenance, ValueSource, RetrievalResult
-from app.rag.retrieval import RetrievalService, get_retrieval_service
+from app.models.metadata import ValueProvenance, ValueSource, RetrievalResult, RunnerUpResult
+from app.rag.retrieval import RetrievalService, get_retrieval_service, RetrievalResponse
+from app.services.audit.citations import get_full_citations
 from app.services.llm.client import LLMClient, get_llm_client
 
 logger = logging.getLogger(__name__)
@@ -70,6 +71,82 @@ class ExtractedNumericValue:
     range_min: float | None = None
     range_max: float | None = None
     original_text: str | None = None
+
+
+def _to_runner_up(r) -> RunnerUpResult:
+    """Convert a rag-layer RetrievalResult to a metadata RunnerUpResult."""
+    emb = (1.0 - r.distance) if r.distance is not None else None
+    return RunnerUpResult(
+        doc_id=r.doc_id,
+        content_preview=r.content[:120] if r.content else None,
+        embedding_score=round(emb, 4) if emb is not None else None,
+        rerank_score=round(r.rerank_score, 4) if r.rerank_score is not None else None,
+    )
+
+
+def _build_retrieval_metadata(response: RetrievalResponse) -> RetrievalResult:
+    """
+    Build a metadata RetrievalResult from a rag-layer RetrievalResponse.
+
+    Captures embedding/rerank scores, source_ids, full citations, and
+    runners-up from the full result list rather than only the top hit.
+
+    All attribute reads are guarded with isinstance checks because tests
+    supply MagicMock objects that satisfy the duck-type interface but carry
+    non-numeric values for optional fields.
+    """
+    top = response.results[0] if response.results else None
+
+    embedding_score: float | None = None
+    rerank_score: float | None = None
+    source_ids: list[str] = []
+    full_citations: dict[str, str] = {}
+    runners_up: list[RunnerUpResult] = []
+
+    if top:
+        dist = top.distance
+        if isinstance(dist, (int, float)):
+            embedding_score = round(1.0 - dist, 4)
+        rr = top.rerank_score
+        if isinstance(rr, (int, float)):
+            rerank_score = round(rr, 4)
+        meta = top.metadata
+        raw_sid = meta.get("source_id", "") if isinstance(meta, dict) else ""
+        raw_sid = raw_sid or ""
+        source_ids = [s.strip() for s in raw_sid.split(",") if s.strip()]
+        full_citations = get_full_citations(source_ids)
+        runners_up = [_to_runner_up(r) for r in response.results[1:4]]
+
+    query = response.query if isinstance(response.query, str) else ""
+    conf_level = top.confidence_level if top else RetrievalConfidenceLevel.FAILED
+    conf_score = top.confidence if isinstance(getattr(top, "confidence", None), float) else 0.0
+
+    return RetrievalResult(
+        query=query,
+        confidence_level=conf_level,
+        confidence_score=conf_score,
+        source_document=top.source if top else None,
+        chunk_id=top.doc_id if top else None,
+        retrieved_text=top.content if top else None,
+        fallback_used=not response.has_confident_result,
+        embedding_score=embedding_score,
+        rerank_score=rerank_score,
+        source_ids=source_ids,
+        full_citations=full_citations,
+        runners_up=runners_up,
+    )
+
+
+def _rag_conf_derivation(score: float, emb: float | None, rr: float | None) -> str:
+    """
+    Build a human-readable confidence derivation string for a RAG-retrieved value.
+    """
+    parts = [f"retrieval_score {score:.2f}"]
+    if emb is not None:
+        parts.append(f"embedding {emb:.2f}")
+    if rr is not None:
+        parts.append(f"rerank {rr:.2f}")
+    return "; ".join(parts)
 
 
 @dataclass
@@ -235,6 +312,8 @@ class GroundingService:
                     source=ValueSource.USER_EXPLICIT,
                     confidence=0.90,
                     original_text=scenario.pathogen_mentioned,
+                    extraction_method="direct",
+                    confidence_derivation="fixed 0.90 (user-stated value)",
                 )
         
         # Step 3: RAG for food properties - only if pH or aw still needed
@@ -331,6 +410,8 @@ class GroundingService:
         These are values the user directly stated (e.g., "pH 6.5").
         They have the highest priority and confidence (0.90).
         """
+        _EXPLICIT_DERIVATION = "fixed 0.90 (user-stated value)"
+
         # pH
         if conditions.ph_value is not None:
             if 0.0 <= conditions.ph_value <= 14.0:
@@ -339,13 +420,15 @@ class GroundingService:
                     conditions.ph_value,
                     source=ValueSource.USER_EXPLICIT,
                     confidence=0.90,
+                    extraction_method="direct",
+                    confidence_derivation=_EXPLICIT_DERIVATION,
                 )
             else:
                 grounded.warnings.append(
                     f"Ignoring extracted ph_value={conditions.ph_value} "
                     f"(must be 0–14; likely LLM field confusion)"
                 )
-        
+
         # Water activity
         if conditions.water_activity is not None:
             if 0.0 <= conditions.water_activity <= 1.0:
@@ -354,22 +437,28 @@ class GroundingService:
                     conditions.water_activity,
                     source=ValueSource.USER_EXPLICIT,
                     confidence=0.90,
+                    extraction_method="direct",
+                    confidence_derivation=_EXPLICIT_DERIVATION,
                 )
             else:
                 grounded.warnings.append(
                     f"Ignoring extracted water_activity={conditions.water_activity} "
                     f"(must be 0–1; likely LLM field confusion)"
                 )
-        
+
         # Other conditions (these don't require range selection)
         if conditions.co2_percent is not None:
-            grounded.set("co2_percent", conditions.co2_percent, ValueSource.USER_EXPLICIT, 0.90)
+            grounded.set("co2_percent", conditions.co2_percent, ValueSource.USER_EXPLICIT, 0.90,
+                         extraction_method="direct", confidence_derivation=_EXPLICIT_DERIVATION)
         if conditions.nitrite_ppm is not None:
-            grounded.set("nitrite_ppm", conditions.nitrite_ppm, ValueSource.USER_EXPLICIT, 0.90)
+            grounded.set("nitrite_ppm", conditions.nitrite_ppm, ValueSource.USER_EXPLICIT, 0.90,
+                         extraction_method="direct", confidence_derivation=_EXPLICIT_DERIVATION)
         if conditions.lactic_acid_ppm is not None:
-            grounded.set("lactic_acid_ppm", conditions.lactic_acid_ppm, ValueSource.USER_EXPLICIT, 0.90)
+            grounded.set("lactic_acid_ppm", conditions.lactic_acid_ppm, ValueSource.USER_EXPLICIT, 0.90,
+                         extraction_method="direct", confidence_derivation=_EXPLICIT_DERIVATION)
         if conditions.acetic_acid_ppm is not None:
-            grounded.set("acetic_acid_ppm", conditions.acetic_acid_ppm, ValueSource.USER_EXPLICIT, 0.90)
+            grounded.set("acetic_acid_ppm", conditions.acetic_acid_ppm, ValueSource.USER_EXPLICIT, 0.90,
+                         extraction_method="direct", confidence_derivation=_EXPLICIT_DERIVATION)
     
     # =========================================================================
     # RAG RETRIEVAL WITH HYBRID EXTRACTION
@@ -392,33 +481,10 @@ class GroundingService:
             self._retrieval.query_food_properties, food_description
         )
 
-        # Record retrieval attempt
-        retrieval_result = RetrievalResult(
-            query=f"{food_description} pH water activity",
-            confidence_level=(
-                response.results[0].confidence_level
-                if response.results
-                else RetrievalConfidenceLevel.FAILED
-            ),
-            confidence_score=(
-                response.results[0].confidence
-                if response.results
-                else 0.0
-            ),
-            source_document=(
-                response.results[0].source
-                if response.results
-                else None
-            ),
-            retrieved_text=(
-                response.results[0].content
-                if response.results
-                else None
-            ),
-            fallback_used=not response.has_confident_result,
-        )
-        grounded.retrievals.append(retrieval_result)
-        
+        # Build and record enriched retrieval metadata
+        retrieval_meta = _build_retrieval_metadata(response)
+        grounded.retrievals.append(retrieval_meta)
+
         if not response.has_confident_result:
             if not grounded.has("ph"):
                 grounded.warnings.append(
@@ -429,47 +495,53 @@ class GroundingService:
                     f"Could not retrieve water activity for '{food_description}' from knowledge base"
                 )
             return
-        
-        content = response.top_result.content
-        
-        # Extract properties using hybrid approach
-        props = await self._extract_food_properties(content)
-        
+
+        top = response.top_result
+        content = top.content
+        emb = retrieval_meta.embedding_score
+        rr = retrieval_meta.rerank_score
+
+        # Extract properties using hybrid approach (returns props + raw match strings)
+        props, ph_raw_match, aw_raw_match = await self._extract_food_properties(content)
+
         # Set pH if found and not already set
         if not grounded.has("ph") and props.has_ph:
             if props.ph_value is not None:
-                # Single value
                 grounded.set(
                     "ph",
                     props.ph_value,
                     source=ValueSource.RAG_RETRIEVAL,
-                    confidence=response.top_result.confidence,
-                    retrieval_source=response.top_result.doc_id,
+                    confidence=top.confidence,
+                    retrieval_source=top.doc_id,
                     original_text=content,
                     transformation_applied=f"Extracted via {props.extraction_method}",
+                    extraction_method=props.extraction_method,
+                    raw_match=ph_raw_match,
+                    confidence_derivation=_rag_conf_derivation(top.confidence, emb, rr),
                 )
             elif props.ph_min is not None and props.ph_max is not None:
-                # Range - select bound based on model type
-                # For pH: higher pH is closer to neutral, which is better for growth
-                # So for growth models, we use upper bound (more neutral = more growth)
-                # For inactivation, lower pH can be more protective, so we use
-                # the model-aware selection
+                # Range — select bound based on model type (conservative direction)
                 value, transformation = self._select_range_bound(
-                    props.ph_min,
-                    props.ph_max,
-                    model_type,
-                    "ph",
+                    props.ph_min, props.ph_max, model_type, "ph",
                 )
+                conf = top.confidence * 0.9
                 grounded.set(
                     "ph",
                     value,
                     source=ValueSource.RAG_RETRIEVAL,
-                    confidence=response.top_result.confidence * 0.9,
-                    retrieval_source=response.top_result.doc_id,
+                    confidence=conf,
+                    retrieval_source=top.doc_id,
                     original_text=content,
                     transformation_applied=f"{transformation} ({props.extraction_method})",
+                    extraction_method=props.extraction_method,
+                    raw_match=ph_raw_match,
+                    parsed_range=[props.ph_min, props.ph_max],
+                    confidence_derivation=(
+                        f"{top.confidence:.2f} × 0.9 (range uncertainty) = {conf:.2f}; "
+                        + _rag_conf_derivation(top.confidence, emb, rr)
+                    ),
                 )
-        
+
         # Set water activity if found and not already set
         if not grounded.has("water_activity") and props.has_aw:
             if props.aw_value is not None:
@@ -478,10 +550,13 @@ class GroundingService:
                         "water_activity",
                         props.aw_value,
                         source=ValueSource.RAG_RETRIEVAL,
-                        confidence=response.top_result.confidence,
-                        retrieval_source=response.top_result.doc_id,
+                        confidence=top.confidence,
+                        retrieval_source=top.doc_id,
                         original_text=content,
                         transformation_applied=f"Extracted via {props.extraction_method}",
+                        extraction_method=props.extraction_method,
+                        raw_match=aw_raw_match,
+                        confidence_derivation=_rag_conf_derivation(top.confidence, emb, rr),
                     )
                 else:
                     grounded.warnings.append(
@@ -489,34 +564,48 @@ class GroundingService:
                         f"(must be 0–1; regex/LLM extraction error)"
                     )
             elif props.aw_min is not None and props.aw_max is not None:
-                # Range - higher aw = more water = more growth/survival
                 value, transformation = self._select_range_bound(
-                    props.aw_min,
-                    props.aw_max,
-                    model_type,
-                    "water_activity",
+                    props.aw_min, props.aw_max, model_type, "water_activity",
                 )
+                conf = top.confidence * 0.9
                 grounded.set(
                     "water_activity",
                     value,
                     source=ValueSource.RAG_RETRIEVAL,
-                    confidence=response.top_result.confidence * 0.9,
-                    retrieval_source=response.top_result.doc_id,
+                    confidence=conf,
+                    retrieval_source=top.doc_id,
                     original_text=content,
                     transformation_applied=f"{transformation} ({props.extraction_method})",
+                    extraction_method=props.extraction_method,
+                    raw_match=aw_raw_match,
+                    parsed_range=[props.aw_min, props.aw_max],
+                    confidence_derivation=(
+                        f"{top.confidence:.2f} × 0.9 (range uncertainty) = {conf:.2f}; "
+                        + _rag_conf_derivation(top.confidence, emb, rr)
+                    ),
                 )
     
-    async def _extract_food_properties(self, text: str) -> ExtractedFoodProperties:
+    async def _extract_food_properties(
+        self, text: str
+    ) -> tuple[ExtractedFoodProperties, str | None, str | None]:
         """
         Extract food properties using hybrid approach.
-        
+
+        Returns (props, ph_raw_match, aw_raw_match) where the raw match strings
+        are the text fragments matched by regex before numeric parsing.  When a
+        value was filled by the LLM fallback the corresponding raw_match is None.
+
         1. Try regex extraction (fast, free)
         2. Fall back to LLM if regex fails and LLM enabled
         """
-        # Try regex first
+        # Try regex first; capture raw match text before validation
         ph = self._extract_numeric_value(text, ["ph"])
         aw = self._extract_numeric_value(text, ["water activity", "aw"])
-        
+
+        # Raw match strings from the regex pass (None if regex found nothing)
+        ph_raw = ph.original_text
+        aw_raw = aw.original_text
+
         # Build result from regex.
         # ph_max/aw_max must only be set when is_range=True; setting them for
         # single values would trigger the range-selection branch downstream with
@@ -539,33 +628,38 @@ class GroundingService:
             aw_max=_valid_aw(aw.range_max) if aw.is_range else None,
             extraction_method="regex",
         )
-        
-        # If both found with regex, return
+
+        # If both found with regex, return immediately
         if props.has_ph and props.has_aw:
-            return props
-        
+            return props, ph_raw, aw_raw
+
         # Fall back to LLM if enabled and regex missed something
         if self._use_llm_extraction and (not props.has_ph or not props.has_aw):
             try:
                 llm_props = await self._extract_food_properties_llm(text)
-                
-                # Merge: prefer regex results, fill gaps with LLM
-                return ExtractedFoodProperties(
+                method = "regex+llm" if (props.has_ph or props.has_aw) else "llm"
+                # Fields filled by LLM have no raw_match
+                if not props.has_ph and llm_props.has_ph:
+                    ph_raw = None
+                if not props.has_aw and llm_props.has_aw:
+                    aw_raw = None
+                merged = ExtractedFoodProperties(
                     ph_value=props.ph_value or llm_props.ph_value,
                     ph_min=props.ph_min or llm_props.ph_min,
                     ph_max=props.ph_max or llm_props.ph_max,
                     aw_value=props.aw_value or llm_props.aw_value,
                     aw_min=props.aw_min or llm_props.aw_min,
                     aw_max=props.aw_max or llm_props.aw_max,
-                    extraction_method="regex+llm" if (props.has_ph or props.has_aw) else "llm",
+                    extraction_method=method,
                 )
+                return merged, ph_raw, aw_raw
             except Exception as exc:
                 # LLM failed — log and fall back to regex results
                 logger.warning(
                     "LLM food property extraction failed: %s", exc, exc_info=True
                 )
-        
-        return props
+
+        return props, ph_raw, aw_raw
     
     async def _extract_food_properties_llm(self, text: str) -> ExtractedFoodProperties:
         """Extract food properties using LLM."""
@@ -677,42 +771,26 @@ class GroundingService:
             self._retrieval.query_pathogen_hazards, food_description
         )
 
-        retrieval_result = RetrievalResult(
-            query=f"{food_description} pathogen hazard",
-            confidence_level=(
-                response.results[0].confidence_level
-                if response.results
-                else RetrievalConfidenceLevel.FAILED
-            ),
-            confidence_score=(
-                response.results[0].confidence
-                if response.results
-                else 0.0
-            ),
-            source_document=(
-                response.results[0].source
-                if response.results
-                else None
-            ),
-            retrieved_text=(
-                response.results[0].content
-                if response.results
-                else None
-            ),
-            fallback_used=not response.has_confident_result,
-        )
-        grounded.retrievals.append(retrieval_result)
-        
+        retrieval_meta = _build_retrieval_metadata(response)
+        grounded.retrievals.append(retrieval_meta)
+
         if response.has_confident_result:
-            organism = ComBaseOrganism.from_text(response.top_result.content)
+            top = response.top_result
+            organism = ComBaseOrganism.from_text(top.content)
             if organism:
                 grounded.set(
                     "organism",
                     organism,
                     source=ValueSource.RAG_RETRIEVAL,
-                    confidence=response.top_result.confidence,
-                    retrieval_source=response.top_result.doc_id,
-                    original_text=response.top_result.content,
+                    confidence=top.confidence,
+                    retrieval_source=top.doc_id,
+                    original_text=top.content,
+                    extraction_method="direct",
+                    confidence_derivation=_rag_conf_derivation(
+                        top.confidence,
+                        retrieval_meta.embedding_score,
+                        retrieval_meta.rerank_score,
+                    ),
                 )
     
     # =========================================================================
@@ -738,6 +816,8 @@ class GroundingService:
             return temp.value_celsius, ValueProvenance(
                 source=ValueSource.USER_EXPLICIT,
                 confidence=0.90,
+                extraction_method="direct",
+                confidence_derivation="fixed 0.90 (user-stated value)",
             )
 
         if temp.is_range and temp.range_min_celsius is not None and temp.range_max_celsius is not None:
@@ -751,6 +831,12 @@ class GroundingService:
                 source=ValueSource.USER_INFERRED,
                 confidence=0.80,
                 transformation_applied=transformation,
+                extraction_method="direct",
+                parsed_range=[temp.range_min_celsius, temp.range_max_celsius],
+                confidence_derivation=(
+                    f"fixed 0.80 (range [{temp.range_min_celsius}, {temp.range_max_celsius}]"
+                    f" → selected {value}°C)"
+                ),
             )
 
         if temp.description:
@@ -761,6 +847,11 @@ class GroundingService:
                     confidence=rule.confidence,
                     original_text=temp.description,
                     transformation_applied=f"Interpreted as {rule.value}°C ({rule.notes})",
+                    extraction_method="rule",
+                    confidence_derivation=(
+                        f"rule confidence {rule.confidence:.2f}"
+                        f" ('{temp.description}' → {rule.value}°C)"
+                    ),
                 )
 
         return None, None
@@ -784,6 +875,8 @@ class GroundingService:
             return dur.value_minutes, ValueProvenance(
                 source=ValueSource.USER_EXPLICIT,
                 confidence=0.90,
+                extraction_method="direct",
+                confidence_derivation="fixed 0.90 (user-stated value)",
             )
 
         if dur.range_min_minutes is not None and dur.range_max_minutes is not None:
@@ -797,6 +890,12 @@ class GroundingService:
                 source=ValueSource.USER_INFERRED,
                 confidence=0.80,
                 transformation_applied=transformation,
+                extraction_method="direct",
+                parsed_range=[dur.range_min_minutes, dur.range_max_minutes],
+                confidence_derivation=(
+                    f"fixed 0.80 (range [{dur.range_min_minutes}, {dur.range_max_minutes}]"
+                    f" → selected {value} min)"
+                ),
             )
 
         if dur.description:
@@ -807,6 +906,11 @@ class GroundingService:
                     confidence=rule.confidence,
                     original_text=dur.description,
                     transformation_applied=f"Interpreted as {rule.value} min ({rule.notes})",
+                    extraction_method="rule",
+                    confidence_derivation=(
+                        f"rule confidence {rule.confidence:.2f}"
+                        f" ('{dur.description}' → {rule.value} min)"
+                    ),
                 )
 
         return None, None

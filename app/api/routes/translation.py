@@ -7,9 +7,19 @@ into structured model inputs and predictions.
 
 from datetime import datetime
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Query, status
 
 from app.api.schemas.translation import (
+    AuditDetail,
+    AuditSummary,
+    ComBaseModelAuditInfo,
+    ExtractionAuditInfo,
+    FieldAuditEntry,
+    RetrievalAuditInfo,
+    RetrievalTopMatchInfo,
+    RunnerUpInfo,
+    StandardizationAuditInfo,
+    SystemAuditInfo,
     TranslationRequest,
     TranslationResponse,
     PredictionResult,
@@ -20,7 +30,7 @@ from app.api.schemas.translation import (
 )
 from app.core.orchestrator import get_orchestrator, TranslationResult
 from app.models.enums import SessionStatus
-from app.models.metadata import ValueSource, BiasType
+from app.models.metadata import InterpretationMetadata, ValueSource, BiasType
 
 
 router = APIRouter(prefix="/translate", tags=["translation"])
@@ -106,6 +116,182 @@ def _build_warnings_list(result: TranslationResult) -> list[WarningInfo]:
     return warnings
 
 
+_NONE_APPLIED = ["(none applied)"]
+
+
+def _build_audit_detail(result: TranslationResult) -> AuditDetail:
+    """
+    Build the full verbose audit payload from a completed TranslationResult.
+
+    Every list-valued AuditSummary field uses ["(none applied)"] when empty
+    so that consumers can distinguish "not requested" (null) from "nothing
+    happened" (explicit sentinel).
+    """
+    metadata: InterpretationMetadata | None = result.metadata
+    if metadata is None:
+        # Shouldn't happen on a successful translation, but guard defensively.
+        return AuditDetail(
+            field_audit={},
+            combase_model=None,
+            audit=AuditSummary(
+                bias_corrections=_NONE_APPLIED,
+                range_clamps=_NONE_APPLIED,
+                defaults_imputed=_NONE_APPLIED,
+                warnings=_NONE_APPLIED,
+                overall_confidence=0.0,
+                confidence_formula=None,
+            ),
+            system=None,
+        )
+
+    # ── Index standardization corrections by field so we can join them below ──
+    bias_by_field: dict[str, str] = {
+        c.field_name: c.correction_reason for c in metadata.bias_corrections
+    }
+    clamp_by_field: dict[str, str] = {
+        c.field_name: (
+            f"clamped {c.original_value} → {c.clamped_value}"
+            f" (valid range [{c.valid_min}, {c.valid_max}])"
+        )
+        for c in metadata.range_clamps
+    }
+    default_by_field: dict[str, str] = {}
+    for d in metadata.defaults_imputed:
+        # Format: "fieldname (defaulted to X)" — extract the field name prefix
+        field_key = d.split(" (")[0].strip()
+        default_by_field[field_key] = d
+
+    # ── Index retrieval results by their query prefix for field matching ──
+    # Each retrieval is associated with the grounding call that produced it;
+    # the link is positional rather than by field name, so we just attach the
+    # most relevant retrieval for each RAG-sourced field.
+    rag_retrievals = {r.query: r for r in (metadata.retrievals or [])}
+
+    # ── Per-field audit ────────────────────────────────────────────────────────
+    field_audit: dict[str, FieldAuditEntry] = {}
+
+    for field_name, prov in (metadata.provenance or {}).items():
+        source_str = (
+            prov.source.value if isinstance(prov.source, ValueSource) else str(prov.source)
+        )
+
+        # Retrieval block — only for RAG-sourced fields
+        retrieval_info: RetrievalAuditInfo | None = None
+        if prov.source == ValueSource.RAG_RETRIEVAL and rag_retrievals:
+            # Pick the retrieval whose query best matches this field
+            # (food-properties query for ph/aw, pathogen query for organism)
+            r = next(iter(rag_retrievals.values()))  # closest match heuristic
+            if "pathogen" in field_name or field_name == "organism":
+                r = next(
+                    (v for k, v in rag_retrievals.items() if "pathogen" in k.lower()),
+                    r,
+                )
+            elif field_name in ("ph", "water_activity"):
+                r = next(
+                    (v for k, v in rag_retrievals.items() if "ph" in k.lower() or "water" in k.lower()),
+                    r,
+                )
+            top_match = RetrievalTopMatchInfo(
+                doc_id=r.chunk_id,
+                embedding_score=r.embedding_score,
+                rerank_score=r.rerank_score,
+                retrieved_text=r.retrieved_text,
+                source_ids=r.source_ids,
+                full_citations=r.full_citations,
+            ) if r else None
+            runners_up = [
+                RunnerUpInfo(
+                    doc_id=ru.doc_id,
+                    content_preview=ru.content_preview,
+                    embedding_score=ru.embedding_score,
+                    rerank_score=ru.rerank_score,
+                )
+                for ru in (r.runners_up if r else [])
+            ]
+            retrieval_info = RetrievalAuditInfo(
+                query=r.query if r else "",
+                top_match=top_match,
+                runners_up=runners_up,
+            )
+
+        # Extraction block
+        extraction_info: ExtractionAuditInfo | None = None
+        if prov.extraction_method is not None or prov.raw_match is not None:
+            extraction_info = ExtractionAuditInfo(
+                method=prov.extraction_method,
+                raw_match=prov.raw_match,
+                parsed_range=prov.parsed_range,
+            )
+
+        # Standardization block — join bias/clamp/default for this field
+        std_info = StandardizationAuditInfo(
+            bias_correction=bias_by_field.get(field_name),
+            range_clamp=clamp_by_field.get(field_name),
+            default_imputed=default_by_field.get(field_name),
+        )
+        has_std = any([std_info.bias_correction, std_info.range_clamp, std_info.default_imputed])
+
+        field_audit[field_name] = FieldAuditEntry(
+            final_value=result.state.grounded_values.get(field_name) if result.state.grounded_values else None,
+            source=source_str,
+            field_confidence=prov.confidence,
+            confidence_derivation=prov.confidence_derivation,
+            retrieval=retrieval_info,
+            extraction=extraction_info,
+            standardization=std_info if has_std else None,
+        )
+
+    # ── Top-level audit summary ────────────────────────────────────────────────
+    bias_list = [c.correction_reason for c in metadata.bias_corrections] or _NONE_APPLIED
+    clamp_list = [
+        f"{c.field_name}: {c.original_value} → {c.clamped_value}"
+        for c in metadata.range_clamps
+    ] or _NONE_APPLIED
+    defaults_list = metadata.defaults_imputed or _NONE_APPLIED
+    warnings_list = metadata.warnings or _NONE_APPLIED
+
+    audit_summary = AuditSummary(
+        bias_corrections=bias_list,
+        range_clamps=clamp_list,
+        defaults_imputed=defaults_list,
+        warnings=warnings_list,
+        overall_confidence=metadata.overall_confidence,
+        confidence_formula=metadata.confidence_formula,
+    )
+
+    # ── ComBase model block ────────────────────────────────────────────────────
+    cb_info: ComBaseModelAuditInfo | None = None
+    if metadata.combase_model:
+        cm = metadata.combase_model
+        cb_info = ComBaseModelAuditInfo(
+            organism=cm.organism,
+            model_type=cm.model_type,
+            model_id=cm.model_id,
+            coefficients_str=cm.coefficients_str,
+            valid_ranges=cm.valid_ranges,
+            selection_reason=cm.selection_reason,
+        )
+
+    # ── System block ───────────────────────────────────────────────────────────
+    sys_info: SystemAuditInfo | None = None
+    if metadata.system:
+        s = metadata.system
+        sys_info = SystemAuditInfo(
+            rag_store_hash=s.rag_store_hash,
+            rag_ingested_at=s.rag_ingested_at,
+            source_csv_audit_date=s.source_csv_audit_date,
+            ptm_version=s.ptm_version,
+            combase_model_table_hash=s.combase_model_table_hash,
+        )
+
+    return AuditDetail(
+        field_audit=field_audit,
+        combase_model=cb_info,
+        audit=audit_summary,
+        system=sys_info,
+    )
+
+
 @router.post(
     "",
     response_model=TranslationResponse,
@@ -123,7 +309,10 @@ def _build_warnings_list(result: TranslationResult) -> list[WarningInfo]:
     5. Returns results with full provenance tracking
     """,
 )
-async def translate_query(request: TranslationRequest) -> TranslationResponse:
+async def translate_query(
+    request: TranslationRequest,
+    verbose: bool = Query(default=False, description="Include full audit trail in response"),
+) -> TranslationResponse:
     """
     Translate a natural language food safety query.
     """
@@ -190,6 +379,7 @@ async def translate_query(request: TranslationRequest) -> TranslationResponse:
             warnings=_build_warnings_list(result),
             overall_confidence=result.metadata.overall_confidence if result.metadata else None,
             error=result.error if not result.success else None,
+            audit=_build_audit_detail(result) if verbose else None,
         )
         
     except Exception as e:

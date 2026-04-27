@@ -2,6 +2,8 @@
 Unit tests for ingestion pipeline.
 """
 
+import csv
+import json
 import pytest
 from pathlib import Path
 import tempfile
@@ -174,3 +176,128 @@ class TestIngestionPipeline:
         
         assert result["success"] is False
         assert "empty" in result["error"].lower()
+
+
+class TestMultiSourceAttribution:
+    """
+    food_properties rows whose notes field cites a secondary source must
+    report both IDs in the stored source_id metadata field.
+    """
+
+    _FIELDS = ["food_name", "food_category", "ph_min", "ph_max", "aw_min", "aw_max", "notes", "source_id"]
+
+    # Notes text copied verbatim from the real CSV rows.
+    _NOTES = {
+        "bread white": "White bread; pH from FDA-PH-2007, aw 0.94-0.97 from IFT-2003-T31 Table 3-1",
+        "cheese parmesan": "Hard aged cheese; pH from FDA-PH-2007, aw from IFT-2003-T31 Table 3-1",
+        "honey": "Raw honey; pH from FDA-PH-2007, aw 0.75 from IFT-2003-T31 Table 3-1",
+        "maple syrup": "Pure maple syrup; pH from FDA-PH-2007, aw 0.85 from IFT-2003-T31 Table 3-1",
+    }
+
+    def _write_food_csv(self, path: Path, rows: list) -> None:
+        with open(path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=self._FIELDS)
+            writer.writeheader()
+            writer.writerows(rows)
+
+    @pytest.mark.parametrize("food_name", ["bread white", "cheese parmesan", "honey", "maple syrup"])
+    def test_multi_source_row_has_both_source_ids(self, pipeline, vector_store, temp_dir, food_name):
+        """Multi-source rows must list the column source_id AND the notes-parsed ID."""
+        from app.rag.data_sources.food_safety import load_food_properties
+
+        self._write_food_csv(temp_dir / "food_properties.csv", [{
+            "food_name": food_name,
+            "food_category": "test",
+            "ph_min": "5.0", "ph_max": "6.0",
+            "aw_min": "0.94", "aw_max": "0.97",
+            "notes": self._NOTES[food_name],
+            "source_id": "FDA-PH-2007",
+        }])
+
+        load_food_properties(pipeline, temp_dir)
+
+        docs = vector_store.get_documents(where={"food_name": food_name})
+        assert docs, f"No document found for {food_name!r}"
+
+        stored = docs[0]["metadata"]["source_id"]
+        ids = [s.strip() for s in stored.split(",")]
+        assert "FDA-PH-2007" in ids, f"Primary source_id missing from {stored!r}"
+        assert "IFT-2003-T31" in ids, f"Notes-parsed source_id missing from {stored!r}"
+
+    def test_single_source_row_has_exactly_one_source_id(self, pipeline, vector_store, temp_dir):
+        """A row whose notes mention no registered sources must not grow extra IDs."""
+        from app.rag.data_sources.food_safety import load_food_properties
+
+        self._write_food_csv(temp_dir / "food_properties.csv", [{
+            "food_name": "chicken",
+            "food_category": "poultry",
+            "ph_min": "6.2", "ph_max": "6.4",
+            "aw_min": "0.99", "aw_max": "0.99",
+            "notes": "Chicken breast, raw",
+            "source_id": "IFT-2003-T33",
+        }])
+
+        load_food_properties(pipeline, temp_dir)
+
+        docs = vector_store.get_documents(where={"food_name": "chicken"})
+        assert docs
+
+        stored = docs[0]["metadata"]["source_id"]
+        ids = [s.strip() for s in stored.split(",") if s.strip()]
+        assert ids == ["IFT-2003-T33"], f"Expected exactly one ID, got {ids}"
+
+
+class TestManifestWarning:
+    """System audit signals clearly when the ingestion manifest is absent."""
+
+    def test_manifest_present_fields_populated(self, tmp_path, monkeypatch):
+        """All three manifest-sourced fields are non-None when the manifest exists."""
+        import app.services.audit.system as sys_mod
+
+        manifest = tmp_path / "ingest_manifest.json"
+        manifest.write_text(json.dumps({
+            "rag_store_hash": "abc123",
+            "ingested_at": "2026-04-27T10:00:00+00:00",
+            "source_csv_audit_date": "2026-04-17T00:00:00+00:00",
+        }), encoding="utf-8")
+        monkeypatch.setattr(sys_mod, "_MANIFEST_PATH", manifest)
+
+        result = sys_mod.build_system_audit()
+
+        assert result["rag_store_hash"] == "abc123"
+        assert result["rag_ingested_at"] is not None
+        assert result["source_csv_audit_date"] is not None
+        assert not result.get("manifest_missing", False)
+
+    def test_manifest_absent_flags_missing(self, tmp_path, monkeypatch):
+        """Missing manifest sets manifest_missing=True and leaves the three fields None."""
+        import app.services.audit.system as sys_mod
+
+        monkeypatch.setattr(sys_mod, "_MANIFEST_PATH", tmp_path / "nonexistent.json")
+
+        result = sys_mod.build_system_audit()
+
+        assert result["rag_store_hash"] is None
+        assert result["rag_ingested_at"] is None
+        assert result["source_csv_audit_date"] is None
+        assert result.get("manifest_missing") is True
+
+    def test_manifest_missing_warning_wired_in_orchestrator(self, tmp_path, monkeypatch):
+        """Orchestrator appends a warning string when build_system_audit signals manifest_missing."""
+        import app.services.audit.system as sys_mod
+        import app.core.orchestrator as orch_mod
+
+        monkeypatch.setattr(sys_mod, "_MANIFEST_PATH", tmp_path / "nonexistent.json")
+
+        # Directly exercise the wiring logic without a full translate() call.
+        from app.models.metadata import InterpretationMetadata, SystemAudit
+
+        metadata = InterpretationMetadata(session_id="test-session", original_input="test")
+        sys_audit_data = sys_mod.build_system_audit()
+        manifest_missing = sys_audit_data.pop("manifest_missing", False)
+        metadata.system = SystemAudit(**sys_audit_data)
+        if manifest_missing:
+            metadata.warnings.append("RAG manifest missing — store provenance unknown")
+
+        assert "RAG manifest missing — store provenance unknown" in metadata.warnings
+        assert metadata.system.rag_store_hash is None

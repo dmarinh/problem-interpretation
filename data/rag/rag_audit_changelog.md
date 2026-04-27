@@ -87,3 +87,9 @@ Percent_foodborne values for 27 pathogens verified against CDC 2011 Table 2 and 
 ---
 
 *This changelog was produced by cross-checking all CSV values against the 5 attached source PDFs: FDA-PH-2007, IFT-2003, CDC Scallan 2011, CDC Scallan Walter 2025, and FDA Bad Bug Book 2nd Edition.*
+
+---
+
+## Ingestion-layer workaround for multi-source rows (2026-04-27)
+
+Rows whose `notes` field cite a secondary source (entries #14, #15, #16, #17 above) are handled at ingestion time: `load_food_properties()` parses `notes` for source IDs matching `[SOURCE-ID]` bracket style or `"from SOURCE-ID"` prose style, validates each candidate against `data/sources/source_references.csv`, and stores the union of the column `source_id` and any validated extras as a comma-separated string in the ChromaDB `source_id` metadata field.  This means retrieval audit blocks now report both sources (e.g., `source_ids: ["FDA-PH-2007", "IFT-2003-T31"]`) for multi-source rows.  Per-field attribution (which source supports pH vs aw) requires a schema migration and is explicitly deferred.
