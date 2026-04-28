@@ -83,10 +83,13 @@ A PREDICTION REQUEST is when the user:
 - Asks about microbial growth or contamination risk
 - Describes a scenario and wants a safety assessment
 - Asks about shelf life or how long food can be kept
+- Uses action verbs like predict, calculate, estimate, determine, or model with a specific scenario
+- Requests a specific microbial outcome (e.g. log reduction, growth rate, inactivation, survival)
+- Uses technical model-type terms (thermal inactivation, non-thermal survival, growth rate) in the context of a specific food/pathogen/condition scenario
 
 An INFORMATION QUERY is when the user:
-- Asks general questions about food safety
-- Wants to know about pathogens or foodborne illness
+- Asks general questions about food safety with no specific scenario
+- Wants to know about pathogens or foodborne illness in the abstract
 - Asks about food safety guidelines or regulations
 - Wants educational information, not a specific prediction
 

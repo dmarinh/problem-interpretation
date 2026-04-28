@@ -13,8 +13,10 @@ from app.api.schemas.translation import (
     AuditDetail,
     AuditSummary,
     ComBaseModelAuditInfo,
+    DefaultImputedInfo,
     ExtractionAuditInfo,
     FieldAuditEntry,
+    RangeClampInfo,
     RetrievalAuditInfo,
     RetrievalTopMatchInfo,
     RunnerUpInfo,
@@ -30,7 +32,7 @@ from app.api.schemas.translation import (
 )
 from app.core.orchestrator import get_orchestrator, TranslationResult
 from app.models.enums import SessionStatus
-from app.models.metadata import InterpretationMetadata, ValueSource, BiasType
+from app.models.metadata import InterpretationMetadata, RangeClamp, ValueSource
 
 
 router = APIRouter(prefix="/translate", tags=["translation"])
@@ -60,127 +62,63 @@ def _format_growth_description(log_increase: float) -> str:
         return f"Extensive growth: {log_increase:.1f} log increase (>1000x population)"
 
 
-def _build_provenance_list(result: TranslationResult) -> list[ProvenanceInfo]:
-    """Build provenance info from translation result."""
-    provenance = []
-    
-    if result.metadata and result.metadata.provenance:
-        for field, prov in result.metadata.provenance.items():
-            source_name = prov.source.value if isinstance(prov.source, ValueSource) else str(prov.source)
-            
-            notes = None
-            if prov.transformation_applied:
-                notes = prov.transformation_applied
-            elif prov.original_text:
-                notes = f"From: '{prov.original_text}'"
-            
-            provenance.append(ProvenanceInfo(
-                field=field,
-                value=str(prov.original_value) if prov.original_value else "N/A",
-                source=source_name,
-                confidence=prov.confidence,
-                notes=notes,
-            ))
-    
-    return provenance
-
-
-def _build_warnings_list(result: TranslationResult) -> list[WarningInfo]:
-    """Build warnings list from translation result."""
-    warnings = []
-    
-    if result.metadata:
-        # Add bias corrections as warnings
-        for correction in result.metadata.bias_corrections:
-            warnings.append(WarningInfo(
-                type="bias_correction",
-                message=correction.correction_reason,
-                field=correction.field_name,
-            ))
-        
-        # Add range clamps as warnings
-        for clamp in result.metadata.range_clamps:
-            warnings.append(WarningInfo(
-                type="range_clamp",
-                message=f"Value {clamp.original_value} clamped to {clamp.clamped_value} (valid range: {clamp.valid_min}-{clamp.valid_max})",
-                field=clamp.field_name,
-            ))
-        
-        # Add general warnings
-        for warning in result.metadata.warnings:
-            warnings.append(WarningInfo(
-                type="warning",
-                message=warning,
-            ))
-    
-    return warnings
-
-
-_NONE_APPLIED = ["(none applied)"]
-
-
-def _build_audit_detail(result: TranslationResult) -> AuditDetail:
+def _build_field_audit(result: TranslationResult) -> dict[str, FieldAuditEntry]:
     """
-    Build the full verbose audit payload from a completed TranslationResult.
+    Build the per-field audit map from a completed TranslationResult.
 
-    Every list-valued AuditSummary field uses ["(none applied)"] when empty
-    so that consumers can distinguish "not requested" (null) from "nothing
-    happened" (explicit sentinel).
+    Always called — even when verbose=False — so the legacy provenance list
+    can be derived from it (see _build_provenance_list).
+
+    The audit snapshot is post-standardization: final_value reflects the value
+    that reached the ComBase model, not the pre-standardization placeholder
+    stored in grounded_values.  This is correct because StandardizationService
+    mutates ValueProvenance objects in-place (setting prov.standardization and
+    clearing prov.range_pending), so by the time this function runs, the
+    provenance objects in metadata already carry the post-standardization state.
     """
     metadata: InterpretationMetadata | None = result.metadata
     if metadata is None:
-        # Shouldn't happen on a successful translation, but guard defensively.
-        return AuditDetail(
-            field_audit={},
-            combase_model=None,
-            audit=AuditSummary(
-                bias_corrections=_NONE_APPLIED,
-                range_clamps=_NONE_APPLIED,
-                defaults_imputed=_NONE_APPLIED,
-                warnings=_NONE_APPLIED,
-                overall_confidence=0.0,
-                confidence_formula=None,
-            ),
-            system=None,
-        )
+        return {}
 
-    # ── Index standardization corrections by field so we can join them below ──
-    bias_by_field: dict[str, str] = {
-        c.field_name: c.correction_reason for c in metadata.bias_corrections
+    # ── Index standardization events by field ──────────────────────────────────
+    # Used for final_value resolution and standardization block construction.
+    clamp_by_field: dict[str, RangeClamp] = {
+        c.field_name: c for c in (metadata.range_clamps or [])
     }
-    clamp_by_field: dict[str, str] = {
-        c.field_name: (
-            f"clamped {c.original_value} → {c.clamped_value}"
-            f" (valid range [{c.valid_min}, {c.valid_max}])"
-        )
-        for c in metadata.range_clamps
-    }
-    default_by_field: dict[str, str] = {}
-    for d in metadata.defaults_imputed:
-        # Format: "fieldname (defaulted to X)" — extract the field name prefix
-        field_key = d.split(" (")[0].strip()
-        default_by_field[field_key] = d
 
-    # ── Index retrieval results by their query prefix for field matching ──
-    # Each retrieval is associated with the grounding call that produced it;
-    # the link is positional rather than by field name, so we just attach the
-    # most relevant retrieval for each RAG-sourced field.
+    # ── Index retrieval results by query for field matching ─────────────────────
     rag_retrievals = {r.query: r for r in (metadata.retrievals or [])}
 
-    # ── Per-field audit ────────────────────────────────────────────────────────
     field_audit: dict[str, FieldAuditEntry] = {}
 
+    # ── Fields that have grounding provenance ──────────────────────────────────
     for field_name, prov in (metadata.provenance or {}).items():
         source_str = (
             prov.source.value if isinstance(prov.source, ValueSource) else str(prov.source)
         )
 
-        # Retrieval block — only for RAG-sourced fields
+        # ── final_value: post-standardization priority chain ──────────────────
+        # 1. Clamped value (clamp is always the last operation)
+        # 2. Range-bound-selected value (prov.standardization set in-place by std svc)
+        # 3. Canonical organism display name (for the organism field)
+        # 4. Pre-standardization grounded value (correct for explicit non-range fields)
+        if field_name in clamp_by_field:
+            final_value: float | str | None = clamp_by_field[field_name].clamped_value
+        elif prov.standardization is not None:
+            final_value = prov.standardization.after_value
+        elif (
+            field_name == "organism"
+            and metadata.combase_model is not None
+            and metadata.combase_model.organism_display_name is not None
+        ):
+            final_value = metadata.combase_model.organism_display_name
+        else:
+            final_value = result.state.grounded_values.get(field_name) if result.state.grounded_values else None
+
+        # ── Retrieval block (RAG-sourced fields only) ─────────────────────────
         retrieval_info: RetrievalAuditInfo | None = None
         if prov.source == ValueSource.RAG_RETRIEVAL and rag_retrievals:
-            # Pick the retrieval whose query best matches this field
-            # (food-properties query for ph/aw, pathogen query for organism)
-            r = next(iter(rag_retrievals.values()))  # closest match heuristic
+            r = next(iter(rag_retrievals.values()))
             if "pathogen" in field_name or field_name == "organism":
                 r = next(
                     (v for k, v in rag_retrievals.items() if "pathogen" in k.lower()),
@@ -214,49 +152,182 @@ def _build_audit_detail(result: TranslationResult) -> AuditDetail:
                 runners_up=runners_up,
             )
 
-        # Extraction block
+        # ── Extraction block ──────────────────────────────────────────────────
         extraction_info: ExtractionAuditInfo | None = None
-        if prov.extraction_method is not None or prov.raw_match is not None:
+        has_extraction = (
+            prov.extraction_method is not None
+            or prov.raw_match is not None
+            or prov.matched_pattern is not None
+        )
+        if has_extraction:
             extraction_info = ExtractionAuditInfo(
                 method=prov.extraction_method,
                 raw_match=prov.raw_match,
                 parsed_range=prov.parsed_range,
+                matched_pattern=prov.matched_pattern,
+                conservative=prov.rule_conservative,
+                notes=prov.rule_notes,
+                similarity=prov.embedding_similarity,
+                canonical_phrase=prov.canonical_phrase,
             )
 
-        # Standardization block — join bias/clamp/default for this field
-        std_info = StandardizationAuditInfo(
-            bias_correction=bias_by_field.get(field_name),
-            range_clamp=clamp_by_field.get(field_name),
-            default_imputed=default_by_field.get(field_name),
-        )
-        has_std = any([std_info.bias_correction, std_info.range_clamp, std_info.default_imputed])
+        # ── Standardization block ─────────────────────────────────────────────
+        # Clamp takes precedence over range-bound selection when both fired.
+        std_info: StandardizationAuditInfo | None = None
+        if field_name in clamp_by_field:
+            c = clamp_by_field[field_name]
+            std_info = StandardizationAuditInfo(
+                rule="range_clamp",
+                before_value=c.original_value,
+                after_value=c.clamped_value,
+                reason=c.reason,
+            )
+        elif prov.standardization is not None:
+            s = prov.standardization
+            std_info = StandardizationAuditInfo(
+                rule=s.rule,
+                direction=s.direction,
+                before_value=s.before_value,
+                after_value=s.after_value,
+                reason=s.reason,
+            )
 
         field_audit[field_name] = FieldAuditEntry(
-            final_value=result.state.grounded_values.get(field_name) if result.state.grounded_values else None,
+            final_value=final_value,
             source=source_str,
-            field_confidence=prov.confidence,
-            confidence_derivation=prov.confidence_derivation,
             retrieval=retrieval_info,
             extraction=extraction_info,
-            standardization=std_info if has_std else None,
+            standardization=std_info,
+        )
+
+    # ── Defaulted fields: absent from provenance but used by the model ─────────
+    # StandardizationService imputes defaults for fields never grounded.
+    # Add them to field_audit so it is the single complete map of every value
+    # the model used, regardless of whether the value came from the user or
+    # from conservative defaults.
+    for d in (metadata.defaults_imputed or []):
+        if d.field_name not in field_audit:
+            field_audit[d.field_name] = FieldAuditEntry(
+                final_value=d.imputed_value,
+                source=ValueSource.CONSERVATIVE_DEFAULT.value,
+                retrieval=None,
+                extraction=None,
+                standardization=StandardizationAuditInfo(
+                    rule="default_imputed",
+                    before_value=None,
+                    after_value=d.imputed_value,
+                    reason=d.reason,
+                ),
+            )
+
+    return field_audit
+
+
+def _build_provenance_list(
+    result: TranslationResult,
+    field_audit: dict[str, FieldAuditEntry],
+) -> list[ProvenanceInfo]:
+    """Derive the legacy provenance list from the pre-built field_audit map.
+
+    Using field_audit as the single source of truth guarantees that
+    final_value and notes are post-standardization — the old approach of
+    reading raw provenance produced stale placeholder notes for range fields.
+    """
+    provenance = []
+
+    for field, entry in field_audit.items():
+        value_str = str(entry.final_value) if entry.final_value is not None else "N/A"
+
+        # Build a human-readable notes string from the standardization block
+        # or the extraction info — whichever is more informative.
+        notes: str | None = None
+        if entry.standardization is not None:
+            std = entry.standardization
+            if std.rule == "range_bound_selection":
+                notes = (
+                    f"Range {std.before_value} → selected {std.direction} bound "
+                    f"{std.after_value} ({std.reason})"
+                )
+            elif std.rule == "range_clamp":
+                notes = f"Clamped {std.before_value} → {std.after_value}: {std.reason}"
+            else:
+                notes = std.reason
+        elif entry.extraction is not None and entry.extraction.notes:
+            notes = entry.extraction.notes
+        elif entry.extraction is not None and entry.extraction.method:
+            notes = f"Extracted via {entry.extraction.method}"
+
+        provenance.append(ProvenanceInfo(
+            field=field,
+            value=value_str,
+            source=entry.source,
+            notes=notes,
+        ))
+
+    return provenance
+
+
+def _build_warnings_list(result: TranslationResult) -> list[WarningInfo]:
+    """Build warnings list from translation result."""
+    warnings = []
+
+    if result.metadata:
+        # Add range clamps as warnings
+        for clamp in result.metadata.range_clamps:
+            warnings.append(WarningInfo(
+                type="range_clamp",
+                message=f"Value {clamp.original_value} clamped to {clamp.clamped_value} (valid range: {clamp.valid_min}-{clamp.valid_max})",
+                field=clamp.field_name,
+            ))
+
+        # Add general warnings
+        for warning in result.metadata.warnings:
+            warnings.append(WarningInfo(
+                type="warning",
+                message=warning,
+            ))
+
+    return warnings
+
+
+def _build_audit_detail(
+    result: TranslationResult,
+    field_audit: dict[str, FieldAuditEntry],
+) -> AuditDetail:
+    """Assemble the full verbose AuditDetail from a pre-built field_audit map."""
+    metadata: InterpretationMetadata | None = result.metadata
+    if metadata is None:
+        return AuditDetail(
+            field_audit={},
+            combase_model=None,
+            audit=AuditSummary(),
+            system=None,
         )
 
     # ── Top-level audit summary ────────────────────────────────────────────────
-    bias_list = [c.correction_reason for c in metadata.bias_corrections] or _NONE_APPLIED
     clamp_list = [
-        f"{c.field_name}: {c.original_value} → {c.clamped_value}"
+        RangeClampInfo(
+            field_name=c.field_name,
+            original_value=c.original_value,
+            clamped_value=c.clamped_value,
+            valid_min=c.valid_min,
+            valid_max=c.valid_max,
+            reason=c.reason,
+        )
         for c in metadata.range_clamps
-    ] or _NONE_APPLIED
-    defaults_list = metadata.defaults_imputed or _NONE_APPLIED
-    warnings_list = metadata.warnings or _NONE_APPLIED
-
+    ]
+    defaults_list = [
+        DefaultImputedInfo(
+            field_name=d.field_name,
+            default_value=d.imputed_value,
+            reason=d.reason,
+        )
+        for d in metadata.defaults_imputed
+    ]
     audit_summary = AuditSummary(
-        bias_corrections=bias_list,
         range_clamps=clamp_list,
         defaults_imputed=defaults_list,
-        warnings=warnings_list,
-        overall_confidence=metadata.overall_confidence,
-        confidence_formula=metadata.confidence_formula,
+        warnings=list(metadata.warnings),
     )
 
     # ── ComBase model block ────────────────────────────────────────────────────
@@ -265,6 +336,8 @@ def _build_audit_detail(result: TranslationResult) -> AuditDetail:
         cm = metadata.combase_model
         cb_info = ComBaseModelAuditInfo(
             organism=cm.organism,
+            organism_id=cm.organism_id,
+            organism_display_name=cm.organism_display_name,
             model_type=cm.model_type,
             model_id=cm.model_id,
             coefficients_str=cm.coefficients_str,
@@ -367,6 +440,9 @@ async def translate_query(
                 growth_description=_format_growth_description(exec_result.total_log_increase),
             )
         
+        # Build field_audit once; both provenance list and verbose audit derive from it.
+        field_audit = _build_field_audit(result)
+
         return TranslationResponse(
             success=result.success,
             session_id=result.state.session_id,
@@ -375,11 +451,10 @@ async def translate_query(
             completed_at=completed_at,
             original_query=request.query,
             prediction=prediction,
-            provenance=_build_provenance_list(result),
+            provenance=_build_provenance_list(result, field_audit),
             warnings=_build_warnings_list(result),
-            overall_confidence=result.metadata.overall_confidence if result.metadata else None,
             error=result.error if not result.success else None,
-            audit=_build_audit_detail(result) if verbose else None,
+            audit=_build_audit_detail(result, field_audit) if verbose else None,
         )
         
     except Exception as e:

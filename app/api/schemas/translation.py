@@ -65,7 +65,6 @@ class ProvenanceInfo(BaseModel):
     field: str = Field(description="Field name")
     value: str = Field(description="Value used")
     source: str = Field(description="Source of the value")
-    confidence: float = Field(description="Confidence in the value")
     notes: str | None = Field(default=None, description="Additional notes")
 
 
@@ -162,31 +161,39 @@ class RetrievalAuditInfo(BaseModel):
 
 
 class ExtractionAuditInfo(BaseModel):
-    """How the numeric value was extracted from retrieved text."""
+    """How the numeric value was extracted from retrieved text or rule lookup."""
     method: str | None
     raw_match: str | None
     parsed_range: list[float] | None
+    # Rule-match details — present when method is "rule_match" or "embedding_fallback"
+    matched_pattern: str | None = None
+    conservative: bool | None = None
+    notes: str | None = None
+    # Embedding-fallback only
+    similarity: float | None = None
+    canonical_phrase: str | None = None
 
 
 class StandardizationAuditInfo(BaseModel):
-    """Which standardization rule touched this field, if any."""
-    bias_correction: str | None = Field(
-        description="Correction reason if a bias correction was applied, else null"
-    )
-    range_clamp: str | None = Field(
-        description="Clamp reason if the value was clamped, else null"
-    )
-    default_imputed: str | None = Field(
-        description="Default description if a conservative default was applied, else null"
-    )
+    """Structured record of the standardization event that touched this field.
+
+    rule: one of "range_bound_selection", "range_clamp", "default_imputed"
+    direction: "upper" or "lower" for range_bound_selection; null otherwise
+    before_value: [min, max] for range_bound_selection; scalar for range_clamp; null for default_imputed
+    after_value: the post-standardization value that reached the model (float for numeric fields, str for organism)
+    reason: human-readable rationale
+    """
+    rule: str
+    direction: str | None = None
+    before_value: list[float] | float | None = None
+    after_value: float | str
+    reason: str
 
 
 class FieldAuditEntry(BaseModel):
     """Complete per-field audit record."""
     final_value: float | str | None
     source: str
-    field_confidence: float
-    confidence_derivation: str | None
     retrieval: RetrievalAuditInfo | None
     extraction: ExtractionAuditInfo | None
     standardization: StandardizationAuditInfo | None
@@ -195,6 +202,8 @@ class FieldAuditEntry(BaseModel):
 class ComBaseModelAuditInfo(BaseModel):
     """Which ComBase model was selected and why."""
     organism: str
+    organism_id: str | None = None
+    organism_display_name: str | None = None
     model_type: str
     model_id: int | None
     coefficients_str: str | None
@@ -211,19 +220,28 @@ class SystemAuditInfo(BaseModel):
     combase_model_table_hash: str | None
 
 
-class AuditSummary(BaseModel):
-    """
-    Cross-field audit summary.
+class DefaultImputedInfo(BaseModel):
+    """A conservative default substituted for a missing field."""
+    field_name: str
+    default_value: float | str
+    reason: str
 
-    Every list field uses ["(none applied)"] when empty — explicit absence
-    is information; an empty list is ambiguous in audit context.
-    """
-    bias_corrections: list[str]
-    range_clamps: list[str]
-    defaults_imputed: list[str]
-    warnings: list[str]
-    overall_confidence: float
-    confidence_formula: str | None
+
+class RangeClampInfo(BaseModel):
+    """A value that was clamped to the model's valid range."""
+    field_name: str
+    original_value: float
+    clamped_value: float
+    valid_min: float
+    valid_max: float
+    reason: str
+
+
+class AuditSummary(BaseModel):
+    """Cross-field audit summary."""
+    range_clamps: list[RangeClampInfo] = Field(default_factory=list)
+    defaults_imputed: list[DefaultImputedInfo] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
 
 
 class AuditDetail(BaseModel):
@@ -266,12 +284,6 @@ class TranslationResponse(BaseModel):
     warnings: list[WarningInfo] = Field(
         default_factory=list,
         description="Warnings and corrections applied",
-    )
-    
-    # Confidence
-    overall_confidence: float | None = Field(
-        default=None,
-        description="Overall confidence in the translation (0-1)",
     )
     
     # Error (only if success=False)
@@ -322,7 +334,6 @@ class TranslationResponse(BaseModel):
                         ],
                         "growth_description": "Moderate growth: ~0.8 log increase (6x population increase)",
                     },
-                    "overall_confidence": 0.82,
                 },
                 {
                     "success": True,
@@ -355,7 +366,6 @@ class TranslationResponse(BaseModel):
                         ],
                         "growth_description": "Significant growth: 1.1 log increase (~13x population)",
                     },
-                    "overall_confidence": 0.78,
                 },
             ]
         }

@@ -17,9 +17,7 @@ from enum import Enum
 from pydantic import BaseModel, Field
 
 from app.models.enums import (
-    BiasType,
     ClarificationReason,
-    RetrievalConfidenceLevel,
     SessionStatus,
 )
 
@@ -40,19 +38,41 @@ class ValueSource(str, Enum):
     CALCULATED = "calculated"                  # Derived from other values
 
 
+class RangeBoundSelection(BaseModel):
+    """
+    Structured record of a range-bound selection performed by StandardizationService.
+
+    Range values arrive from grounding with both bounds preserved (range_pending=True on
+    the ValueProvenance).  StandardizationService picks the conservative bound and writes
+    this block.  It does NOT appear in bias_corrections or range_clamps — it is a
+    deterministic, mechanical operation, not a safety-event-level correction.
+    """
+    rule: str = Field(
+        default="range_bound_selection",
+        description="Always 'range_bound_selection'"
+    )
+    direction: str = Field(
+        description="'upper' for growth/survival models, 'lower' for thermal inactivation"
+    )
+    reason: str = Field(
+        description="Plain-English rationale for end users"
+    )
+    before_value: list[float] = Field(
+        description="[min, max] — the original range from grounding"
+    )
+    after_value: float = Field(
+        description="The bound that was selected"
+    )
+
+
 class ValueProvenance(BaseModel):
     """
-    Tracks the origin and confidence of a single value.
+    Tracks the origin of a single value.
 
     Attached to any value that flows through the pipeline.
     """
     source: ValueSource = Field(
         description="Where this value came from"
-    )
-    confidence: float = Field(
-        ge=0.0,
-        le=1.0,
-        description="Confidence in this value (0-1)"
     )
     original_value: str | float | None = Field(
         default=None,
@@ -83,38 +103,71 @@ class ValueProvenance(BaseModel):
         default=None,
         description="[min, max] when value was extracted from a range"
     )
-    confidence_derivation: str | None = Field(
+    # Range-pending pipeline signal — True when `value` is the range lower bound and
+    # StandardizationService must still pick the correct conservative bound.
+    # Always False in the final serialized audit output (cleared by standardization).
+    range_pending: bool = Field(
+        default=False,
+        description="Pipeline signal: True when value is a range lower bound awaiting bound selection"
+    )
+    # Populated by StandardizationService when it selects a bound from a pending range.
+    # Lives alongside transformation_applied during the transition; this block is the
+    # authoritative record for bound-selection events.
+    standardization: RangeBoundSelection | None = Field(
         default=None,
-        description="Human-readable explanation of how the confidence score was computed"
+        description="Structured record of the bound selection applied by standardization"
+    )
+    # Rule-match details — populated by GroundingService for USER_INFERRED values.
+    # These carry the InterpretationRule's structured fields so the audit can show
+    # exactly which rule fired, whether it was conservative, and (for embedding-fallback
+    # matches) the similarity score and the canonical phrase that was the closest match.
+    matched_pattern: str | None = Field(
+        default=None,
+        description="The rule pattern that matched (e.g. 'room temperature')"
+    )
+    rule_conservative: bool | None = Field(
+        default=None,
+        description="Whether the matched rule was flagged conservative by its author"
+    )
+    rule_notes: str | None = Field(
+        default=None,
+        description="The rule's notes field (human-readable rationale)"
+    )
+    embedding_similarity: float | None = Field(
+        default=None,
+        description="Cosine similarity score when value was resolved via embedding fallback"
+    )
+    canonical_phrase: str | None = Field(
+        default=None,
+        description="The canonical phrase that scored highest in the embedding lookup"
     )
 
 
 # =============================================================================
-# BIAS CORRECTIONS
+# DEFAULT IMPUTED
 # =============================================================================
 
-class BiasCorrection(BaseModel):
+class DefaultImputed(BaseModel):
     """
-    Record of a bias correction applied to a value.
+    Record of a conservative default substituted for a missing field.
+
+    Emitted by StandardizationService when a required value was absent and a
+    safety-conservative default was used in its place.  There is no
+    "correction" here — the value was simply absent; the default is the first
+    and only value assigned.
     """
-    bias_type: BiasType = Field(
-        description="Type of bias that was corrected"
-    )
     field_name: str = Field(
-        description="Which field was corrected"
+        description="Which field received a default"
     )
     original_value: float | None = Field(
-        description="Value before correction"
-    )
-    corrected_value: float = Field(
-        description="Value after correction"
-    )
-    correction_reason: str = Field(
-        description="Why this correction was applied"
-    )
-    correction_magnitude: float | None = Field(
         default=None,
-        description="How much the value changed"
+        description="Always None — no user-supplied value existed"
+    )
+    imputed_value: float | str = Field(
+        description="The conservative default that was substituted"
+    )
+    reason: str = Field(
+        description="Why this default is conservative for the model type"
     )
 
 
@@ -169,14 +222,6 @@ class RetrievalResult(BaseModel):
     """
     query: str = Field(
         description="The query used for retrieval"
-    )
-    confidence_level: RetrievalConfidenceLevel = Field(
-        description="Classification of retrieval confidence"
-    )
-    confidence_score: float = Field(
-        ge=0.0,
-        le=1.0,
-        description="Raw confidence score"
     )
     source_document: str | None = Field(
         default=None,
@@ -261,7 +306,15 @@ class ComBaseModelAudit(BaseModel):
     """
     Records which ComBase model was selected and why, for regulatory traceability.
     """
-    organism: str = Field(description="Organism name used in the model lookup")
+    organism: str = Field(description="Enum name of the organism (e.g. 'BACILLUS_CEREUS')")
+    organism_id: str | None = Field(
+        default=None,
+        description="ComBase short code (e.g. 'bc') — cross-reference to combase_models.csv"
+    )
+    organism_display_name: str | None = Field(
+        default=None,
+        description="Human-readable canonical name from combase_models.csv Org column (e.g. 'Bacillus cereus')"
+    )
     model_type: str = Field(description="Model type selected (growth / thermal_inactivation / non_thermal_survival)")
     model_id: int | None = Field(default=None, description="ComBase ModelID (1=Growth, 2=Thermal, 3=Non-thermal)")
     coefficients_str: str | None = Field(
@@ -348,10 +401,10 @@ class InterpretationMetadata(BaseModel):
         description="Provenance for each field (field_name -> provenance)"
     )
     
-    # Corrections applied
-    bias_corrections: list[BiasCorrection] = Field(
+    # Conservative defaults substituted for missing fields
+    defaults_imputed: list[DefaultImputed] = Field(
         default_factory=list,
-        description="Bias corrections that were applied"
+        description="Conservative defaults applied when a required value was absent"
     )
     range_clamps: list[RangeClamp] = Field(
         default_factory=list,
@@ -370,20 +423,6 @@ class InterpretationMetadata(BaseModel):
         description="Clarification exchanges with user"
     )
     
-    # Overall confidence
-    overall_confidence: float = Field(
-        default=1.0,
-        ge=0.0,
-        le=1.0,
-        description="Aggregate confidence in the interpretation"
-    )
-    
-    # Defaults imputed by standardization (forwarded from StandardizationResult)
-    defaults_imputed: list[str] = Field(
-        default_factory=list,
-        description="Fields that had conservative defaults applied (e.g. 'pH (defaulted to 7.0)')"
-    )
-
     # Warnings and notes
     warnings: list[str] = Field(
         default_factory=list,
@@ -404,20 +443,14 @@ class InterpretationMetadata(BaseModel):
         description="PTM software and data state at time of prediction"
     )
 
-    # Confidence formula (set by compute_overall_confidence)
-    confidence_formula: str | None = Field(
-        default=None,
-        description="Human-readable derivation of overall_confidence"
-    )
-    
     def add_provenance(self, field_name: str, provenance: ValueProvenance) -> None:
         """Add provenance for a field."""
         self.provenance[field_name] = provenance
     
-    def add_bias_correction(self, correction: BiasCorrection) -> None:
-        """Record a bias correction."""
-        self.bias_corrections.append(correction)
-    
+    def add_default_imputed(self, default: DefaultImputed) -> None:
+        """Record a conservative default that was substituted for a missing field."""
+        self.defaults_imputed.append(default)
+
     def add_range_clamp(self, clamp: RangeClamp) -> None:
         """Record a range clamp."""
         self.range_clamps.append(clamp)
@@ -433,50 +466,3 @@ class InterpretationMetadata(BaseModel):
     def add_warning(self, warning: str) -> None:
         """Add a warning."""
         self.warnings.append(warning)
-
-    def add_default_imputed(self, description: str) -> None:
-        """Record a conservative default that was applied."""
-        self.defaults_imputed.append(description)
-    
-    def compute_overall_confidence(self) -> float:
-        """
-        Compute aggregate confidence from all sources.
-
-        Uses minimum confidence across all provenance records,
-        with penalties for bias corrections and low-confidence retrievals.
-        Also populates confidence_formula with a human-readable derivation.
-        """
-        if not self.provenance:
-            self.overall_confidence = 1.0
-            self.confidence_formula = "1.0 (no grounded fields)"
-            return self.overall_confidence
-
-        field_confs = {k: p.confidence for k, p in self.provenance.items()}
-        min_confidence = min(field_confs.values())
-
-        n_bias = len(self.bias_corrections)
-        bias_penalty = n_bias * 0.05
-
-        n_clamp = len(self.range_clamps)
-        clamp_penalty = n_clamp * 0.10
-
-        low_conf_retrievals = sum(
-            1 for r in self.retrievals
-            if r.confidence_level in (RetrievalConfidenceLevel.LOW, RetrievalConfidenceLevel.FAILED)
-        )
-        retrieval_penalty = low_conf_retrievals * 0.10
-
-        overall = min_confidence - bias_penalty - clamp_penalty - retrieval_penalty
-        self.overall_confidence = max(0.0, min(1.0, overall))
-
-        # Build human-readable formula
-        confs_str = ", ".join(f"{v:.2f}" for v in field_confs.values())
-        self.confidence_formula = (
-            f"min({confs_str})"
-            f" − 0.05·{n_bias} (bias)"
-            f" − 0.10·{n_clamp} (clamps)"
-            f" − 0.10·{low_conf_retrievals} (low-conf retrievals)"
-            f" = {self.overall_confidence:.2f}"
-        )
-
-        return self.overall_confidence

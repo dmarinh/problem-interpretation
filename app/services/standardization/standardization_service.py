@@ -1,45 +1,53 @@
 """
 Standardization Service
 
-Applies conservative defaults, range clamping, and bias correction.
 Transforms grounded values into execution-ready payloads.
 
-IMPORTANT: Conservative Bias Direction
-=======================================
+Responsibilities
+----------------
+1. Conservative defaults — when a required field is absent, substitute the
+   worst-case value for the active model type and record a DefaultImputed event.
+
+2. Range clamping — when a value falls outside the ComBase model's valid range,
+   clamp it and record a RangeClamp event.
+
+3. Range-bound selection — when GroundingService left a range with
+   range_pending=True, pick the conservative bound (upper for growth/survival,
+   lower for thermal inactivation) and record a RangeBoundSelection block on
+   the field's ValueProvenance.
+
+That is the complete list.  There is no "bias correction" phase.
+Conservatism is committed exactly twice in the system: once in the default
+value (committed here at standardization) and once in range-bound selection
+(committed here per range).  Mapped values from rules.py carry their own
+conservatism via the rule's chosen point — the rule author already picked the
+upper end of the plausible range.  Multiplying or bumping on top of that
+produces a value that is no longer a defensible interpretation of the user's
+words; it is an arbitrary point past the stated worst case.
+
+Conservative direction by model type
+-------------------------------------
 The meaning of "conservative" depends on the model type:
 
-- GROWTH models: Conservative = predict MORE growth (worse outcome)
-  → Use upper bounds for temperature and duration
-  → Add duration margin (+20%)
-  → Higher temp + longer time = more bacterial multiplication
-  
-- THERMAL INACTIVATION models: Conservative = predict LESS kill (worse outcome)
-  → Use lower bounds for temperature and duration  
-  → Subtract duration margin (-20%)
-  → Lower temp + shorter time = fewer pathogens killed
-  → This prevents approving undercooked food as safe
+- GROWTH / NON_THERMAL_SURVIVAL: conservative = predict MORE growth/survival
+  → upper bounds, higher defaults (more pathogen multiplication/survival)
 
-- NON_THERMAL SURVIVAL models: Conservative = predict MORE survival (worse outcome)
-  → Similar to growth models in most cases
-  → Treatment-specific: lower acid concentration, shorter exposure, etc.
-  → Weaker treatment = more surviving pathogens
+- THERMAL_INACTIVATION: conservative = predict LESS kill
+  → lower bounds, lower defaults (fewer pathogens destroyed)
 
-The key insight: "conservative" always means assuming the WORSE food safety
-outcome given the uncertainty in the inputs. For growth, that's more growth.
-For inactivation, that's less kill.
+Range-bound selection
+---------------------
+When GroundingService retrieves or extracts a range (e.g., pH 5.0–6.2), it
+stores the lower bound as a placeholder with ValueProvenance.range_pending=True.
+This service resolves the pending range at the start of each _get_* method:
 
-Example of the anti-conservative bug this fixes:
-------------------------------------------------
-User: "chicken nuggets at about 68°C for roughly 8 minutes"
-Old behavior: 68°C + temp bump = 70°C, 8 min × 1.2 = 9.6 min
-             → Predicts MORE Salmonella kill → "probably safe"
-             
-This is WRONG because it makes undercooked food look safer than it is.
+- GROWTH / NON_THERMAL_SURVIVAL → upper bound (more growth = worse)
+- THERMAL_INACTIVATION → lower bound (less kill = worse)
 
-New behavior: 68°C - temp bump = 66°C, 8 min × 0.8 = 6.4 min  
-             → Predicts LESS Salmonella kill → "may not be safe"
-             
-This correctly errs on the side of caution for cooking scenarios.
+The selection is recorded in ValueProvenance.standardization as a
+RangeBoundSelection block.  It does not appear in defaults_imputed or
+range_clamps — it is a deterministic, mechanical step that fires on every
+range-typed value.
 """
 
 from app.config import settings
@@ -47,7 +55,6 @@ from app.models.enums import (
     ModelType,
     ComBaseOrganism,
     Factor4Type,
-    BiasType,
 )
 from app.models.execution.base import TimeTemperatureStep, TimeTemperatureProfile
 from app.models.execution.combase import (
@@ -56,70 +63,51 @@ from app.models.execution.combase import (
     ComBaseExecutionPayload,
 )
 from app.models.metadata import (
-    BiasCorrection,
+    DefaultImputed,
+    RangeBoundSelection,
     RangeClamp,
-    ValueSource,
 )
 from app.services.grounding.grounding_service import GroundedValues
 from app.engines.combase.models import ComBaseModelConstraints, ComBaseModelRegistry
 from pydantic import ValidationError
 
+# Imported at the bottom of this module to break the circular-import chain:
+#   standardization_service → engine (ok) → models (ok)
+# get_combase_engine is used only inside get_standardization_service(), not at
+# module load time, so the deferred import is safe.
+def _get_engine_registry() -> "ComBaseModelRegistry":
+    from app.engines.combase.engine import get_combase_engine  # noqa: PLC0415
+    return get_combase_engine().registry
+
 
 class StandardizationResult:
-    """Result of standardization with corrections applied."""
-    
+    """Result of standardization."""
+
     def __init__(self):
         self.payload: ComBaseExecutionPayload | None = None
-        self.bias_corrections: list[BiasCorrection] = []
+        self.defaults_imputed: list[DefaultImputed] = []
         self.range_clamps: list[RangeClamp] = []
-        self.defaults_applied: list[str] = []
         self.warnings: list[str] = []
         self.missing_required: list[str] = []
 
 
 class StandardizationService:
     """
-    Service for standardizing grounded values into execution payloads.
-    
-    Responsibilities:
-    - Apply conservative defaults for missing values
-    - Clamp values to model-valid ranges
-    - Apply bias corrections with MODEL-TYPE-AWARE direction
-    - Build execution payload
-    
-    The direction of bias corrections REVERSES for thermal inactivation models
-    to ensure we always err toward the worse food safety outcome.
-    
+    Standardizes grounded values into execution payloads.
+
+    See module docstring for the full responsibility contract.
+
     Usage:
         service = StandardizationService(registry)
         result = service.standardize(grounded_values, model_type=ModelType.GROWTH)
     """
-    
-    # =========================================================================
-    # BIAS CORRECTION CONFIGURATION
-    # =========================================================================
-    
-    # Duration margin: how much to adjust inferred durations
-    # For growth: multiply by 1.2 (add 20% → more growth)
-    # For inactivation: multiply by 0.8 (subtract 20% → less kill)
-    DURATION_MARGIN_GROWTH = 1.2
-    DURATION_MARGIN_INACTIVATION = 0.8
-    
-    # Temperature bump for low-confidence values
-    # For growth: add 5°C (warmer → more growth)
-    # For inactivation: subtract 5°C (cooler → less kill)
-    TEMPERATURE_BUMP_GROWTH = 5.0
-    TEMPERATURE_BUMP_INACTIVATION = -5.0
-    
-    # Confidence threshold below which temperature bump is applied
-    LOW_CONFIDENCE_THRESHOLD = 0.5
-    
+
     def __init__(
         self,
         model_registry: ComBaseModelRegistry | None = None,
     ):
         self._registry = model_registry
-    
+
     def standardize(
         self,
         grounded: GroundedValues,
@@ -127,19 +115,15 @@ class StandardizationService:
     ) -> StandardizationResult:
         """
         Standardize grounded values into an execution payload.
-        
+
         Args:
             grounded: Grounded values from GroundingService
-            model_type: Type of model to run (affects bias direction)
-            
+            model_type: Type of model to run (affects default direction and
+                        range-bound selection)
+
         Returns:
-            StandardizationResult with payload and corrections
-            
-        Note:
-            The model_type parameter is CRITICAL for correct bias direction.
-            - ModelType.GROWTH: bias toward more growth (upper bounds, +duration)
-            - ModelType.THERMAL_INACTIVATION: bias toward less kill (lower bounds, -duration)
-            - ModelType.NON_THERMAL_SURVIVAL: same as growth (bias toward more survival)
+            StandardizationResult with payload, defaults_imputed, and
+            range_clamps.
         """
         result = StandardizationResult()
 
@@ -168,8 +152,7 @@ class StandardizationService:
             profile = self._build_multi_step_profile(grounded, result, constraints, model_type)
             if profile is None:
                 return result  # missing_required already populated
-            # Use first step's (post-correction) temperature for ComBaseParameters;
-            # the engine iterates the profile steps and uses each step's own temperature.
+            # Use first step's temperature for ComBaseParameters scalar summary.
             representative_temp = profile.steps[0].temperature_celsius
         else:
             # Single-step path
@@ -216,63 +199,65 @@ class StandardizationService:
             result.warnings.append(f"Failed to build payload: {e}")
 
         return result
-    
+
     # =========================================================================
     # HELPER: CONSERVATIVE DIRECTION
     # =========================================================================
-    
+
     def _is_inactivation_model(self, model_type: ModelType) -> bool:
         """
-        Determine if this is an inactivation model (requires reversed bias).
-        
-        For inactivation models, "conservative" means predicting LESS pathogen
-        death, so we use lower temperatures and shorter durations.
-        
-        For growth and survival models, "conservative" means predicting MORE
-        pathogen growth/survival, so we use higher temperatures and longer durations.
+        True for thermal inactivation models, which require reversed bound
+        selection: conservative = less pathogen kill = lower temperature,
+        shorter duration, lower bound on ranges.
         """
         return model_type == ModelType.THERMAL_INACTIVATION
-    
+
     def _get_range_bound_to_use(self, model_type: ModelType) -> str:
         """
-        Determine which bound of a range to use for conservative bias.
-        
-        Returns:
-            "upper" for growth/survival models (more growth = worse)
-            "lower" for inactivation models (less kill = worse)
+        "upper" for growth/survival (more growth = worse),
+        "lower" for thermal inactivation (less kill = worse).
         """
         if self._is_inactivation_model(model_type):
             return "lower"
         return "upper"
-    
-    def _get_duration_margin(self, model_type: ModelType) -> float:
+
+    def _select_range_bound(
+        self,
+        range_min: float,
+        range_max: float,
+        model_type: ModelType,
+    ) -> tuple[float, RangeBoundSelection]:
         """
-        Get the duration margin multiplier for conservative bias.
-        
+        Pick the conservative bound from a range based on model type.
+
         Returns:
-            1.2 (add 20%) for growth/survival models
-            0.8 (subtract 20%) for inactivation models
+            (selected_value, RangeBoundSelection audit block)
         """
         if self._is_inactivation_model(model_type):
-            return self.DURATION_MARGIN_INACTIVATION
-        return self.DURATION_MARGIN_GROWTH
-    
-    def _get_temperature_bump(self, model_type: ModelType) -> float:
-        """
-        Get the temperature adjustment for low-confidence values.
-        
-        Returns:
-            +5.0°C for growth/survival models (warmer = more growth)
-            -5.0°C for inactivation models (cooler = less kill)
-        """
-        if self._is_inactivation_model(model_type):
-            return self.TEMPERATURE_BUMP_INACTIVATION
-        return self.TEMPERATURE_BUMP_GROWTH
-    
+            value = range_min
+            direction = "lower"
+            reason = (
+                f"Range narrowed to lower bound for {model_type.value} model "
+                "(less pathogen kill = more conservative)"
+            )
+        else:
+            value = range_max
+            direction = "upper"
+            reason = (
+                f"Range narrowed to upper bound for {model_type.value} model "
+                "(more pathogen growth/survival = more conservative)"
+            )
+        return value, RangeBoundSelection(
+            direction=direction,
+            reason=reason,
+            before_value=[range_min, range_max],
+            after_value=value,
+        )
+
     # =========================================================================
     # VALUE STANDARDIZATION
     # =========================================================================
-    
+
     def _get_organism(
         self,
         grounded: GroundedValues,
@@ -280,23 +265,30 @@ class StandardizationService:
     ) -> ComBaseOrganism | None:
         """
         Get organism, applying default if needed.
-        
-        Note: Organism selection is NOT affected by model type.
-        Salmonella is used as the default because it's a common
-        worst-case pathogen for both growth and cooking scenarios.
+
+        Salmonella is the default because it is a common worst-case pathogen
+        for both growth and cooking scenarios.
         """
         organism = grounded.get("organism")
-        
+
         if organism is None:
-            # Default to Salmonella (common worst-case)
-            result.defaults_applied.append("organism (defaulted to Salmonella)")
+            default_reason = (
+                "No pathogen specified. Using Salmonella as conservative default. "
+                "Salmonella is a leading cause of foodborne illness and is broadly "
+                "applicable across food categories."
+            )
+            result.defaults_imputed.append(DefaultImputed(
+                field_name="organism",
+                imputed_value="Salmonella",
+                reason=default_reason,
+            ))
             result.warnings.append(
                 "No pathogen specified. Using Salmonella as conservative default."
             )
             return ComBaseOrganism.SALMONELLA
-        
+
         return organism
-    
+
     def _get_factor4(
         self,
         grounded: GroundedValues,
@@ -310,9 +302,9 @@ class StandardizationService:
             return Factor4Type.LACTIC_ACID, grounded.get("lactic_acid_ppm")
         if grounded.has("acetic_acid_ppm"):
             return Factor4Type.ACETIC_ACID, grounded.get("acetic_acid_ppm")
-        
+
         return Factor4Type.NONE, None
-    
+
     def _get_temperature(
         self,
         grounded: GroundedValues,
@@ -321,76 +313,49 @@ class StandardizationService:
         model_type: ModelType,
     ) -> float | None:
         """
-        Get temperature, applying model-type-aware defaults and bias corrections.
-        
-        For GROWTH models:
-            - Default to abuse temperature (25°C) - warm = more growth
-            - Low confidence: add 5°C (warmer = worse)
-            
-        For THERMAL INACTIVATION models:
-            - Default to a conservative cooking temperature
-            - Low confidence: subtract 5°C (cooler = worse, less kill)
-            
-        For NON_THERMAL SURVIVAL models:
-            - Same as growth (higher temp = more survival under stress)
+        Get temperature, applying model-type-aware default if absent.
+
+        GROWTH / NON_THERMAL_SURVIVAL default: 25°C (abuse temperature —
+        warm enough for rapid growth, conservative for storage scenarios).
+
+        THERMAL_INACTIVATION default: settings.default_temperature_inactivation_conservative_c
+        (a cooking temperature that may not achieve full pasteurization —
+        conservative because it predicts less kill).
         """
         temp = grounded.get("temperature_celsius")
-        
+        prov = grounded.provenance.get("temperature_celsius")
+
+        # Resolve pending range: grounding stored the lower bound; pick the
+        # conservative bound now that we know the model type.
+        if prov is not None and prov.range_pending and prov.parsed_range is not None:
+            temp, selection = self._select_range_bound(
+                prov.parsed_range[0], prov.parsed_range[1], model_type
+            )
+            prov.standardization = selection
+            prov.range_pending = False
+
         if temp is None:
-            # Apply model-type-aware default
             if self._is_inactivation_model(model_type):
-                # For cooking: default to a moderate temperature that might
-                # not achieve full pasteurization (conservative = less kill)
                 temp = settings.default_temperature_inactivation_conservative_c
-                result.defaults_applied.append(f"temperature (defaulted to {temp}°C for cooking)")
-                result.bias_corrections.append(BiasCorrection(
-                    bias_type=BiasType.MISSING_VALUE_IMPUTED,
+                result.defaults_imputed.append(DefaultImputed(
                     field_name="temperature_celsius",
-                    original_value=None,
-                    corrected_value=temp,
-                    correction_reason=(
-                        "No cooking temperature specified. Using conservative 60°C "
-                        "(may not achieve full pasteurization)."
+                    imputed_value=temp,
+                    reason=(
+                        "No cooking temperature specified. Using conservative "
+                        f"{temp}°C (may not achieve full pasteurization)."
                     ),
                 ))
             else:
-                # For growth/survival: default to abuse temperature
                 temp = settings.default_temperature_abuse_c
-                result.defaults_applied.append(f"temperature (defaulted to {temp}°C)")
-                result.bias_corrections.append(BiasCorrection(
-                    bias_type=BiasType.MISSING_VALUE_IMPUTED,
+                result.defaults_imputed.append(DefaultImputed(
                     field_name="temperature_celsius",
-                    original_value=None,
-                    corrected_value=temp,
-                    correction_reason=(
+                    imputed_value=temp,
+                    reason=(
                         "No temperature specified. Using conservative abuse "
                         f"temperature ({temp}°C) for growth prediction."
                     ),
                 ))
-        else:
-            # Apply low-confidence temperature bump if applicable
-            provenance = grounded.provenance.get("temperature_celsius")
-            if provenance and provenance.confidence < self.LOW_CONFIDENCE_THRESHOLD:
-                original = temp
-                bump = self._get_temperature_bump(model_type)
-                temp = temp + bump
-                
-                direction_desc = "warmer" if bump > 0 else "cooler"
-                safety_desc = "more growth" if bump > 0 else "less pathogen kill"
-                
-                result.bias_corrections.append(BiasCorrection(
-                    bias_type=BiasType.OPTIMISTIC_TEMPERATURE,
-                    field_name="temperature_celsius",
-                    original_value=original,
-                    corrected_value=temp,
-                    correction_reason=(
-                        f"Low confidence ({provenance.confidence:.2f}) temperature. "
-                        f"Adjusted {abs(bump):.1f}°C {direction_desc} for conservative "
-                        f"estimate ({safety_desc})."
-                    ),
-                    correction_magnitude=bump,
-                ))
-        
+
         # Clamp to valid range if constraints available
         if constraints and not constraints.is_temperature_valid(temp):
             original = temp
@@ -403,9 +368,14 @@ class StandardizationService:
                 valid_max=constraints.temp_max,
                 reason=f"Model constraint for {model_type.value}",
             ))
-        
+            result.warnings.append(
+                f"Temperature {original}°C is outside the model's valid range "
+                f"[{constraints.temp_min}, {constraints.temp_max}]°C; "
+                f"clamped to {temp}°C. Prediction is at the model boundary."
+            )
+
         return temp
-    
+
     def _get_duration(
         self,
         grounded: GroundedValues,
@@ -413,57 +383,30 @@ class StandardizationService:
         model_type: ModelType,
     ) -> float | None:
         """
-        Get duration, applying model-type-aware conservative bias.
-        
-        For GROWTH models:
-            - Inferred durations: multiply by 1.2 (+20%)
-            - Longer time = more growth = worse outcome
-            
-        For THERMAL INACTIVATION models:
-            - Inferred durations: multiply by 0.8 (-20%)
-            - Shorter time = less kill = worse outcome
-            - This prevents approving undercooked food!
-            
-        For NON_THERMAL SURVIVAL models:
-            - Same as growth (+20%)
-            - Longer survival time = more risk
+        Get duration, passing it through unchanged.
+
+        Mapped values (USER_INFERRED) already carry conservatism through the
+        rule's chosen point — e.g., "a while" → 60 min is the upper end of
+        the 30–90 min range described in the rule's notes.  No multiplier is
+        applied on top of that.
         """
         duration = grounded.get("duration_minutes")
-        
+        prov = grounded.provenance.get("duration_minutes")
+
+        # Resolve pending range before default logic.
+        if prov is not None and prov.range_pending and prov.parsed_range is not None:
+            duration, selection = self._select_range_bound(
+                prov.parsed_range[0], prov.parsed_range[1], model_type
+            )
+            prov.standardization = selection
+            prov.range_pending = False
+
         if duration is None:
-            # Cannot default duration - it's critical information
             result.warnings.append("Duration is required but not specified")
             return None
-        
-        # Apply conservative bias for inferred durations
-        provenance = grounded.provenance.get("duration_minutes")
-        if provenance and provenance.source == ValueSource.USER_INFERRED:
-            original = duration
-            margin = self._get_duration_margin(model_type)
-            duration = duration * margin
-            
-            # Describe the direction and rationale
-            if margin > 1.0:
-                direction_desc = f"+{(margin - 1.0) * 100:.0f}%"
-                safety_desc = "assuming longer exposure (more growth)"
-            else:
-                direction_desc = f"-{(1.0 - margin) * 100:.0f}%"
-                safety_desc = "assuming shorter cooking (less pathogen kill)"
-            
-            result.bias_corrections.append(BiasCorrection(
-                bias_type=BiasType.OPTIMISTIC_DURATION,
-                field_name="duration_minutes",
-                original_value=original,
-                corrected_value=duration,
-                correction_reason=(
-                    f"Inferred duration adjusted {direction_desc} for "
-                    f"{model_type.value} model: {safety_desc}."
-                ),
-                correction_magnitude=duration - original,
-            ))
-        
+
         return duration
-    
+
     def _get_ph(
         self,
         grounded: GroundedValues,
@@ -472,23 +415,22 @@ class StandardizationService:
         model_type: ModelType,
     ) -> float:
         """
-        Get pH, applying model-type-aware defaults and clamping.
-        
-        For GROWTH models:
-            - Default to neutral pH (7.0) - optimal for most pathogens
-            - This maximizes predicted growth (conservative)
-            
-        For THERMAL INACTIVATION models:
-            - Default to neutral pH (7.0)
-            - Neutral pH generally means pathogens are more heat-resistant
-            - Lower pH (acidic) can increase heat sensitivity
-            
-        For NON_THERMAL SURVIVAL models:
-            - Default depends on treatment type
-            - For acid treatments: higher pH = more survival (conservative)
-            - Generally: neutral pH allows more survival
+        Get pH, applying neutral default (7.0) if absent.
+
+        Neutral pH is near-optimal for pathogen growth and provides no
+        protective effect from acidity, making it conservative for all model
+        types.
         """
         ph = grounded.get("ph")
+        prov = grounded.provenance.get("ph")
+
+        # Resolve pending range before validation/default logic.
+        if prov is not None and prov.range_pending and prov.parsed_range is not None:
+            ph, selection = self._select_range_bound(
+                prov.parsed_range[0], prov.parsed_range[1], model_type
+            )
+            prov.standardization = selection
+            prov.range_pending = False
 
         # Reject physically impossible values (LLM field confusion / regex mismatch)
         if ph is not None and not (0.0 <= ph <= 14.0):
@@ -499,12 +441,7 @@ class StandardizationService:
             ph = None
 
         if ph is None:
-            # Apply neutral default (conservative for most scenarios)
-            # Neutral pH is near-optimal for pathogen growth and doesn't
-            # provide the protective effect that acidic conditions would
             ph = settings.default_ph_neutral
-            result.defaults_applied.append(f"pH (defaulted to {ph})")
-            
             if self._is_inactivation_model(model_type):
                 reason = (
                     "No pH specified. Using neutral pH (7.0) which provides "
@@ -515,15 +452,12 @@ class StandardizationService:
                     "No pH specified. Using neutral default which is near-optimal "
                     "for pathogen growth (conservative)."
                 )
-            
-            result.bias_corrections.append(BiasCorrection(
-                bias_type=BiasType.MISSING_VALUE_IMPUTED,
+            result.defaults_imputed.append(DefaultImputed(
                 field_name="ph",
-                original_value=None,
-                corrected_value=ph,
-                correction_reason=reason,
+                imputed_value=ph,
+                reason=reason,
             ))
-        
+
         # Clamp to valid range
         if constraints and not constraints.is_ph_valid(ph):
             original = ph
@@ -536,9 +470,14 @@ class StandardizationService:
                 valid_max=constraints.ph_max,
                 reason="Model constraint",
             ))
-        
+            result.warnings.append(
+                f"pH {original} is outside the model's valid range "
+                f"[{constraints.ph_min}, {constraints.ph_max}]; "
+                f"clamped to {ph}. Prediction is at the model boundary."
+            )
+
         return ph
-    
+
     def _get_water_activity(
         self,
         grounded: GroundedValues,
@@ -547,28 +486,22 @@ class StandardizationService:
         model_type: ModelType,
     ) -> float:
         """
-        Get water activity, applying model-type-aware defaults.
-        
-        For GROWTH models:
-            - Default to high water activity (0.99)
-            - High aw = more available water = more growth (conservative)
-            
-        For THERMAL INACTIVATION models:
-            - Default to high water activity (0.99)
-            - High aw generally means pathogens are MORE heat-sensitive
-            - However, we keep it high to not assume protective effects
-            
-        For NON_THERMAL SURVIVAL models:
-            - For drying treatments: high aw = more survival
-            - Default to high (0.99) which is conservative
-            
-        Note: Unlike temperature and duration, the conservative default for
-        water activity is the same (high) for all model types because:
-        - Growth: high aw = more growth
-        - Inactivation: high aw = no protective effect assumed
-        - Survival: high aw = more survival
+        Get water activity, applying high default (0.99) if absent.
+
+        High aw is conservative for all model types: it maximises predicted
+        growth/survival, and for inactivation it does not assume any
+        protective drying effect.
         """
         aw = grounded.get("water_activity")
+        prov = grounded.provenance.get("water_activity")
+
+        # Resolve pending range before validation/default logic.
+        if prov is not None and prov.range_pending and prov.parsed_range is not None:
+            aw, selection = self._select_range_bound(
+                prov.parsed_range[0], prov.parsed_range[1], model_type
+            )
+            prov.standardization = selection
+            prov.range_pending = False
 
         # Reject physically impossible values (LLM field confusion / regex mismatch)
         if aw is not None and not (0.0 <= aw <= 1.0):
@@ -579,10 +512,7 @@ class StandardizationService:
             aw = None
 
         if aw is None:
-            # Apply conservative (high) default
             aw = settings.default_water_activity
-            result.defaults_applied.append(f"water_activity (defaulted to {aw})")
-            
             if self._is_inactivation_model(model_type):
                 reason = (
                     "No water activity specified. Using high default (0.99) "
@@ -593,15 +523,12 @@ class StandardizationService:
                     "No water activity specified. Using conservative high "
                     "default (0.99) which maximizes predicted growth."
                 )
-            
-            result.bias_corrections.append(BiasCorrection(
-                bias_type=BiasType.MISSING_VALUE_IMPUTED,
+            result.defaults_imputed.append(DefaultImputed(
                 field_name="water_activity",
-                original_value=None,
-                corrected_value=aw,
-                correction_reason=reason,
+                imputed_value=aw,
+                reason=reason,
             ))
-        
+
         # Clamp to valid range
         if constraints and not constraints.is_aw_valid(aw):
             original = aw
@@ -614,9 +541,13 @@ class StandardizationService:
                 valid_max=constraints.aw_max,
                 reason="Model constraint",
             ))
-        
-        return aw
+            result.warnings.append(
+                f"Water activity {original} is outside the model's valid range "
+                f"[{constraints.aw_min}, {constraints.aw_max}]; "
+                f"clamped to {aw}. Prediction is at the model boundary."
+            )
 
+        return aw
 
     def _build_multi_step_profile(
         self,
@@ -628,9 +559,9 @@ class StandardizationService:
         """
         Build a multi-step TimeTemperatureProfile from grounded.steps.
 
-        Applies the same per-value bias corrections as the single-step path:
-        - Temperature: low-confidence bump, then range clamp
-        - Duration: inferred-value margin (+20% growth / -20% inactivation)
+        Applies the same per-value defaults and range clamping as the
+        single-step path.  Duration values pass through unchanged — mapped
+        values carry their own conservatism via the rule's chosen point.
 
         Returns None and populates result.missing_required if any step is
         missing a duration (temperature falls back to the conservative default).
@@ -646,41 +577,32 @@ class StandardizationService:
         for new_order, gs in enumerate(ordered_steps, start=1):
             # --- Temperature ---
             temp = gs.temperature_celsius
+            temp_prov = gs.temp_provenance
+
+            # Resolve pending range for this step's temperature.
+            if (
+                temp_prov is not None
+                and temp_prov.range_pending
+                and temp_prov.parsed_range is not None
+            ):
+                temp, selection = self._select_range_bound(
+                    temp_prov.parsed_range[0], temp_prov.parsed_range[1], model_type
+                )
+                temp_prov.standardization = selection
+                temp_prov.range_pending = False
+
             if temp is None:
-                # Apply same model-type-aware default as single-step path
                 if self._is_inactivation_model(model_type):
                     temp = settings.default_temperature_inactivation_conservative_c
                 else:
                     temp = settings.default_temperature_abuse_c
-                result.bias_corrections.append(BiasCorrection(
-                    bias_type=BiasType.MISSING_VALUE_IMPUTED,
+                result.defaults_imputed.append(DefaultImputed(
                     field_name=f"temperature_celsius (step {gs.step_order})",
-                    original_value=None,
-                    corrected_value=temp,
-                    correction_reason=(
+                    imputed_value=temp,
+                    reason=(
                         f"Step {gs.step_order}: no temperature specified. "
                         f"Using conservative default {temp}°C."
                     ),
-                ))
-            elif (
-                gs.temp_provenance is not None
-                and gs.temp_provenance.confidence < self.LOW_CONFIDENCE_THRESHOLD
-            ):
-                original = temp
-                bump = self._get_temperature_bump(model_type)
-                temp = temp + bump
-                direction = "warmer" if bump > 0 else "cooler"
-                result.bias_corrections.append(BiasCorrection(
-                    bias_type=BiasType.OPTIMISTIC_TEMPERATURE,
-                    field_name=f"temperature_celsius (step {gs.step_order})",
-                    original_value=original,
-                    corrected_value=temp,
-                    correction_reason=(
-                        f"Step {gs.step_order}: low confidence "
-                        f"({gs.temp_provenance.confidence:.2f}) temperature. "
-                        f"Adjusted {abs(bump):.1f}°C {direction} for conservative estimate."
-                    ),
-                    correction_magnitude=bump,
                 ))
 
             if constraints and not constraints.is_temperature_valid(temp):
@@ -694,41 +616,31 @@ class StandardizationService:
                     valid_max=constraints.temp_max,
                     reason=f"Model constraint for {model_type.value}",
                 ))
+                result.warnings.append(
+                    f"Step {gs.step_order}: temperature {original}°C is outside the "
+                    f"model's valid range [{constraints.temp_min}, {constraints.temp_max}]°C; "
+                    f"clamped to {temp}°C. Prediction is at the model boundary."
+                )
 
             # --- Duration ---
             dur = gs.duration_minutes
+            dur_prov = gs.dur_provenance
+
+            # Resolve pending range for this step's duration.
+            if (
+                dur_prov is not None
+                and dur_prov.range_pending
+                and dur_prov.parsed_range is not None
+            ):
+                dur, selection = self._select_range_bound(
+                    dur_prov.parsed_range[0], dur_prov.parsed_range[1], model_type
+                )
+                dur_prov.standardization = selection
+                dur_prov.range_pending = False
+
             if dur is None:
                 result.missing_required.append(f"duration (step {gs.step_order})")
                 return None
-
-            if (
-                gs.dur_provenance is not None
-                and gs.dur_provenance.source == ValueSource.USER_INFERRED
-            ):
-                original = dur
-                margin = self._get_duration_margin(model_type)
-                dur = dur * margin
-                direction_desc = (
-                    f"+{(margin - 1.0) * 100:.0f}%"
-                    if margin > 1.0
-                    else f"-{(1.0 - margin) * 100:.0f}%"
-                )
-                safety_desc = (
-                    "assuming longer exposure (more growth)"
-                    if margin > 1.0
-                    else "assuming shorter cooking (less pathogen kill)"
-                )
-                result.bias_corrections.append(BiasCorrection(
-                    bias_type=BiasType.OPTIMISTIC_DURATION,
-                    field_name=f"duration_minutes (step {gs.step_order})",
-                    original_value=original,
-                    corrected_value=dur,
-                    correction_reason=(
-                        f"Step {gs.step_order}: inferred duration adjusted "
-                        f"{direction_desc} for {model_type.value} model: {safety_desc}."
-                    ),
-                    correction_magnitude=dur - original,
-                ))
 
             total_duration += dur
             built_steps.append(TimeTemperatureStep(
@@ -755,7 +667,7 @@ def get_standardization_service() -> StandardizationService:
     """Get or create the global StandardizationService instance."""
     global _service
     if _service is None:
-        _service = StandardizationService()
+        _service = StandardizationService(model_registry=_get_engine_registry())
     return _service
 
 
