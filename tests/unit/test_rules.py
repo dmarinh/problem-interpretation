@@ -9,15 +9,12 @@ import pytest
 
 from app.config.rules import (
     InterpretationRule,
-    BiasCorrectionRule,
     TEMPERATURE_INTERPRETATIONS,
     DURATION_INTERPRETATIONS,
-    BIAS_CORRECTIONS,
     find_temperature_interpretation,
     find_duration_interpretation,
     find_temperature_interpretation_with_fallback,
     find_temperature_by_similarity,
-    get_bias_correction,
 )
 
 
@@ -258,27 +255,20 @@ class TestTemperatureEmbeddingFallback:
     
     def test_embedding_similarity_function(self):
         """Test direct embedding similarity function."""
-        temp, score = find_temperature_by_similarity("sitting at ambient conditions")
-        
+        temp, score, phrase = find_temperature_by_similarity("sitting at ambient conditions")
+
         # Should find a match with reasonable similarity
         if temp is not None:
             assert temp in [25.0, 30.0, 35.0, 4.0, -18.0]
             assert 0.0 <= score <= 1.0
-    
+            assert phrase is not None and isinstance(phrase, str)
+
     def test_embedding_returns_low_score_for_unrelated(self):
         """Should return low score for completely unrelated text."""
-        temp, score = find_temperature_by_similarity("hello world")
-        
+        temp, score, phrase = find_temperature_by_similarity("hello world")
+
         # Score should be low
         assert score < 0.8
-    
-    def test_fallback_confidence_includes_similarity(self):
-        """Embedding fallback confidence should incorporate similarity score."""
-        rule = find_temperature_interpretation_with_fallback("sitting in warm sunshine")
-        
-        # If it matches via embedding, confidence should be less than rule-based
-        if rule is not None and "embedding" in rule.notes.lower():
-            assert rule.confidence < 0.65  # EMBEDDING_MATCH_CONFIDENCE
     
     def test_fallback_notes_indicate_method(self):
         """Embedding fallback should indicate method in notes."""
@@ -457,46 +447,6 @@ class TestDurationInterpretations:
         assert rule is None
 
 
-class TestBiasCorrections:
-    """Tests for bias correction rules."""
-    
-    def test_get_inferred_duration_margin(self):
-        """Should find duration margin rule."""
-        rule = get_bias_correction("inferred_duration_margin")
-        
-        assert rule is not None
-        assert rule.correction_type == "multiply"
-        assert rule.factor == 1.2
-    
-    def test_get_temperature_range_upper(self):
-        """Should find temperature range rule."""
-        rule = get_bias_correction("temperature_range_upper")
-        
-        assert rule is not None
-        assert rule.correction_type == "use_upper"
-    
-    def test_get_duration_range_upper(self):
-        """Should find duration range rule."""
-        rule = get_bias_correction("duration_range_upper")
-        
-        assert rule is not None
-        assert rule.correction_type == "use_upper"
-    
-    def test_get_low_confidence_temperature_bump(self):
-        """Should find low confidence temperature rule."""
-        rule = get_bias_correction("low_confidence_temperature_bump")
-        
-        assert rule is not None
-        assert rule.correction_type == "add"
-        assert rule.factor == 5.0
-    
-    def test_get_nonexistent_returns_none(self):
-        """Should return None for unknown rule."""
-        rule = get_bias_correction("nonexistent_rule")
-        
-        assert rule is None
-
-
 class TestRuleDataStructureIntegrity:
     """Tests for rule data structure integrity."""
     
@@ -507,7 +457,6 @@ class TestRuleDataStructureIntegrity:
             assert len(rule.pattern) > 0
             assert rule.value is not None
             assert isinstance(rule.value, (int, float))
-            assert 0.0 <= rule.confidence <= 1.0
             assert isinstance(rule.conservative, bool)
     
     def test_all_temperature_values_reasonable(self):
@@ -524,7 +473,6 @@ class TestRuleDataStructureIntegrity:
             assert rule.value is not None
             assert isinstance(rule.value, (int, float))
             assert rule.value > 0, f"Duration should be positive for {rule.pattern}"
-            assert 0.0 <= rule.confidence <= 1.0
             assert isinstance(rule.conservative, bool)
     
     def test_all_duration_values_reasonable(self):
@@ -532,21 +480,6 @@ class TestRuleDataStructureIntegrity:
         for rule in DURATION_INTERPRETATIONS:
             # Durations should be between 1 minute and 24 hours (1440 min)
             assert 1 <= rule.value <= 1440, f"Unreasonable duration {rule.value} for {rule.pattern}"
-    
-    def test_all_bias_rules_have_required_fields(self):
-        """All bias correction rules should have valid structure."""
-        for rule in BIAS_CORRECTIONS:
-            assert rule.name is not None
-            assert len(rule.name) > 0
-            assert rule.condition is not None
-            assert rule.correction_type in ["multiply", "use_upper", "use_lower", "add"]
-    
-    def test_bias_rules_with_factor_have_valid_factor(self):
-        """Bias rules with multiply/add should have valid factor."""
-        for rule in BIAS_CORRECTIONS:
-            if rule.correction_type in ["multiply", "add"]:
-                assert rule.factor is not None, f"Rule {rule.name} needs factor"
-                assert rule.factor > 0, f"Factor should be positive for {rule.name}"
     
     def test_no_duplicate_temperature_patterns(self):
         """Temperature patterns should be unique."""
@@ -558,12 +491,6 @@ class TestRuleDataStructureIntegrity:
         patterns = [r.pattern for r in DURATION_INTERPRETATIONS]
         assert len(patterns) == len(set(patterns)), "Duplicate duration patterns found"
     
-    def test_no_duplicate_bias_rule_names(self):
-        """Bias rule names should be unique."""
-        names = [r.name for r in BIAS_CORRECTIONS]
-        assert len(names) == len(set(names)), "Duplicate bias rule names found"
-
-
 class TestRuleNotes:
     """Tests that rules have explanatory notes."""
     
@@ -579,8 +506,3 @@ class TestRuleNotes:
             assert rule.notes is not None
             assert len(rule.notes) > 0, f"Missing notes for {rule.pattern}"
     
-    def test_bias_rules_have_notes(self):
-        """Bias rules should have notes for auditability."""
-        for rule in BIAS_CORRECTIONS:
-            assert rule.notes is not None
-            assert len(rule.notes) > 0, f"Missing notes for {rule.name}"

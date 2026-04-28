@@ -129,14 +129,12 @@ class Orchestrator:
 
             state.execution_payload = std_result.payload
 
-            # Record corrections and defaults in metadata
+            # Record defaults and range clamps in metadata
             if state.metadata:
-                for correction in std_result.bias_corrections:
-                    state.metadata.add_bias_correction(correction)
+                state.metadata.defaults_imputed.extend(std_result.defaults_imputed)
                 for clamp in std_result.range_clamps:
                     state.metadata.add_range_clamp(clamp)
                 state.metadata.warnings.extend(std_result.warnings)
-                state.metadata.defaults_imputed.extend(std_result.defaults_applied)
 
             # Step 6: Execute model
             state.update_status(SessionStatus.EXECUTING)
@@ -149,7 +147,6 @@ class Orchestrator:
             # Complete
             state.update_status(SessionStatus.COMPLETED)
             if state.metadata:
-                state.metadata.compute_overall_confidence()
                 sys_audit_data = build_system_audit()
                 manifest_missing = sys_audit_data.pop("manifest_missing", False)
                 state.metadata.system = SystemAudit(**sys_audit_data)
@@ -263,6 +260,12 @@ class Orchestrator:
 
         state.metadata.combase_model = ComBaseModelAudit(
             organism=sel.organism.name,
+            organism_id=sel.organism.value,
+            organism_display_name=(
+                model.organism_name
+                if model and isinstance(model.organism_name, str)
+                else None
+            ),
             model_type=model_type.value,
             model_id=model_id,
             coefficients_str=coefficients_str,

@@ -292,12 +292,6 @@ class ExtractedIntent(BaseModel):
         default=False,
         description="Whether the intent is unclear and needs clarification"
     )
-    confidence: float = Field(
-        default=1.0,
-        ge=0.0,
-        le=1.0,
-        description="Confidence in the intent classification"
-    )
     reasoning: str | None = Field(
         default=None,
         description="Brief explanation of why this intent was assigned"

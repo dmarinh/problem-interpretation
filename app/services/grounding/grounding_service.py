@@ -6,21 +6,21 @@ Resolves extracted values to grounded, validated values.
 This service sits between the SemanticParser (which extracts raw user input)
 and the StandardizationService (which prepares execution payloads).
 
-IMPORTANT: Range Bound Selection
-================================
-When a user provides a range (e.g., "between 65 and 70°C"), the grounding
-service must select which bound to use. This selection depends on the
-model type:
+Responsibilities
+----------------
+1. USER_EXPLICIT: Values directly stated by the user ("25°C", "3 hours").
+2. USER_INFERRED: Values interpreted from linguistic descriptions
+   ("room temperature" → 25°C via config/rules.py).
+3. RAG_RETRIEVAL: Values retrieved from the knowledge base (chicken pH → 6.0).
 
-- GROWTH models: Use UPPER bound (more temperature/time = more growth)
-- THERMAL INACTIVATION models: Use LOWER bound (less temperature/time = less kill)
-- NON_THERMAL SURVIVAL models: Use UPPER bound (same as growth)
+When grounding encounters a range (user-supplied or RAG), it preserves BOTH
+bounds — it does NOT collapse to a single value.  The lower bound is stored as
+the placeholder value; ValueProvenance.range_pending is set to True and
+parsed_range carries [min, max].
 
-This ensures we always err toward the worse food safety outcome.
-
-Note: The GroundingService handles range selection during grounding.
-The StandardizationService handles bias corrections AFTER grounding.
-Both must use model-type-aware logic for correct conservative behavior.
+Range-bound selection (choosing upper vs. lower based on model type) is a
+StandardizationService responsibility.  It is a model-type-aware, deterministic
+transformation that belongs alongside bias correction and clamping, not here.
 """
 
 import asyncio
@@ -32,7 +32,7 @@ from app.config.rules import (
     find_temperature_interpretation_with_fallback,
     find_duration_interpretation,
 )
-from app.models.enums import ComBaseOrganism, RetrievalConfidenceLevel, ModelType
+from app.models.enums import ComBaseOrganism
 from app.models.extraction import (
     ExtractedScenario,
     ExtractedEnvironmentalConditions,
@@ -118,13 +118,9 @@ def _build_retrieval_metadata(response: RetrievalResponse) -> RetrievalResult:
         runners_up = [_to_runner_up(r) for r in response.results[1:4]]
 
     query = response.query if isinstance(response.query, str) else ""
-    conf_level = top.confidence_level if top else RetrievalConfidenceLevel.FAILED
-    conf_score = top.confidence if isinstance(getattr(top, "confidence", None), float) else 0.0
 
     return RetrievalResult(
         query=query,
-        confidence_level=conf_level,
-        confidence_score=conf_score,
         source_document=top.source if top else None,
         chunk_id=top.doc_id if top else None,
         retrieved_text=top.content if top else None,
@@ -136,17 +132,6 @@ def _build_retrieval_metadata(response: RetrievalResponse) -> RetrievalResult:
         runners_up=runners_up,
     )
 
-
-def _rag_conf_derivation(score: float, emb: float | None, rr: float | None) -> str:
-    """
-    Build a human-readable confidence derivation string for a RAG-retrieved value.
-    """
-    parts = [f"retrieval_score {score:.2f}"]
-    if emb is not None:
-        parts.append(f"embedding {emb:.2f}")
-    if rr is not None:
-        parts.append(f"rerank {rr:.2f}")
-    return "; ".join(parts)
 
 
 @dataclass
@@ -209,16 +194,29 @@ class GroundedValues:
         field: str,
         value,
         source: ValueSource,
-        confidence: float,
         **kwargs,
     ) -> None:
         """Set a grounded value with provenance."""
         self.values[field] = value
         self.provenance[field] = ValueProvenance(
             source=source,
-            confidence=confidence,
             **kwargs,
         )
+
+    def set_with_prov(
+        self,
+        field: str,
+        value,
+        provenance: ValueProvenance,
+    ) -> None:
+        """Set a grounded value with a pre-built provenance object.
+
+        Use this instead of set() when the caller already constructed
+        the ValueProvenance (e.g. _resolve_temperature_value) and needs
+        all fields preserved without re-listing them as kwargs.
+        """
+        self.values[field] = value
+        self.provenance[field] = provenance
     
     def get(self, field: str, default=None):
         """Get a grounded value."""
@@ -237,22 +235,21 @@ class GroundedValues:
 class GroundingService:
     """
     Service for grounding extracted values using RAG and interpretation rules.
-    
+
     The grounding process resolves vague user descriptions into precise numeric
     values suitable for predictive models. It follows a strict priority hierarchy:
-    
+
     1. USER_EXPLICIT: Values directly stated by user ("25°C", "3 hours")
     2. USER_INFERRED: Values interpreted from descriptions ("room temperature" → 25°C)
     3. RAG_RETRIEVAL: Values retrieved from knowledge base (chicken pH → 6.0)
-    4. Defaults are NOT applied here - that's the StandardizationService's job
-    
-    IMPORTANT: Range Selection
-    --------------------------
-    When values are given as ranges, the bound selection depends on the model type.
-    This is passed to ground_scenario() via the optional model_type parameter.
-    
-    - Growth models: Use upper bound (more growth = worse)
-    - Inactivation models: Use lower bound (less kill = worse)
+    4. Defaults are NOT applied here — that's the StandardizationService's job
+
+    Range handling
+    --------------
+    When a value arrives as a range (user-supplied or from RAG), grounding preserves
+    BOTH bounds.  The lower bound is stored as the placeholder; ValueProvenance has
+    range_pending=True and parsed_range=[min, max].  Choosing which bound to use
+    (upper for growth, lower for thermal inactivation) is StandardizationService's job.
     """
     
     def __init__(
@@ -268,37 +265,27 @@ class GroundingService:
     async def ground_scenario(
         self,
         scenario: ExtractedScenario,
-        model_type: ModelType | None = None,
     ) -> GroundedValues:
         """
         Ground all values in an extracted scenario.
-        
+
+        Ranges are preserved with both bounds — bound selection happens in
+        StandardizationService, not here.
+
         Args:
             scenario: The extracted scenario from SemanticParser
-            model_type: Optional model type for range bound selection.
-                       If None, inferred from scenario.implied_model_type.
-                       Defaults to GROWTH if not determinable.
-        
+
         Returns:
             GroundedValues with resolved values and provenance
-        
-        Note on model_type:
-            The model_type affects how ranges are resolved:
-            - For GROWTH: ranges use upper bound (more growth = worse)
-            - For THERMAL_INACTIVATION: ranges use lower bound (less kill = worse)
-            - For NON_THERMAL_SURVIVAL: same as growth (more survival = worse)
         """
         grounded = GroundedValues()
-        
-        # Determine model type for range selection
-        effective_model_type = model_type or scenario.implied_model_type or ModelType.GROWTH
-        
+
         # Step 1: User explicit environmental conditions (highest priority)
         self._ground_environmental_conditions(
             scenario.environmental_conditions,
             grounded,
         )
-        
+
         # Step 2: User explicit pathogen
         if scenario.pathogen_mentioned:
             organism = ComBaseOrganism.from_string(scenario.pathogen_mentioned)
@@ -310,90 +297,42 @@ class GroundingService:
                     "organism",
                     organism,
                     source=ValueSource.USER_EXPLICIT,
-                    confidence=0.90,
                     original_text=scenario.pathogen_mentioned,
                     extraction_method="direct",
-                    confidence_derivation="fixed 0.90 (user-stated value)",
                 )
-        
+
         # Step 3: RAG for food properties - only if pH or aw still needed
         needs_ph = not grounded.has("ph")
         needs_aw = not grounded.has("water_activity")
-        
+
         if scenario.food_description and (needs_ph or needs_aw):
             await self._ground_food_properties(
                 scenario.food_description,
                 grounded,
-                effective_model_type,
             )
-        
+
         # Step 4: RAG for pathogen - only if not already grounded
         if not grounded.has("organism") and scenario.food_description:
             await self._ground_pathogen_from_rag(
                 scenario.food_description,
                 grounded,
             )
-        
+
         # Mark organism as ungrounded if still missing
         if not grounded.has("organism"):
             grounded.mark_ungrounded(
                 "organism",
                 f"Could not determine pathogen for '{scenario.food_description or 'unknown food'}'"
             )
-        
+
         # Step 5 & 6: Temperature and duration
         if scenario.is_multi_step and scenario.time_temperature_steps:
-            self._ground_multi_step_profile(scenario, grounded, effective_model_type)
+            self._ground_multi_step_profile(scenario, grounded)
         else:
-            self._ground_temperature(scenario, grounded, effective_model_type)
-            self._ground_duration(scenario, grounded, effective_model_type)
+            self._ground_temperature(scenario, grounded)
+            self._ground_duration(scenario, grounded)
 
         return grounded
-    
-    # =========================================================================
-    # HELPER: RANGE BOUND SELECTION
-    # =========================================================================
-    
-    def _select_range_bound(
-        self,
-        range_min: float,
-        range_max: float,
-        model_type: ModelType,
-        field_name: str,
-    ) -> tuple[float, str]:
-        """
-        Select which bound of a range to use based on model type.
-        
-        For conservative bias:
-        - GROWTH models: Use upper bound (more temp/time = more growth = worse)
-        - THERMAL_INACTIVATION: Use lower bound (less temp/time = less kill = worse)
-        - NON_THERMAL_SURVIVAL: Use upper bound (more survival = worse)
-        
-        Args:
-            range_min: Lower bound of the range
-            range_max: Upper bound of the range
-            model_type: The type of model being used
-            field_name: Name of the field (for logging)
-            
-        Returns:
-            Tuple of (selected_value, transformation_description)
-        """
-        if model_type == ModelType.THERMAL_INACTIVATION:
-            # For cooking/inactivation: lower temp/time = less pathogen kill = worse
-            value = range_min
-            description = (
-                f"Range {range_min}-{range_max}, using LOWER bound {range_min} "
-                f"(conservative for thermal inactivation: less pathogen kill)"
-            )
-        else:
-            # For growth/survival: higher temp/time = more growth = worse
-            value = range_max
-            description = (
-                f"Range {range_min}-{range_max}, using UPPER bound {range_max} "
-                f"(conservative for {model_type.value}: more pathogen growth)"
-            )
-        
-        return value, description
     
     # =========================================================================
     # USER EXPLICIT VALUES
@@ -408,10 +347,8 @@ class GroundingService:
         Ground explicitly provided environmental conditions.
         
         These are values the user directly stated (e.g., "pH 6.5").
-        They have the highest priority and confidence (0.90).
+        They have the highest priority.
         """
-        _EXPLICIT_DERIVATION = "fixed 0.90 (user-stated value)"
-
         # pH
         if conditions.ph_value is not None:
             if 0.0 <= conditions.ph_value <= 14.0:
@@ -419,9 +356,7 @@ class GroundingService:
                     "ph",
                     conditions.ph_value,
                     source=ValueSource.USER_EXPLICIT,
-                    confidence=0.90,
                     extraction_method="direct",
-                    confidence_derivation=_EXPLICIT_DERIVATION,
                 )
             else:
                 grounded.warnings.append(
@@ -436,9 +371,7 @@ class GroundingService:
                     "water_activity",
                     conditions.water_activity,
                     source=ValueSource.USER_EXPLICIT,
-                    confidence=0.90,
                     extraction_method="direct",
-                    confidence_derivation=_EXPLICIT_DERIVATION,
                 )
             else:
                 grounded.warnings.append(
@@ -448,17 +381,17 @@ class GroundingService:
 
         # Other conditions (these don't require range selection)
         if conditions.co2_percent is not None:
-            grounded.set("co2_percent", conditions.co2_percent, ValueSource.USER_EXPLICIT, 0.90,
-                         extraction_method="direct", confidence_derivation=_EXPLICIT_DERIVATION)
+            grounded.set("co2_percent", conditions.co2_percent, ValueSource.USER_EXPLICIT,
+                         extraction_method="direct")
         if conditions.nitrite_ppm is not None:
-            grounded.set("nitrite_ppm", conditions.nitrite_ppm, ValueSource.USER_EXPLICIT, 0.90,
-                         extraction_method="direct", confidence_derivation=_EXPLICIT_DERIVATION)
+            grounded.set("nitrite_ppm", conditions.nitrite_ppm, ValueSource.USER_EXPLICIT,
+                         extraction_method="direct")
         if conditions.lactic_acid_ppm is not None:
-            grounded.set("lactic_acid_ppm", conditions.lactic_acid_ppm, ValueSource.USER_EXPLICIT, 0.90,
-                         extraction_method="direct", confidence_derivation=_EXPLICIT_DERIVATION)
+            grounded.set("lactic_acid_ppm", conditions.lactic_acid_ppm, ValueSource.USER_EXPLICIT,
+                         extraction_method="direct")
         if conditions.acetic_acid_ppm is not None:
-            grounded.set("acetic_acid_ppm", conditions.acetic_acid_ppm, ValueSource.USER_EXPLICIT, 0.90,
-                         extraction_method="direct", confidence_derivation=_EXPLICIT_DERIVATION)
+            grounded.set("acetic_acid_ppm", conditions.acetic_acid_ppm, ValueSource.USER_EXPLICIT,
+                         extraction_method="direct")
     
     # =========================================================================
     # RAG RETRIEVAL WITH HYBRID EXTRACTION
@@ -468,14 +401,14 @@ class GroundingService:
         self,
         food_description: str,
         grounded: GroundedValues,
-        model_type: ModelType,
     ) -> None:
         """
         Ground food pH and water activity via RAG with hybrid extraction.
-        
-        This retrieves food properties from the knowledge base and extracts
-        numeric values. When ranges are found, the bound selection depends
-        on the model type (see _select_range_bound).
+
+        When a range is retrieved, both bounds are preserved: the lower bound is
+        stored as the placeholder value with range_pending=True and
+        parsed_range=[min, max].  StandardizationService selects the conservative
+        bound based on model type.
         """
         response = await asyncio.to_thread(
             self._retrieval.query_food_properties, food_description
@@ -498,8 +431,6 @@ class GroundingService:
 
         top = response.top_result
         content = top.content
-        emb = retrieval_meta.embedding_score
-        rr = retrieval_meta.rerank_score
 
         # Extract properties using hybrid approach (returns props + raw match strings)
         props, ph_raw_match, aw_raw_match = await self._extract_food_properties(content)
@@ -511,35 +442,25 @@ class GroundingService:
                     "ph",
                     props.ph_value,
                     source=ValueSource.RAG_RETRIEVAL,
-                    confidence=top.confidence,
                     retrieval_source=top.doc_id,
                     original_text=content,
                     transformation_applied=f"Extracted via {props.extraction_method}",
                     extraction_method=props.extraction_method,
                     raw_match=ph_raw_match,
-                    confidence_derivation=_rag_conf_derivation(top.confidence, emb, rr),
                 )
             elif props.ph_min is not None and props.ph_max is not None:
-                # Range — select bound based on model type (conservative direction)
-                value, transformation = self._select_range_bound(
-                    props.ph_min, props.ph_max, model_type, "ph",
-                )
-                conf = top.confidence * 0.9
+                # Range — store lower bound as placeholder; standardization picks the bound.
                 grounded.set(
                     "ph",
-                    value,
+                    props.ph_min,
                     source=ValueSource.RAG_RETRIEVAL,
-                    confidence=conf,
                     retrieval_source=top.doc_id,
                     original_text=content,
-                    transformation_applied=f"{transformation} ({props.extraction_method})",
+                    transformation_applied="range extracted, awaiting standardization",
                     extraction_method=props.extraction_method,
                     raw_match=ph_raw_match,
                     parsed_range=[props.ph_min, props.ph_max],
-                    confidence_derivation=(
-                        f"{top.confidence:.2f} × 0.9 (range uncertainty) = {conf:.2f}; "
-                        + _rag_conf_derivation(top.confidence, emb, rr)
-                    ),
+                    range_pending=True,
                 )
 
         # Set water activity if found and not already set
@@ -550,13 +471,11 @@ class GroundingService:
                         "water_activity",
                         props.aw_value,
                         source=ValueSource.RAG_RETRIEVAL,
-                        confidence=top.confidence,
                         retrieval_source=top.doc_id,
                         original_text=content,
                         transformation_applied=f"Extracted via {props.extraction_method}",
                         extraction_method=props.extraction_method,
                         raw_match=aw_raw_match,
-                        confidence_derivation=_rag_conf_derivation(top.confidence, emb, rr),
                     )
                 else:
                     grounded.warnings.append(
@@ -564,25 +483,18 @@ class GroundingService:
                         f"(must be 0–1; regex/LLM extraction error)"
                     )
             elif props.aw_min is not None and props.aw_max is not None:
-                value, transformation = self._select_range_bound(
-                    props.aw_min, props.aw_max, model_type, "water_activity",
-                )
-                conf = top.confidence * 0.9
+                # Range — store lower bound as placeholder; standardization picks the bound.
                 grounded.set(
                     "water_activity",
-                    value,
+                    props.aw_min,
                     source=ValueSource.RAG_RETRIEVAL,
-                    confidence=conf,
                     retrieval_source=top.doc_id,
                     original_text=content,
-                    transformation_applied=f"{transformation} ({props.extraction_method})",
+                    transformation_applied="range extracted, awaiting standardization",
                     extraction_method=props.extraction_method,
                     raw_match=aw_raw_match,
                     parsed_range=[props.aw_min, props.aw_max],
-                    confidence_derivation=(
-                        f"{top.confidence:.2f} × 0.9 (range uncertainty) = {conf:.2f}; "
-                        + _rag_conf_derivation(top.confidence, emb, rr)
-                    ),
+                    range_pending=True,
                 )
     
     async def _extract_food_properties(
@@ -782,15 +694,9 @@ class GroundingService:
                     "organism",
                     organism,
                     source=ValueSource.RAG_RETRIEVAL,
-                    confidence=top.confidence,
                     retrieval_source=top.doc_id,
                     original_text=top.content,
                     extraction_method="direct",
-                    confidence_derivation=_rag_conf_derivation(
-                        top.confidence,
-                        retrieval_meta.embedding_score,
-                        retrieval_meta.rerank_score,
-                    ),
                 )
     
     # =========================================================================
@@ -800,58 +706,49 @@ class GroundingService:
     def _resolve_temperature_value(
         self,
         temp: ExtractedTemperature,
-        model_type: ModelType,
     ) -> tuple[float | None, ValueProvenance | None]:
         """
         Resolve an ExtractedTemperature to a numeric value with provenance.
 
         Priority:
-        1. Explicit numeric value → USER_EXPLICIT, confidence 0.90
-        2. Range with model-aware bound selection → USER_INFERRED, confidence 0.80
-        3. Description via interpretation rules → USER_INFERRED, rule confidence
+        1. Explicit numeric value → USER_EXPLICIT
+        2. User-supplied range → USER_EXPLICIT, range_pending=True (lower bound stored)
+        3. Description via interpretation rules → USER_INFERRED
+
+        When a range is returned, both bounds are preserved in parsed_range and
+        range_pending is True.  StandardizationService selects the conservative bound.
 
         Returns (value, provenance) or (None, None) if unresolvable.
         """
         if temp.value_celsius is not None:
             return temp.value_celsius, ValueProvenance(
                 source=ValueSource.USER_EXPLICIT,
-                confidence=0.90,
                 extraction_method="direct",
-                confidence_derivation="fixed 0.90 (user-stated value)",
             )
 
         if temp.is_range and temp.range_min_celsius is not None and temp.range_max_celsius is not None:
-            value, transformation = self._select_range_bound(
-                temp.range_min_celsius,
-                temp.range_max_celsius,
-                model_type,
-                "temperature_celsius",
-            )
-            return value, ValueProvenance(
-                source=ValueSource.USER_INFERRED,
-                confidence=0.80,
-                transformation_applied=transformation,
+            return temp.range_min_celsius, ValueProvenance(
+                source=ValueSource.USER_EXPLICIT,
+                transformation_applied="range extracted, awaiting standardization",
                 extraction_method="direct",
                 parsed_range=[temp.range_min_celsius, temp.range_max_celsius],
-                confidence_derivation=(
-                    f"fixed 0.80 (range [{temp.range_min_celsius}, {temp.range_max_celsius}]"
-                    f" → selected {value}°C)"
-                ),
+                range_pending=True,
             )
 
         if temp.description:
             rule = find_temperature_interpretation_with_fallback(temp.description)
             if rule:
+                method = "embedding_fallback" if rule.similarity is not None else "rule_match"
                 return rule.value, ValueProvenance(
                     source=ValueSource.USER_INFERRED,
-                    confidence=rule.confidence,
                     original_text=temp.description,
                     transformation_applied=f"Interpreted as {rule.value}°C ({rule.notes})",
-                    extraction_method="rule",
-                    confidence_derivation=(
-                        f"rule confidence {rule.confidence:.2f}"
-                        f" ('{temp.description}' → {rule.value}°C)"
-                    ),
+                    extraction_method=method,
+                    matched_pattern=rule.pattern,
+                    rule_conservative=rule.conservative,
+                    rule_notes=rule.notes,
+                    embedding_similarity=rule.similarity,
+                    canonical_phrase=rule.canonical_phrase,
                 )
 
         return None, None
@@ -859,43 +756,33 @@ class GroundingService:
     def _resolve_duration_value(
         self,
         dur: ExtractedDuration,
-        model_type: ModelType,
     ) -> tuple[float | None, ValueProvenance | None]:
         """
         Resolve an ExtractedDuration to a numeric value with provenance.
 
         Priority:
-        1. Explicit numeric value → USER_EXPLICIT, confidence 0.90
-        2. Range with model-aware bound selection → USER_INFERRED, confidence 0.80
-        3. Description via interpretation rules → USER_INFERRED, rule confidence
+        1. Explicit numeric value → USER_EXPLICIT
+        2. User-supplied range → USER_EXPLICIT, range_pending=True (lower bound stored)
+        3. Description via interpretation rules → USER_INFERRED
+
+        When a range is returned, both bounds are preserved in parsed_range and
+        range_pending is True.  StandardizationService selects the conservative bound.
 
         Returns (value, provenance) or (None, None) if unresolvable.
         """
         if dur.value_minutes is not None:
             return dur.value_minutes, ValueProvenance(
                 source=ValueSource.USER_EXPLICIT,
-                confidence=0.90,
                 extraction_method="direct",
-                confidence_derivation="fixed 0.90 (user-stated value)",
             )
 
         if dur.range_min_minutes is not None and dur.range_max_minutes is not None:
-            value, transformation = self._select_range_bound(
-                dur.range_min_minutes,
-                dur.range_max_minutes,
-                model_type,
-                "duration_minutes",
-            )
-            return value, ValueProvenance(
-                source=ValueSource.USER_INFERRED,
-                confidence=0.80,
-                transformation_applied=transformation,
+            return dur.range_min_minutes, ValueProvenance(
+                source=ValueSource.USER_EXPLICIT,
+                transformation_applied="range extracted, awaiting standardization",
                 extraction_method="direct",
                 parsed_range=[dur.range_min_minutes, dur.range_max_minutes],
-                confidence_derivation=(
-                    f"fixed 0.80 (range [{dur.range_min_minutes}, {dur.range_max_minutes}]"
-                    f" → selected {value} min)"
-                ),
+                range_pending=True,
             )
 
         if dur.description:
@@ -903,14 +790,12 @@ class GroundingService:
             if rule:
                 return rule.value, ValueProvenance(
                     source=ValueSource.USER_INFERRED,
-                    confidence=rule.confidence,
                     original_text=dur.description,
                     transformation_applied=f"Interpreted as {rule.value} min ({rule.notes})",
-                    extraction_method="rule",
-                    confidence_derivation=(
-                        f"rule confidence {rule.confidence:.2f}"
-                        f" ('{dur.description}' → {rule.value} min)"
-                    ),
+                    extraction_method="rule_match",
+                    matched_pattern=rule.pattern,
+                    rule_conservative=rule.conservative,
+                    rule_notes=rule.notes,
                 )
 
         return None, None
@@ -919,21 +804,11 @@ class GroundingService:
         self,
         scenario: ExtractedScenario,
         grounded: GroundedValues,
-        model_type: ModelType,
     ) -> None:
         """Ground single-step temperature into grounded.temperature_celsius."""
-        value, prov = self._resolve_temperature_value(
-            scenario.single_step_temperature, model_type
-        )
+        value, prov = self._resolve_temperature_value(scenario.single_step_temperature)
         if value is not None and prov is not None:
-            grounded.set(
-                "temperature_celsius",
-                value,
-                source=prov.source,
-                confidence=prov.confidence,
-                original_text=prov.original_text,
-                transformation_applied=prov.transformation_applied,
-            )
+            grounded.set_with_prov("temperature_celsius", value, prov)
         else:
             desc = scenario.single_step_temperature.description
             if desc:
@@ -947,21 +822,11 @@ class GroundingService:
         self,
         scenario: ExtractedScenario,
         grounded: GroundedValues,
-        model_type: ModelType,
     ) -> None:
         """Ground single-step duration into grounded.duration_minutes."""
-        value, prov = self._resolve_duration_value(
-            scenario.single_step_duration, model_type
-        )
+        value, prov = self._resolve_duration_value(scenario.single_step_duration)
         if value is not None and prov is not None:
-            grounded.set(
-                "duration_minutes",
-                value,
-                source=prov.source,
-                confidence=prov.confidence,
-                original_text=prov.original_text,
-                transformation_applied=prov.transformation_applied,
-            )
+            grounded.set_with_prov("duration_minutes", value, prov)
         else:
             desc = scenario.single_step_duration.description
             if desc:
@@ -975,7 +840,6 @@ class GroundingService:
         self,
         scenario: ExtractedScenario,
         grounded: GroundedValues,
-        model_type: ModelType,
     ) -> None:
         """
         Ground each step in a multi-step time-temperature profile.
@@ -983,6 +847,9 @@ class GroundingService:
         Iterates scenario.time_temperature_steps in sequence order, resolves
         temperature and duration for each step using the same priority rules as
         the single-step path, and appends each result to grounded.steps.
+
+        Range values are stored with range_pending=True on the provenance object;
+        StandardizationService selects the conservative bound per step.
 
         Steps with unresolvable values store None; the standardization service
         will apply defaults for temperature and flag missing durations.
@@ -994,8 +861,8 @@ class GroundingService:
         for idx, step in enumerate(sorted_steps, start=1):
             order = step.sequence_order if step.sequence_order is not None else idx
 
-            temp_val, temp_prov = self._resolve_temperature_value(step.temperature, model_type)
-            dur_val, dur_prov = self._resolve_duration_value(step.duration, model_type)
+            temp_val, temp_prov = self._resolve_temperature_value(step.temperature)
+            dur_val, dur_prov = self._resolve_duration_value(step.duration)
 
             if temp_val is None:
                 desc = step.temperature.description or ""

@@ -12,7 +12,7 @@ from app.services.grounding.grounding_service import (
     get_grounding_service,
     reset_grounding_service,
 )
-from app.models.enums import ComBaseOrganism, RetrievalConfidenceLevel
+from app.models.enums import ComBaseOrganism
 from app.models.extraction import (
     ExtractedScenario,
     ExtractedTemperature,
@@ -22,7 +22,7 @@ from app.models.extraction import (
 )
 from app.models.metadata import ValueSource
 
-from app.models.enums import ComBaseOrganism, RetrievalConfidenceLevel, ModelType
+from app.models.enums import ComBaseOrganism
 
 
 @pytest.fixture
@@ -45,7 +45,7 @@ class TestGroundedValues:
     def test_set_and_get(self):
         """Should set and get values."""
         grounded = GroundedValues()
-        grounded.set("ph", 6.0, ValueSource.USER_EXPLICIT, 0.95)
+        grounded.set("ph", 6.0, ValueSource.USER_EXPLICIT)
         
         assert grounded.get("ph") == 6.0
         assert grounded.has("ph")
@@ -70,13 +70,11 @@ class TestGroundedValues:
             "ph",
             6.0,
             source=ValueSource.RAG_RETRIEVAL,
-            confidence=0.85,
             retrieval_source="doc_123",
         )
-        
+
         assert "ph" in grounded.provenance
         assert grounded.provenance["ph"].source == ValueSource.RAG_RETRIEVAL
-        assert grounded.provenance["ph"].confidence == 0.85
     
     def test_mark_ungrounded(self):
         """Should mark fields as ungrounded with reason."""
@@ -290,7 +288,6 @@ class TestGroundEnvironmentalConditions:
         
         assert grounded.get("ph") == 6.5
         assert grounded.provenance["ph"].source == ValueSource.USER_EXPLICIT
-        assert grounded.provenance["ph"].confidence == 0.90
     
     def test_ground_explicit_water_activity(self, grounding_service):
         """Should ground explicit water activity."""
@@ -345,16 +342,17 @@ class TestGroundTemperature:
             single_step_temperature=ExtractedTemperature(value_celsius=25.0),
             single_step_duration=ExtractedDuration(value_minutes=60.0),
         )
-        service._ground_temperature(scenario, grounded, ModelType.GROWTH)
-        
+        service._ground_temperature(scenario, grounded)
+
         assert grounded.get("temperature_celsius") == 25.0
         assert grounded.provenance["temperature_celsius"].source == ValueSource.USER_EXPLICIT
     
-    def test_ground_temperature_range_uses_upper(self, grounding_service):
-        """Should use upper bound of temperature range."""
+    def test_ground_temperature_range_stores_pending(self, grounding_service):
+        """Range temperature stores lower bound with range_pending=True; bound selection
+        happens in StandardizationService, not here."""
         service, _, _ = grounding_service
         grounded = GroundedValues()
-        
+
         scenario = ExtractedScenario(
             single_step_temperature=ExtractedTemperature(
                 is_range=True,
@@ -363,10 +361,13 @@ class TestGroundTemperature:
             ),
             single_step_duration=ExtractedDuration(value_minutes=60.0),
         )
-        service._ground_temperature(scenario, grounded, ModelType.GROWTH)
-        
-        assert grounded.get("temperature_celsius") == 25.0
-        assert grounded.provenance["temperature_celsius"].source == ValueSource.USER_INFERRED
+        service._ground_temperature(scenario, grounded)
+
+        assert grounded.get("temperature_celsius") == 20.0  # lower bound placeholder
+        prov = grounded.provenance["temperature_celsius"]
+        assert prov.source == ValueSource.USER_EXPLICIT
+        assert prov.range_pending is True
+        assert prov.parsed_range == [20.0, 25.0]
     
     def test_ground_temperature_description(self, grounding_service):
         """Should interpret temperature description."""
@@ -377,8 +378,8 @@ class TestGroundTemperature:
             single_step_temperature=ExtractedTemperature(description="room temperature"),
             single_step_duration=ExtractedDuration(value_minutes=60.0),
         )
-        service._ground_temperature(scenario, grounded, ModelType.GROWTH)
-        
+        service._ground_temperature(scenario, grounded)
+
         assert grounded.get("temperature_celsius") == 25.0
         assert grounded.provenance["temperature_celsius"].source == ValueSource.USER_INFERRED
     
@@ -391,8 +392,8 @@ class TestGroundTemperature:
             single_step_temperature=ExtractedTemperature(description="xyz123"),
             single_step_duration=ExtractedDuration(value_minutes=60.0),
         )
-        service._ground_temperature(scenario, grounded, ModelType.GROWTH)
-        
+        service._ground_temperature(scenario, grounded)
+
         assert not grounded.has("temperature_celsius")
         assert "temperature_celsius" in grounded.ungrounded_fields
 
@@ -409,16 +410,17 @@ class TestGroundDuration:
             single_step_temperature=ExtractedTemperature(value_celsius=25.0),
             single_step_duration=ExtractedDuration(value_minutes=180.0),
         )
-        service._ground_duration(scenario, grounded, ModelType.GROWTH)
-        
+        service._ground_duration(scenario, grounded)
+
         assert grounded.get("duration_minutes") == 180.0
         assert grounded.provenance["duration_minutes"].source == ValueSource.USER_EXPLICIT
     
-    def test_ground_duration_range_uses_upper(self, grounding_service):
-        """Should use upper bound of duration range."""
+    def test_ground_duration_range_stores_pending(self, grounding_service):
+        """Range duration stores lower bound with range_pending=True; bound selection
+        happens in StandardizationService, not here."""
         service, _, _ = grounding_service
         grounded = GroundedValues()
-        
+
         scenario = ExtractedScenario(
             single_step_temperature=ExtractedTemperature(value_celsius=25.0),
             single_step_duration=ExtractedDuration(
@@ -426,9 +428,13 @@ class TestGroundDuration:
                 range_max_minutes=120.0,
             ),
         )
-        service._ground_duration(scenario, grounded, ModelType.GROWTH)
-        
-        assert grounded.get("duration_minutes") == 120.0
+        service._ground_duration(scenario, grounded)
+
+        assert grounded.get("duration_minutes") == 60.0  # lower bound placeholder
+        prov = grounded.provenance["duration_minutes"]
+        assert prov.source == ValueSource.USER_EXPLICIT
+        assert prov.range_pending is True
+        assert prov.parsed_range == [60.0, 120.0]
     
     def test_ground_duration_description(self, grounding_service):
         """Should interpret duration description."""
@@ -439,8 +445,8 @@ class TestGroundDuration:
             single_step_temperature=ExtractedTemperature(value_celsius=25.0),
             single_step_duration=ExtractedDuration(description="overnight"),
         )
-        service._ground_duration(scenario, grounded, ModelType.GROWTH)
-        
+        service._ground_duration(scenario, grounded)
+
         assert grounded.get("duration_minutes") == 480.0  # 8 hours
 
 
@@ -457,7 +463,6 @@ class TestGroundScenario:
         mock_food_response.has_confident_result = True
         mock_food_response.results = [MagicMock(
             confidence=0.9,
-            confidence_level=RetrievalConfidenceLevel.HIGH,
             content="pH 5.5, water activity 0.95",
             source="doc_1",
             doc_id="doc_1",

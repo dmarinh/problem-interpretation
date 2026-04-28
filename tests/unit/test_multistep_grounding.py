@@ -13,7 +13,7 @@ Covers:
 import pytest
 from unittest.mock import MagicMock, AsyncMock
 
-from app.models.enums import ModelType, ComBaseOrganism, BiasType
+from app.models.enums import ModelType, ComBaseOrganism
 from app.models.extraction import (
     ExtractedScenario,
     ExtractedTemperature,
@@ -104,7 +104,7 @@ class TestGroundedValuesSteps:
     def test_add_step_stores_provenance(self):
         from app.models.metadata import ValueProvenance
         g = GroundedValues()
-        prov = ValueProvenance(source=ValueSource.USER_EXPLICIT, confidence=0.9)
+        prov = ValueProvenance(source=ValueSource.USER_EXPLICIT)
         g.add_step(step_order=1, temperature_celsius=25.0, duration_minutes=60.0,
                    temp_provenance=prov)
         assert g.steps[0].temp_provenance is prov
@@ -127,31 +127,28 @@ class TestResolveTemperatureValue:
 
     def test_explicit_value(self):
         temp = ExtractedTemperature(value_celsius=28.0)
-        val, prov = self.svc._resolve_temperature_value(temp, ModelType.GROWTH)
+        val, prov = self.svc._resolve_temperature_value(temp)
         assert val == 28.0
         assert prov.source == ValueSource.USER_EXPLICIT
-        assert prov.confidence == 0.90
 
-    def test_range_growth_uses_upper_bound(self):
+    def test_range_stores_lower_bound_with_range_pending(self):
+        """Grounding always stores the lower bound; StandardizationService picks the bound."""
         temp = ExtractedTemperature(is_range=True, range_min_celsius=20.0, range_max_celsius=28.0)
-        val, prov = self.svc._resolve_temperature_value(temp, ModelType.GROWTH)
-        assert val == 28.0
-        assert prov.source == ValueSource.USER_INFERRED
-
-    def test_range_inactivation_uses_lower_bound(self):
-        temp = ExtractedTemperature(is_range=True, range_min_celsius=65.0, range_max_celsius=75.0)
-        val, prov = self.svc._resolve_temperature_value(temp, ModelType.THERMAL_INACTIVATION)
-        assert val == 65.0
+        val, prov = self.svc._resolve_temperature_value(temp)
+        assert val == 20.0  # lower bound placeholder
+        assert prov.source == ValueSource.USER_EXPLICIT
+        assert prov.range_pending is True
+        assert prov.parsed_range == [20.0, 28.0]
 
     def test_description_room_temperature(self):
         temp = ExtractedTemperature(description="room temperature")
-        val, prov = self.svc._resolve_temperature_value(temp, ModelType.GROWTH)
+        val, prov = self.svc._resolve_temperature_value(temp)
         assert val == 25.0
         assert prov.source == ValueSource.USER_INFERRED
 
     def test_unresolvable_returns_none(self):
         temp = ExtractedTemperature()
-        val, prov = self.svc._resolve_temperature_value(temp, ModelType.GROWTH)
+        val, prov = self.svc._resolve_temperature_value(temp)
         assert val is None
         assert prov is None
 
@@ -163,30 +160,29 @@ class TestResolveDurationValue:
 
     def test_explicit_value(self):
         dur = ExtractedDuration(value_minutes=45.0)
-        val, prov = self.svc._resolve_duration_value(dur, ModelType.GROWTH)
+        val, prov = self.svc._resolve_duration_value(dur)
         assert val == 45.0
         assert prov.source == ValueSource.USER_EXPLICIT
 
-    def test_range_growth_uses_upper_bound(self):
+    def test_range_stores_lower_bound_with_range_pending(self):
+        """Grounding always stores the lower bound; StandardizationService picks the bound."""
         dur = ExtractedDuration(range_min_minutes=30.0, range_max_minutes=60.0)
-        val, prov = self.svc._resolve_duration_value(dur, ModelType.GROWTH)
-        assert val == 60.0
-
-    def test_range_inactivation_uses_lower_bound(self):
-        dur = ExtractedDuration(range_min_minutes=5.0, range_max_minutes=10.0)
-        val, prov = self.svc._resolve_duration_value(dur, ModelType.THERMAL_INACTIVATION)
-        assert val == 5.0
+        val, prov = self.svc._resolve_duration_value(dur)
+        assert val == 30.0  # lower bound placeholder
+        assert prov.source == ValueSource.USER_EXPLICIT
+        assert prov.range_pending is True
+        assert prov.parsed_range == [30.0, 60.0]
 
     def test_description_overnight(self):
         dur = ExtractedDuration(description="overnight")
-        val, prov = self.svc._resolve_duration_value(dur, ModelType.GROWTH)
+        val, prov = self.svc._resolve_duration_value(dur)
         assert val is not None
         assert val > 0
         assert prov.source == ValueSource.USER_INFERRED
 
     def test_unresolvable_returns_none(self):
         dur = ExtractedDuration()
-        val, prov = self.svc._resolve_duration_value(dur, ModelType.GROWTH)
+        val, prov = self.svc._resolve_duration_value(dur)
         assert val is None
         assert prov is None
 
@@ -207,7 +203,7 @@ class TestGroundMultiStepProfile:
             make_step(3, temp_celsius=4.0,  dur_minutes=120.0),
         )
         grounded = GroundedValues()
-        self.svc._ground_multi_step_profile(scenario, grounded, ModelType.GROWTH)
+        self.svc._ground_multi_step_profile(scenario, grounded)
 
         assert grounded.has_steps
         assert len(grounded.steps) == 3
@@ -225,7 +221,7 @@ class TestGroundMultiStepProfile:
             make_step(2, temp_celsius=22.0, dur_minutes=60.0),
         )
         grounded = GroundedValues()
-        self.svc._ground_multi_step_profile(scenario, grounded, ModelType.GROWTH)
+        self.svc._ground_multi_step_profile(scenario, grounded)
 
         orders = [s.step_order for s in grounded.steps]
         assert orders == [1, 2, 3]
@@ -236,7 +232,7 @@ class TestGroundMultiStepProfile:
             make_step(1, temp_celsius=28.0, dur_minutes=45.0),
         )
         grounded = GroundedValues()
-        self.svc._ground_multi_step_profile(scenario, grounded, ModelType.GROWTH)
+        self.svc._ground_multi_step_profile(scenario, grounded)
 
         assert grounded.steps[0].temp_provenance.source == ValueSource.USER_EXPLICIT
         assert grounded.steps[0].dur_provenance.source == ValueSource.USER_EXPLICIT
@@ -246,7 +242,7 @@ class TestGroundMultiStepProfile:
             make_step(1, temp_desc="room temperature", dur_minutes=60.0),
         )
         grounded = GroundedValues()
-        self.svc._ground_multi_step_profile(scenario, grounded, ModelType.GROWTH)
+        self.svc._ground_multi_step_profile(scenario, grounded)
 
         assert grounded.steps[0].temperature_celsius == 25.0
         assert grounded.steps[0].temp_provenance.source == ValueSource.USER_INFERRED
@@ -256,7 +252,7 @@ class TestGroundMultiStepProfile:
             make_step(1, dur_minutes=60.0),  # no temperature at all
         )
         grounded = GroundedValues()
-        self.svc._ground_multi_step_profile(scenario, grounded, ModelType.GROWTH)
+        self.svc._ground_multi_step_profile(scenario, grounded)
 
         assert grounded.steps[0].temperature_celsius is None
         assert any("Step 1 temperature" in w for w in grounded.warnings)
@@ -266,7 +262,7 @@ class TestGroundMultiStepProfile:
             make_step(1, temp_celsius=25.0),  # no duration at all
         )
         grounded = GroundedValues()
-        self.svc._ground_multi_step_profile(scenario, grounded, ModelType.GROWTH)
+        self.svc._ground_multi_step_profile(scenario, grounded)
 
         assert grounded.steps[0].duration_minutes is None
         assert any("Step 1 duration" in w for w in grounded.warnings)
@@ -277,7 +273,7 @@ class TestGroundMultiStepProfile:
             make_step(1, temp_celsius=25.0, dur_minutes=60.0),
         )
         grounded = GroundedValues()
-        self.svc._ground_multi_step_profile(scenario, grounded, ModelType.GROWTH)
+        self.svc._ground_multi_step_profile(scenario, grounded)
 
         assert not grounded.has("temperature_celsius")
         assert not grounded.has("duration_minutes")
@@ -347,7 +343,7 @@ class TestStandardizeMultiStep:
     def _make_grounded(self, *steps: tuple) -> GroundedValues:
         """Build a GroundedValues with organism + given (temp, dur) step pairs."""
         g = GroundedValues()
-        g.set("organism", ComBaseOrganism.SALMONELLA, ValueSource.USER_EXPLICIT, 0.90)
+        g.set("organism", ComBaseOrganism.SALMONELLA, ValueSource.USER_EXPLICIT)
         for i, (temp, dur) in enumerate(steps, start=1):
             g.add_step(
                 step_order=i,
@@ -377,8 +373,8 @@ class TestStandardizeMultiStep:
         """Explicit provenance durations must not receive the inferred margin."""
         from app.models.metadata import ValueProvenance
         g = GroundedValues()
-        g.set("organism", ComBaseOrganism.SALMONELLA, ValueSource.USER_EXPLICIT, 0.90)
-        prov_explicit = ValueProvenance(source=ValueSource.USER_EXPLICIT, confidence=0.90)
+        g.set("organism", ComBaseOrganism.SALMONELLA, ValueSource.USER_EXPLICIT)
+        prov_explicit = ValueProvenance(source=ValueSource.USER_EXPLICIT)
         g.add_step(1, 25.0, 60.0, dur_provenance=prov_explicit)
         g.add_step(2, 4.0, 120.0, dur_provenance=prov_explicit)
 
@@ -387,31 +383,31 @@ class TestStandardizeMultiStep:
         durs = [s.duration_minutes for s in result.payload.time_temperature_profile.steps]
         assert durs == [60.0, 120.0]
 
-    def test_inferred_duration_gets_growth_margin(self):
-        """USER_INFERRED durations get +20% for growth models."""
+    def test_inferred_duration_passes_through_growth(self):
+        """USER_INFERRED durations pass through unchanged for growth models."""
         from app.models.metadata import ValueProvenance
         g = GroundedValues()
-        g.set("organism", ComBaseOrganism.SALMONELLA, ValueSource.USER_EXPLICIT, 0.90)
-        prov_inferred = ValueProvenance(source=ValueSource.USER_INFERRED, confidence=0.75)
+        g.set("organism", ComBaseOrganism.SALMONELLA, ValueSource.USER_EXPLICIT)
+        prov_inferred = ValueProvenance(source=ValueSource.USER_INFERRED)
         g.add_step(1, 25.0, 60.0, dur_provenance=prov_inferred)
 
         result = self.svc.standardize(g, ModelType.GROWTH)
 
         step = result.payload.time_temperature_profile.steps[0]
-        assert step.duration_minutes == pytest.approx(72.0)  # 60 * 1.2
+        assert step.duration_minutes == pytest.approx(60.0)  # rule's value, unchanged
 
-    def test_inferred_duration_gets_inactivation_margin(self):
-        """USER_INFERRED durations get -20% for thermal inactivation models."""
+    def test_inferred_duration_passes_through_inactivation(self):
+        """USER_INFERRED durations pass through unchanged for thermal inactivation models."""
         from app.models.metadata import ValueProvenance
         g = GroundedValues()
-        g.set("organism", ComBaseOrganism.SALMONELLA, ValueSource.USER_EXPLICIT, 0.90)
-        prov_inferred = ValueProvenance(source=ValueSource.USER_INFERRED, confidence=0.75)
+        g.set("organism", ComBaseOrganism.SALMONELLA, ValueSource.USER_EXPLICIT)
+        prov_inferred = ValueProvenance(source=ValueSource.USER_INFERRED)
         g.add_step(1, 72.0, 10.0, dur_provenance=prov_inferred)
 
         result = self.svc.standardize(g, ModelType.THERMAL_INACTIVATION)
 
         step = result.payload.time_temperature_profile.steps[0]
-        assert step.duration_minutes == pytest.approx(8.0)  # 10 * 0.8
+        assert step.duration_minutes == pytest.approx(10.0)  # rule's value, unchanged
 
     def test_missing_temperature_gets_conservative_default(self):
         """A step with None temperature receives the abuse default (25°C for growth)."""
@@ -421,7 +417,7 @@ class TestStandardizeMultiStep:
         assert result.missing_required == []
         step = result.payload.time_temperature_profile.steps[0]
         assert step.temperature_celsius == 25.0  # default_temperature_abuse_c
-        assert any(BiasType.MISSING_VALUE_IMPUTED == bc.bias_type for bc in result.bias_corrections)
+        assert any(d.field_name.startswith("temperature_celsius") for d in result.defaults_imputed)
 
     def test_missing_duration_fails_with_missing_required(self):
         """A step with None duration must populate missing_required and return no payload."""
@@ -455,44 +451,18 @@ class TestStandardizeMultiStep:
     def test_ph_and_aw_shared_across_all_steps(self):
         """pH and water activity in parameters come from grounded flat values."""
         g = self._make_grounded((28.0, 45.0), (4.0, 120.0))
-        g.set("ph", 5.9, ValueSource.RAG_RETRIEVAL, 0.85)
-        g.set("water_activity", 0.99, ValueSource.RAG_RETRIEVAL, 0.85)
+        g.set("ph", 5.9, ValueSource.RAG_RETRIEVAL)
+        g.set("water_activity", 0.99, ValueSource.RAG_RETRIEVAL)
         result = self.svc.standardize(g, ModelType.GROWTH)
 
         assert result.payload.parameters.ph == pytest.approx(5.9)
         assert result.payload.parameters.water_activity == pytest.approx(0.99)
 
-    def test_low_confidence_temp_gets_bump_growth(self):
-        """Low-confidence step temperature gets +5°C bump for growth models."""
-        from app.models.metadata import ValueProvenance
-        g = GroundedValues()
-        g.set("organism", ComBaseOrganism.SALMONELLA, ValueSource.USER_EXPLICIT, 0.90)
-        low_conf = ValueProvenance(source=ValueSource.USER_INFERRED, confidence=0.40)
-        g.add_step(1, 20.0, 60.0, temp_provenance=low_conf)
-
-        result = self.svc.standardize(g, ModelType.GROWTH)
-
-        step = result.payload.time_temperature_profile.steps[0]
-        assert step.temperature_celsius == pytest.approx(25.0)  # 20 + 5
-
-    def test_low_confidence_temp_gets_bump_inactivation(self):
-        """Low-confidence step temperature gets -5°C bump for inactivation models."""
-        from app.models.metadata import ValueProvenance
-        g = GroundedValues()
-        g.set("organism", ComBaseOrganism.SALMONELLA, ValueSource.USER_EXPLICIT, 0.90)
-        low_conf = ValueProvenance(source=ValueSource.USER_INFERRED, confidence=0.40)
-        g.add_step(1, 72.0, 10.0, temp_provenance=low_conf)
-
-        result = self.svc.standardize(g, ModelType.THERMAL_INACTIVATION)
-
-        step = result.payload.time_temperature_profile.steps[0]
-        assert step.temperature_celsius == pytest.approx(67.0)  # 72 - 5
-
     def test_gapped_step_orders_renumbered_sequentially(self):
         """LLM may return sequence_orders like [1, 2, 4]; validator requires [1, 2, 3].
         _build_multi_step_profile must renumber to sequential starting from 1."""
         g = GroundedValues()
-        g.set("organism", ComBaseOrganism.SALMONELLA, ValueSource.USER_EXPLICIT, 0.90)
+        g.set("organism", ComBaseOrganism.SALMONELLA, ValueSource.USER_EXPLICIT)
         # Simulate gapped LLM output: step_orders 1, 2, 4 instead of 1, 2, 3
         g.add_step(1, 28.0, 45.0)
         g.add_step(2, 22.0, 60.0)
@@ -510,9 +480,9 @@ class TestStandardizeMultiStep:
     def test_single_step_scenario_unaffected(self):
         """Existing single-step path must still work when has_steps is False."""
         g = GroundedValues()
-        g.set("organism", ComBaseOrganism.SALMONELLA, ValueSource.USER_EXPLICIT, 0.90)
-        g.set("temperature_celsius", 25.0, ValueSource.USER_EXPLICIT, 0.90)
-        g.set("duration_minutes", 180.0, ValueSource.USER_EXPLICIT, 0.90)
+        g.set("organism", ComBaseOrganism.SALMONELLA, ValueSource.USER_EXPLICIT)
+        g.set("temperature_celsius", 25.0, ValueSource.USER_EXPLICIT)
+        g.set("duration_minutes", 180.0, ValueSource.USER_EXPLICIT)
 
         result = self.svc.standardize(g, ModelType.GROWTH)
 

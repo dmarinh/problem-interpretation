@@ -43,11 +43,11 @@ def mock_grounder():
     
     async def mock_ground(scenario):
         grounded = GroundedValues()
-        grounded.set("temperature_celsius", 25.0, ValueSource.USER_EXPLICIT, 0.95)
-        grounded.set("duration_minutes", 180.0, ValueSource.USER_EXPLICIT, 0.95)
-        grounded.set("organism", ComBaseOrganism.SALMONELLA, ValueSource.RAG_RETRIEVAL, 0.85)
-        grounded.set("ph", 6.0, ValueSource.RAG_RETRIEVAL, 0.80)
-        grounded.set("water_activity", 0.99, ValueSource.RAG_RETRIEVAL, 0.80)
+        grounded.set("temperature_celsius", 25.0, ValueSource.USER_EXPLICIT)
+        grounded.set("duration_minutes", 180.0, ValueSource.USER_EXPLICIT)
+        grounded.set("organism", ComBaseOrganism.SALMONELLA, ValueSource.RAG_RETRIEVAL)
+        grounded.set("ph", 6.0, ValueSource.RAG_RETRIEVAL)
+        grounded.set("water_activity", 0.99, ValueSource.RAG_RETRIEVAL)
         return grounded
     
     grounder.ground_scenario = mock_ground

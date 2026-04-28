@@ -287,9 +287,3 @@ class RetrievalConfidenceLevel(str, Enum):
     FAILED = "failed"
 
 
-class BiasType(str, Enum):
-    """Types of bias corrections applied."""
-    OPTIMISTIC_TEMPERATURE = "optimistic_temperature"
-    OPTIMISTIC_DURATION = "optimistic_duration"
-    MISSING_VALUE_IMPUTED = "missing_value_imputed"
-    OUT_OF_RANGE_CLAMPED = "out_of_range_clamped"

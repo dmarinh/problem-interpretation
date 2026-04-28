@@ -149,12 +149,11 @@ class TestExtractedIntent:
         intent = ExtractedIntent(
             is_prediction_request=True,
             is_information_query=False,
-            confidence=0.95,
         )
-        
+
         assert intent.is_prediction_request is True
         assert intent.is_information_query is False
-    
+
     def test_information_query(self):
         """Should identify information queries."""
         intent = ExtractedIntent(
@@ -162,16 +161,6 @@ class TestExtractedIntent:
             is_information_query=True,
             reasoning="User asked about general food safety guidelines",
         )
-        
+
         assert intent.is_prediction_request is False
         assert intent.is_information_query is True
-    
-    def test_confidence_bounds(self):
-        """Confidence should be bounded 0-1."""
-        intent = ExtractedIntent(
-            is_prediction_request=True,
-            is_information_query=False,
-            confidence=0.5,
-        )
-        
-        assert 0.0 <= intent.confidence <= 1.0
