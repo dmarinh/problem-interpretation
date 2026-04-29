@@ -1,5 +1,23 @@
 # Grounding Service: Architecture and Design
 
+> ## ⚠️ HISTORICAL DOCUMENT — DO NOT USE AS REFERENCE
+>
+> **Status:** Out of date as of 2026-04-28.
+>
+> This document describes a pre-Phase-9.2 state of the architecture. Significant aspects no longer match the codebase. See the historical notice in `grounding_service_documentation.md` for the full list of divergences. The most material:
+>
+> - Range-bound selection moved from the GroundingService to the StandardizationService in Phase 9.2.
+> - The bias-correction layer was removed in Phase 9.3.
+> - Per-source confidence numbers were removed in Phase 9.3.
+>
+> **For the current architecture, see:**
+> - `ptm_context.md` (v1.2 or later)
+> - The planned `specifications.md` (to be reverse-engineered from the codebase)
+>
+> This document is retained for historical reference only.
+
+---
+
 This document describes the architecture, design decisions, and technical implementation of the Grounding Service for the Predictive Microbiology Translation Module.
 
 ---

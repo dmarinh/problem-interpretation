@@ -1,5 +1,24 @@
 # Grounding Service: Technical Documentation
 
+> ## ⚠️ HISTORICAL DOCUMENT — DO NOT USE AS REFERENCE
+>
+> **Status:** Out of date as of 2026-04-28.
+>
+> This document describes a pre-Phase-9.2 state of the Grounding Service. Significant aspects no longer match the codebase:
+>
+> - Range-bound selection is described as happening in this service. **It no longer does.** Range-bound selection moved to `StandardizationService` in Phase 9.2 (April 2026). The GroundingService now stores both bounds with a `range_pending=True` flag and lets the value pass through.
+> - Bias correction is described as part of the standardization pipeline. **The bias-correction layer was removed entirely** in Phase 9.3 (April 2026). No duration multiplier, no temperature bump.
+> - Per-source confidence numbers (USER_EXPLICIT = 0.90, RAG_RETRIEVAL = 0.50–0.95, etc.) are described as the system's reliability signal. **They were removed** in Phase 9.3. The categorical `source` tier is the reliability signal; for RAG retrievals, the embedding cosine similarity is the only mathematically-grounded numeric signal.
+> - The `BiasCorrection` class is described. **It was renamed `DefaultImputed`** in Phase 9.3 and is now used only for structured default-imputation events.
+>
+> **For the current architecture, see:**
+> - `ptm_context.md` (v1.2 or later) — sections §5.2, §5.3, §8.7, §8.8.
+> - The planned `specifications.md` (to be reverse-engineered from the codebase).
+>
+> This document is retained for historical reference only.
+
+---
+
 ## Overview
 
 The Grounding Service is responsible for resolving extracted values from natural language queries into validated, standardized inputs for predictive microbiology models. It bridges the gap between what users say and what mathematical models require.

@@ -1,7 +1,7 @@
 # Problem Translation Module (PTM) — Session Context
 
-**Version:** 1.1
-**Date:** 2026-04-25
+**Version:** 1.2
+**Date:** 2026-04-28
 **Purpose:** Self-contained context document for new Claude sessions working on PTM. Feed this document in at the start of any session and work from it rather than from cross-session memory.
 
 ---
@@ -205,10 +205,11 @@ User query
     ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │ 3. STANDARDIZATION SERVICE                                      │
-│    Applies conservative defaults for missing values, clamps     │
-│    to model-valid ranges, applies bias corrections (direction   │
-│    now correctly flips by model type — see §8.1), builds the    │
-│    ComBase execution payload.                                   │
+│    Selects bound from pending ranges (model-type aware:         │
+│    upper for growth/non-thermal-survival, lower for thermal     │
+│    inactivation), applies conservative defaults for missing     │
+│    values, clamps to model-valid ranges, builds the ComBase     │
+│    execution payload. No bias-correction layer (see §8.7).     │
 └─────────────────────────────────────────────────────────────────┘
     │
     ▼
@@ -285,12 +286,12 @@ Resolves `ExtractedScenario` fields into a `GroundedValues` container with full 
 
 **Resolution hierarchy (highest priority first):**
 
-| Priority | Source | Confidence | Description |
-|---|---|---|---|
-| 1 | USER_EXPLICIT | 0.90 | User stated the value directly ("temperature was 25 °C") |
-| 2 | USER_INFERRED | 0.65–0.85 | Value from interpretation rules ("room temperature" → 25 °C) |
-| 3 | RAG_RETRIEVAL | 0.50–0.95 | Value retrieved from knowledge base |
-| 4 | CONSERVATIVE_DEFAULT | ~0.30–0.50 | Safety-first fallback (applied in standardization) |
+| Priority | Source | Description |
+|---|---|---|
+| 1 | USER_EXPLICIT | User stated the value directly ("temperature was 25 °C"). User-supplied ranges (e.g., "10–15 °C") also use this source with `parsed_range` populated; bound selection happens downstream in standardization. |
+| 2 | USER_INFERRED | Value from interpretation rules ("room temperature" → 25 °C). The rule's structured details (matched_pattern, conservative flag, notes, method) are captured on the provenance entry. |
+| 3 | RAG_RETRIEVAL | Value retrieved from knowledge base. Ranges pass through with `parsed_range` populated and a `range_pending` flag; bound selection happens downstream in standardization. |
+| 4 | CONSERVATIVE_DEFAULT | Safety-first fallback (applied in standardization, not grounding). |
 
 **Invariant:** higher-priority sources are never overwritten by lower-priority ones.
 
@@ -298,31 +299,57 @@ Resolves `ExtractedScenario` fields into a `GroundedValues` container with full 
 - **RAG** — scientific facts (food pH, aw, pathogen associations). Updates as science evolves.
 - **Rules** — linguistic conventions ("room temperature" = 25 °C). Stable.
 
-**Numeric extraction from text:** regex handles single values (`pH 6.0`), ranges with hyphen (`pH 5.9-6.2`), ranges with "to" (`pH 5.5 to 6.0`), ranges with "and" (`pH between 5.5 and 6.0`). When ranges are extracted, the upper bound is used (conservative for growth; see §8.1 for the model-type-aware directionality fix).
+**Numeric extraction from text:** regex handles single values (`pH 6.0`), ranges with hyphen (`pH 5.9-6.2`), ranges with "to" (`pH 5.5 to 6.0`), ranges with "and" (`pH between 5.5 and 6.0`). When ranges are extracted, BOTH bounds are preserved on the provenance (`parsed_range = [min, max]`); the standardization service later picks the model-type-appropriate bound (see §8.1, §8.8). Grounding does NOT collapse ranges to a single value.
+
+**Reliability signals:**
+- The `source` enum tier (USER_EXPLICIT / USER_INFERRED / RAG_RETRIEVAL / CONSERVATIVE_DEFAULT) is the categorical reliability signal.
+- For RAG retrievals, the embedding cosine similarity is the only mathematically-grounded numeric signal (`embedding_score`). Reranker scores are reported separately when the reranker is in use.
+- For rule-based interpretations, the rule's `conservative: bool` flag indicates whether the rule already errs on the conservative side of the underlying interval. No per-rule confidence number is reported (see §8.7).
 
 **Interpretation rules (excerpt):**
 
-Temperature: `room temperature`/`counter`/`ambient`/`left out` → 25 °C; `refrigerated`/`fridge`/`chilled` → 4 °C; `frozen`/`freezer` → -18 °C; `warm`/`in the car`/`summer` → 30 °C; `hot` → 40 °C; `cold` → 10 °C; `cool` → 15 °C. Confidence ranges 0.60–0.90.
+Temperature: `room temperature`/`counter`/`ambient`/`left out` → 25 °C; `refrigerated`/`fridge`/`chilled` → 4 °C; `frozen`/`freezer` → -18 °C; `warm`/`in the car`/`summer` → 30 °C; `hot` → 40 °C; `cold` → 10 °C; `cool` → 15 °C. Each rule carries a `conservative: bool` flag and a `notes` string.
 
 Duration: `overnight`/`all night` → 480 min; `all day` → 600 min; `few hours`/`couple of hours` → 120–180 min; `half a day` → 360 min; `briefly`/`few minutes` → 10–15 min; `long time`/`many hours` → 360 min.
 
-When no rule matches, embedding similarity finds the closest canonical phrase (0.50 cosine threshold); below threshold, field is marked ungrounded.
+When no rule matches, embedding similarity finds the closest canonical phrase (0.50 cosine threshold); the matched canonical phrase and similarity score are recorded on the provenance. Below threshold, the field is marked ungrounded and standardization will apply a conservative default.
+
+**Sourcing of rules.py interpretation values (deferred):** The rules currently encode plausible defaults for linguistic conventions. Some are sourceable (refrigeration → 4°C from FDA Food Code; freezer → -18°C from Codex Alimentarius; room temperature 20–25°C from USP). Some are convention-backed (warm, hot, in the car). Some are linguistic-only and not sourceable in any standard ("a while" → 60 min). Adding source attribution per rule is filed as a future enhancement; see §16.
 
 ### 5.3 Standardization Service
 **Location:** `app/services/standardization/standardization_service.py`
 
-Prepares `GroundedValues` for model execution: applies conservative defaults for still-missing values, clamps values to the selected ComBase model's valid ranges, applies model-type-aware bias corrections, builds the `ComBaseExecutionPayload`.
+Prepares `GroundedValues` for model execution by performing four operations, each recorded as a structured event on the per-field standardization block:
 
-**Conservative defaults:**
+1. **Range-bound selection.** For values that arrive with `range_pending=True` (RAG-retrieved ranges and user-supplied ranges), picks the model-type-appropriate bound: upper for GROWTH and NON_THERMAL_SURVIVAL, lower for THERMAL_INACTIVATION. Recorded as `rule = "range_bound_selection"`.
+2. **Default imputation.** When a value is still missing after grounding, applies a conservative default:
+   - Organism: Salmonella (broadly applicable, leading cause of foodborne illness)
+   - Temperature: abuse temperature (25°C for growth, conservative cooking temperature for inactivation)
+   - pH: 7.0 (neutral, near-optimal for pathogen growth)
+   - Water activity: 0.99 (high, maximises predicted growth)
+   Recorded as `rule = "default_imputed"` and added to the top-level `defaults_imputed` list as a structured `DefaultImputedInfo` entry.
+3. **Range clamping.** When a value falls outside the selected ComBase model's valid range, clamps to the nearest boundary. Recorded as `rule = "range_clamp"` AND added to the top-level `range_clamps` list as a structured `RangeClampInfo` entry. A warning string is also emitted alongside.
+4. **Payload construction.** Builds the `ComBaseExecutionPayload` from the (now standardised) values.
+
+**No bias-correction layer.** Earlier versions applied a +20% / −20% duration margin and a (never-implemented) ±5°C temperature bump to USER_INFERRED values. This was removed (see §8.7). Conservatism is now committed in exactly two places: (a) the default values themselves, and (b) range-bound selection. Mapped values from rules carry their own conservatism via the rule's chosen point and the `conservative: bool` flag.
+
+**Audit signals.** When events fire, three signals are emitted:
+- The structured `standardization` block on the per-field `ValueProvenance` (per-field view of "what happened to this field").
+- The relevant top-level list (`range_clamps`, `defaults_imputed`) as a structured object (cross-field view of "what events of this type fired").
+- A warning string in the top-level `warnings` list, when the event is safety-relevant (clamps and missing-critical-field defaults). Range-bound selection does NOT emit a warning — it's mechanical and routine.
+
+Empty audit categories emit truly empty arrays (`[]`), not sentinel strings. The "(none applied)" rendering is a UI concern, not a data-layer concern.
+
+**Conservative defaults (current):**
 - `default_temperature_abuse_c = 25.0`
-- `default_ph_neutral = 6.5` (note: some places in config read 7.0; pre-April default; §12 lists this as a minor inconsistency to verify)
-- `default_water_activity = 0.99`
+- `default_ph_neutral = 7.0`
+- `default_aw_high = 0.99`
+- `default_organism = SALMONELLA`
 
-**Bias correction types** (tracked in `StandardizationResult.bias_corrections[]`):
-- `OPTIMISTIC_DURATION` — ±20 % for inferred durations (sign depends on model type — see §8.1)
-- `OPTIMISTIC_TEMPERATURE` — ±5 °C bump for low-confidence temperatures
-- `MISSING_VALUE_IMPUTED` — default applied
-- `OUT_OF_RANGE_CLAMPED` — value clamped to model valid range
+**Structured event types** (recorded in `StandardizationResult` and on the per-field `ValueProvenance.standardization` block):
+- `range_bound_selection` — direction (upper/lower), before_value (the range), after_value (selected bound), reason. Mechanical, fires whenever a range_pending value is processed; not a safety event.
+- `default_imputed` — field_name, default_value, reason. Recorded both on the per-field block AND in the top-level `defaults_imputed` list (as `DefaultImputedInfo`).
+- `range_clamp` — field_name, original_value, clamped_value, valid_min, valid_max, reason. Recorded both on the per-field block AND in the top-level `range_clamps` list (as `RangeClampInfo`). Also emits a warning string.
 
 ### 5.4 ComBase Engine
 **Location:** `app/engines/combase/`
@@ -347,21 +374,23 @@ Prepares `GroundedValues` for model execution: applies conservative defaults for
 ### 5.5 Orchestrator
 **Location:** `app/core/orchestrator.py`
 
-Coordinates the full pipeline. Singleton via `get_orchestrator()`. Returns a `TranslationResult` with `.success`, `.error`, `.state` (SessionState), `.execution_result`, `.metadata` (InterpretationMetadata with provenance, bias corrections, retrievals, warnings, overall confidence).
+Coordinates the full pipeline. Singleton via `get_orchestrator()`. Returns a `TranslationResult` with `.success`, `.error`, `.state` (SessionState), `.execution_result`, `.metadata` (`InterpretationMetadata` with provenance, structured standardization events, retrievals, warnings).
 
 Session state transitions go through `SessionStatus` (PENDING → EXTRACTING → GROUNDING → STANDARDIZING → EXECUTING → COMPLETED / FAILED).
+
+**Audit capture is post-standardization.** The orchestrator captures the audit metadata snapshot AFTER standardization completes, not before. This means `field_audit[X].final_value` is the value that reached the model (post-clamp, post-default, post-range-bound-selection), not a pre-standardization placeholder. Fields that were defaulted (e.g., a missing organism imputed to Salmonella, missing pH imputed to 7.0) are added to `field_audit` with `source = "conservative_default"` and a populated `standardization` block. The legacy top-level `provenance` array is auto-derived from `field_audit` for backward compatibility.
 
 ### 5.6 Metadata & provenance
 **Location:** `app/models/metadata.py`
 
-- `ValueProvenance` — source, confidence, retrieval_source, original_text, transformation_applied
-- `BiasCorrection` — bias_type, field_name, original_value, corrected_value, correction_reason, correction_magnitude
-- `RangeClamp` — field_name, original_value, clamped_value, valid_min, valid_max, reason
-- `RetrievalResult` — query, confidence_level, confidence_score, source_document, retrieved_text, fallback_used
-- `ClarificationRecord` — for future interactive clarification
-- `InterpretationMetadata` — top-level container with session_id, original_input, status, provenance dict, lists of corrections/clamps/retrievals/clarifications, warnings, `compute_overall_confidence()` method
+- `ValueProvenance` — `source` (categorical: USER_EXPLICIT / USER_INFERRED / RAG_RETRIEVAL / CONSERVATIVE_DEFAULT), `parsed_range`, `range_pending` (internal flag, cleared by standardization), `extraction` (method, raw_match, parsed_range, plus rule-specific fields: matched_pattern, conservative, notes, similarity, canonical_phrase), `retrieval` (query, top_match with embedding_score and rerank_score, runners_up, full_citations), and `standardization` (the structured event block; null when no standardization fired).
+- `RangeBoundSelection` — rule="range_bound_selection", direction, before_value (range), after_value (selected bound), reason. Populated on the per-field block when a pending range was narrowed.
+- `RangeClamp` — field_name, original_value, clamped_value, valid_min, valid_max, reason. Populated both on the per-field block (`rule="range_clamp"`) and as a structured `RangeClampInfo` in the top-level `range_clamps` list.
+- `DefaultImputed` — field_name, imputed_value (float | str — strings used for organism), reason. Populated both on the per-field block (`rule="default_imputed"`) and as a structured `DefaultImputedInfo` in the top-level `defaults_imputed` list.
+- `RetrievalResult` — query, top_match (doc_id, embedding_score, rerank_score, retrieved_text, source_ids, full_citations), runners_up. The only mathematically-grounded numeric reliability signal is the embedding_score (cosine similarity).
+- `InterpretationMetadata` — top-level container: session_id, original_input, status, `field_audit` dict (canonical per-field map), `range_clamps` list, `defaults_imputed` list, `warnings` list, `combase_model` block (organism, organism_id, organism_display_name, model_type, model_id, coefficients_str, valid_ranges, selection_reason), `system` block (rag_store_hash, rag_ingested_at, source_csv_audit_date, ptm_version, combase_model_table_hash). The legacy `provenance` array is auto-derived from `field_audit` for backward compatibility.
 
-**Overall confidence formula** (from `compute_overall_confidence()`): `min(field confidences) − 0.05 × len(bias_corrections) − 0.10 × len(low-confidence retrievals)`, clamped to [0, 1].
+**No confidence numbers.** Earlier versions emitted a `confidence: float` per provenance entry, an `overall_confidence` at the top level, and a `confidence_formula` string. These were removed (see §8.7) because they were not mathematically grounded — they were authoring intuition (rules), hardcoded constants (USER_EXPLICIT = 0.90), or LLM self-reports. The categorical `source` tier carries the auditability signal those numbers were pretending to convey. The only numeric reliability signal in the audit is the RAG retrieval's embedding similarity, reported under its own name.
 
 ---
 
@@ -517,24 +546,22 @@ Web-based dashboard for the benchmark suite. Built with Streamlit + Plotly Expre
 
 These decisions are settled. Re-opening them requires explicit user instruction.
 
-### 8.1 Model-type-aware conservative bias
-**Status:** ✅ Implemented in Phase 9.1 (April 2026).
+### 8.1 Model-type-aware range-bound selection
+**Status:** ✅ Implemented in Phase 9.1 (April 2026); refined in Phase 9.2 (April 2026) to live in the StandardizationService rather than the GroundingService.
 
 **The principle:** "Conservative" always means predicting the worse food safety outcome — but the direction of corrections depends on the model type.
 
-| Model type | Worse outcome | Conservative direction for temperature & duration |
+| Model type | Worse outcome | Range-bound selection direction |
 |---|---|---|
-| GROWTH | More bacterial growth | ↑ temperature, ↑ duration |
-| THERMAL_INACTIVATION | Less pathogen kill | ↓ temperature, ↓ duration |
-| NON_THERMAL_SURVIVAL | More pathogen survival | ↑ temperature, ↑ duration (same as growth) |
+| GROWTH | More bacterial growth | upper bound |
+| THERMAL_INACTIVATION | Less pathogen kill | lower bound |
+| NON_THERMAL_SURVIVAL | More pathogen survival | upper bound (same as growth) |
 
-Implementation (in `StandardizationService` and `GroundingService`):
-- `DURATION_MARGIN_GROWTH = 1.2` (+20 %); `DURATION_MARGIN_INACTIVATION = 0.8` (−20 %)
-- `TEMPERATURE_BUMP_GROWTH = +5.0 °C`; `TEMPERATURE_BUMP_INACTIVATION = −5.0 °C`
-- Range-bound selection: growth uses upper bound, inactivation uses lower bound
-- Non-thermal survival currently uses growth direction; this is correct for most survival scenarios but may need refinement for specific cases (acid treatment, drying) — tracked.
+**Implementation:** when a value (RAG-retrieved or user-supplied) carries a range, the GroundingService stores both bounds with `range_pending=True`. The StandardizationService then picks the model-type-appropriate bound at standardization time, recording the event as a structured `range_bound_selection` entry on the per-field provenance block.
 
 This fix resolved advisory-board concern #2. Previously the system was anti-conservative for cooking queries (the "Chicken Nuggets Bug" — query C2: chicken at 68 °C for 8 minutes was being made to look *more* cooked and therefore safer than reality).
+
+**No bias-correction layer.** Earlier iterations of the design also applied a duration multiplier (×1.2 / ×0.8) and a temperature bump (±5°C) to USER_INFERRED values. These were removed in Phase 9.3 (April 2026) — see §8.7. Conservatism is now committed in exactly two places: in the default values themselves, and in range-bound selection. Mapped values from rules carry their own conservatism via the rule's `conservative: bool` flag.
 
 ### 8.2 Predictive model form
 **Status:** ✅ Closed — Baranyi primary with second-order polynomial secondary.
@@ -568,12 +595,80 @@ A **hybrid** approach is planned: CSV pipeline for structured quantitative facts
 
 User-provided values are never overwritten by system inferences, even if the system has higher nominal confidence. Liability and trust trump single-case accuracy gains. A bias-detection layer (planned — concern #6 in §11) will flag when user values diverge meaningfully from RAG references, but will never silently override them.
 
-### 8.7 User-explicit confidence = 0.90, not 1.0
-**Status:** ✅ Architectural.
+### 8.7 No confidence numbers; no bias-correction layer
+**Status:** ✅ Architectural (Phase 9.3, April 2026).
 
-Users can misremember or mistype; LLM extraction can misparse. 0.90 is still clearly HIGH confidence and leaves room for uncertainty propagation.
+The system does not emit per-field confidence numbers, an overall confidence number, or a confidence-derivation formula. Earlier versions did, but those numbers were not mathematically grounded:
+- USER_EXPLICIT confidence was a hardcoded constant (0.90).
+- USER_INFERRED confidence was authoring intuition baked into the rule (0.50–0.95).
+- LLM intent confidence was an LLM self-report, not calibrated.
+- The "overall confidence" was a min over heterogeneous numbers, mixing real cosine similarities with hardcoded constants.
 
-### 8.8 Ground truth evaluation framework (methodology)
+The categorical `source` tier (USER_EXPLICIT / USER_INFERRED / RAG_RETRIEVAL / CONSERVATIVE_DEFAULT) carries the auditability signal. For RAG retrievals, the embedding cosine similarity is the only mathematically-grounded numeric signal and is reported as `embedding_score`. For rule-based interpretations, the rule's `conservative: bool` flag indicates whether the rule already errs on the conservative side.
+
+The system also does not apply a bias-correction layer to inferred values. The earlier ×1.2 / ×0.8 duration margin and the (never implemented) ±5°C temperature bump were removed because they double-counted conservatism: rules already commit to conservative points within their underlying intervals, and adding a margin on top produced values past the rule's own range. Conservatism is now committed in two well-defined places: default values, and range-bound selection.
+
+**Audit consequence.** The audit response is more honest under this regime: every number in it is something the system actually measured (embedding similarities, ComBase model coefficients, the prediction's μ_max). No fabricated confidence values pretending to be measurements. The four audit categories that remained (range_clamps, defaults_imputed, warnings) are surfaces where genuine events fire — bias_corrections was removed because, with no bias-correction layer, no events of that type can occur.
+
+### 8.8 Range-bound selection lives in StandardizationService
+**Status:** ✅ Architectural (Phase 9.2, April 2026).
+
+When a value (RAG-retrieved or user-supplied) carries a range, the GroundingService stores both bounds with `range_pending=True` on the provenance and lets the value pass through. The StandardizationService picks the model-type-appropriate bound at standardization time. This separates concerns cleanly: grounding handles "where did this value come from" (user, RAG, rule, default); standardization handles "what was done to make this value safe to feed the model" (range-bound selection, defaulting, clamping).
+
+This split was made because range-bound selection is conceptually a standardization decision — it picks one value from an interval based on model-type direction, the same kind of operation as bias correction and clamping — even though it was originally implemented in the GroundingService.
+
+### 8.9 Audit trail data shape
+**Status:** ✅ Architectural (Phase 9.3, April 2026).
+
+The audit response on `/api/v1/translate?verbose=true` exposes a fully structured per-field map (`field_audit`) plus three top-level lists (`range_clamps`, `defaults_imputed`, `warnings`) and three context blocks (`combase_model`, `system`, `provenance` — the latter is auto-derived from `field_audit` for backward compatibility).
+
+Each per-field entry on `field_audit` carries:
+- `final_value`: the value that reached the model (post-standardization)
+- `source`: categorical tier
+- `retrieval`: RAG details (when applicable) — query, top_match, runners_up, full_citations
+- `extraction`: extraction method and rule-specific details (matched_pattern, conservative flag, similarity, canonical_phrase)
+- `standardization`: the structured event block — `rule`, `direction`, `before_value`, `after_value`, `reason` — populated when an event fired
+
+**Three structured event types** under `standardization`:
+- `range_bound_selection` — mechanical, fires on every range-typed value
+- `default_imputed` — fires when a value was missing
+- `range_clamp` — fires when a value was outside the model's valid range
+
+The first is mechanical and routine; the other two are safety events. The first does NOT trigger a UI warning marker; the other two do.
+
+**Empty audit categories emit truly empty arrays (`[]`)**, not sentinel strings. The "(none applied)" rendering is a UI concern.
+
+### 8.10 Out-of-range values are clamped, not extrapolated
+**Status:** ✅ Architectural (Phase 9.4, April 2026).
+
+When an input parameter (temperature, pH, water activity, factor4) falls outside the selected ComBase model's valid range, the system clamps to the nearest boundary and records three audit signals: a structured `RangeClampInfo` entry in the top-level `range_clamps` list, a structured `range_clamp` event on the per-field `standardization` block, and a warning string in the top-level `warnings` list. The model is then evaluated at the clamped value.
+
+Earlier behaviour passed the out-of-range value through unchanged with only a warning string. The polynomial extrapolated, producing a numeric prediction with no scientific basis, while the user received a number that looked valid. The new behaviour ensures every prediction is evaluated within the model's calibration range; the user sees explicitly that clamping occurred and the original value.
+
+The alternative — refusing the prediction outright — was rejected as less practically useful. A user asking "what happens at 50°C with E. coli" probably wants the closest defensible answer (the prediction at 42°C, the model's max) plus full transparency, not a refusal.
+
+**Known limitation.** When a value is range-narrowed AND then clamped on the same field, the per-field `standardization` block records only the clamp (last event wins). The pre-clamp range is recoverable from the `extraction.parsed_range` field. A future refactor making the standardization block a list rather than a single object will resolve this; see §16.
+
+### 8.11 Multi-source citation attribution
+**Status:** ✅ Architectural (Phase 9.3, April 2026).
+
+The `food_properties.csv` schema allows only one `source_id` per row, but some rows carry values from two sources (e.g., bread white draws pH from FDA-PH-2007 and aw from IFT-2003-T31 Table 3-1). At ingestion, the document-builder parses the row's `notes` field for additional `[SOURCE-ID]` patterns and merges them into the document's source list, validated against `data/sources/source_references.csv`. The retrieval response then reports both source_ids and full bibliographic citations.
+
+This fix does NOT establish per-field attribution (which source supports pH vs which supports aw); per-field attribution requires a CSV schema migration that is filed but not scheduled. Per-row multi-source attribution is the current state and is sufficient for regulatory cross-checking.
+
+### 8.12 RAG store provenance manifest
+**Status:** ✅ Architectural (Phase 9.3, April 2026).
+
+A small JSON manifest is written alongside the ChromaDB persistence directory at ingestion time, recording `rag_store_hash`, `rag_ingested_at`, and `source_csv_audit_date`. At request time, the orchestrator reads this manifest and populates the response's `system` block with these values plus `ptm_version` (git sha) and `combase_model_table_hash`.
+
+This provenance stamping was the safeguard that would have caught the 2026-04-27 stale-RAG-store bug (where the post-audit aw value 0.94 was correct in the CSV but the RAG store still served the pre-audit 0.93). When the manifest is absent, a warning is appended to `metadata.warnings` ("RAG manifest missing — store provenance unknown") and the system fields are emitted as null.
+
+### 8.13 Default organism imputation as structured event
+**Status:** ✅ Architectural (Phase 9.4, April 2026).
+
+When a query does not specify a pathogen, the system imputes Salmonella as the default. The imputation is recorded as a structured `DefaultImputed` event in the top-level `defaults_imputed` list with `field_name = "organism"`, `default_value = "Salmonella"`, and the canonical reason string. The same event is written to `field_audit["organism"].standardization` with `rule = "default_imputed"`. A warning string is also retained in `warnings` to give the missing-critical-field event extra prominence; this duplication is deliberate (the structured `defaults_imputed` entry is the canonical machine-readable record; the warning is a user-facing notice).
+
+### 8.14 Ground truth evaluation framework (methodology)
 **Status:** ✅ Agreed.
 
 Ground truth for this system is not a single correct answer per query but the distribution of expert parameterisations. The sensitivity analysis queries (§7.2) are designed to collect this distribution from 15–25 food-safety professionals stratified across categories A/B/C. The system's output must fall within the expert-consensus range to be "correct."
@@ -608,28 +703,34 @@ Ground truth for this system is not a single correct answer per query but the di
 
 ## 10. Current status and roadmap
 
-### 10.1 Component status (end of Phase 9.1)
+### 10.1 Component status (end of Phase 9.4)
 
 | Component | Status | Notes |
 |---|---|---|
-| Semantic Parser | ✅ Complete | LLM + Instructor; three extraction methods |
-| Grounding Service | ✅ Complete | Rules + RAG integration; embedding fallback |
-| Standardization Service | ✅ Complete | Model-type-aware bias direction (Phase 9.1) |
-| ComBase Engine | ✅ Complete | Growth, thermal inactivation, non-thermal survival |
-| RAG System | ✅ Complete | ChromaDB + reranking; verification queries |
+| Semantic Parser | ✅ Complete | LLM + Instructor; three extraction methods. Intent classifier prompt extended for action verbs and technical model-type terms (Phase 9.4). |
+| Grounding Service | ✅ Complete | Rules + RAG integration; embedding fallback. Range-bound selection moved out (now in Standardization, §8.8). Rule details (matched_pattern, conservative, notes, similarity, canonical_phrase) propagated to provenance. |
+| Standardization Service | ✅ Complete | Range-bound selection (model-type aware), default imputation, range clamping. No bias-correction layer (§8.7). |
+| ComBase Engine | ✅ Complete | Growth, thermal inactivation, non-thermal survival. Out-of-range inputs are clamped (§8.10). |
+| RAG System | ✅ Complete | ChromaDB + reranking; verification queries; manifest at ingestion (§8.12); multi-source citation attribution from notes field (§8.11). |
 | RAG Data Population | 🟡 Partial | CDC-2019 not yet merged into pathogen_characteristics |
-| Orchestrator | ✅ Complete | Full pipeline coordination with session state |
-| API (`/api/v1/translate`) | ✅ Live | Covered by `test_api_translation.py` |
+| Orchestrator | ✅ Complete | Audit metadata captured post-standardization; `field_audit` is canonical, legacy `provenance` array auto-derived |
+| API (`/api/v1/translate`) | ✅ Live | `verbose=true` exposes the full structured audit shape |
+| Audit trail data shape | ✅ Architectural | Per-field `field_audit` map + three top-level lists (range_clamps, defaults_imputed, warnings) + three context blocks (combase_model, system, provenance auto-derived) — see §8.9 |
 | Benchmark suite (exp_3_3) | ✅ Live | Running on 14 models; results in `benchmarks/results/` |
 | Benchmark suite (exp_1_1) | ✅ Live | pH stochasticity Monte Carlo |
 | Streamlit dashboard | 🟡 In progress | Pages 1/2/3 exist; page 4 (pH stochasticity) per spec |
-| Documentation | 🟡 Mixed | Main tech doc current as of 2026-03-19; post-April updates not yet merged into it |
+| Documentation | 🟡 Mixed | This document (`ptm_context.md`) is current. Older `*_documentation.md` and `*_architecture_expanded.md` files in the repo are pre-Phase-9.2 and are out of date — they describe the bias-correction layer that has been removed and the range-bound-selection-in-grounding architecture that has been replaced. Pending task: generate a `specifications.md` from the codebase via reverse engineering and maintain it from there forward. |
 
 ### 10.2 Roadmap
 
 | Phase | Focus | Status |
 |---|---|---|
-| 9.1 | Model-type-aware conservative bias | ✅ Done |
+| 9.1 | Model-type-aware conservative bias direction | ✅ Done |
+| 9.2 | Range-bound selection moved to StandardizationService | ✅ Done |
+| 9.3 | Audit trail correctness; bias-correction layer removed; confidence numbers removed; multi-source citations; manifest | ✅ Done |
+| 9.4 | Out-of-range clamping; default-organism structured event; thermal_inactivation routing fix | ✅ Done |
+| 9.5 | Sourcing of `rules.py` interpretation values | 🔴 Designed (tier split: standards-backed / convention-backed / linguistic-only), not started |
+| 9.6 | Standardization-block-as-a-list refactor (chained events) | 🔴 Filed in §16, deferred |
 | 10 | Result Interpretation Module — model output → natural language | 🔴 Not started |
 | 11 | Multi-step scenarios with per-step model-type inference | 🔴 Designed, not built |
 | 12 | Clarification loop — interactive questions for missing data | 🔴 Not started |
@@ -658,10 +759,12 @@ For each open concern, the table below captures the concern in one line and the 
 
 ### 11.1 Cumulative conservative bias (a subsidiary concern under #1 and #2)
 
-The system stacks multiple conservative heuristics (upper-bound temperature + upper-bound duration + +20 % duration margin + growth-permissive pH + λ=0). Compounded, the predicted log increase can be 2.5–3.5× higher than a reasonable human calculation. Risk: "crying wolf" — operators learn to discount the tool.
+The system stacks several conservative heuristics: upper-bound selection from RAG ranges (for growth direction), conservative defaults for missing values (Salmonella, abuse temperature, neutral pH, high aw), and ComBase default lag h₀ values per organism. Compounded, the predicted log increase can be 2.5–3.5× higher than a reasonable human calculation. Risk: "crying wolf" — operators learn to discount the tool.
+
+**Note (2026-04-28):** The earlier ×1.2 / ×0.8 duration multiplier was part of this stack until Phase 9.3, when it was removed (see §8.7). Conservatism is now committed in two well-defined places only — default values and range-bound selection — which simplifies the bias-stack analysis but does not eliminate it. Multiple conservative defaults can still compound; the principle is unchanged.
 
 **Two agreed mitigations, both planned:**
-- **Short-term:** cumulative bias indicator in the output ("this prediction uses 3 conservative assumptions; it represents a precautionary upper bound, not a best estimate") with a threshold that flags when more than two conservative corrections have been applied.
+- **Short-term:** cumulative bias indicator in the output ("this prediction uses N conservative assumptions; it represents a precautionary upper bound, not a best estimate") with a threshold that flags when more than two conservative defaults have been applied. Discoverable from the audit response (`defaults_imputed` count + range_bound_selection event count where direction = upper).
 - **Research version:** move toward distributional uncertainty propagation (Monte Carlo) aligned with standard QMRA methodology. Itself a publishable contribution.
 
 ---
@@ -671,12 +774,21 @@ The system stacks multiple conservative heuristics (upper-bound temperature + up
 Items worth verifying the next time Daniel works on the related area:
 
 1. **Project name in `settings.py` / tests.** `Settings.app_name` reads "Problem Interpretation Module" (see `test_config.py`). Current project name is PTM; "Problem Interpretation Module" is the broader tentative project name (§1.2). Low-priority rename, but ensure current sessions don't get misled by the config value.
-2. **Ratkowsky vs. Baranyi in documentation.** Implementation is Baranyi + 2nd-order polynomial secondary (§5.4); some legacy text and an advisory-review aside described it as Ratkowsky. Main tech doc should be updated.
-3. **`default_ph_neutral` value.** Two documented defaults appear in notes: 6.5 (in the bias-correction table of the main tech doc) and 7.0 (in the LLM Monte Carlo / issues.md discussion). Confirm the current value in `app/config/settings.py`.
-4. **Two query artefacts.** `sensitivity_analysis_queries.md` (30 queries, paper-oriented) vs. `benchmarks/datasets/extraction_queries.json` (engineering ground truth for exp_3_3). Overlap unknown; consolidation or derivation relationship not documented.
-5. **CDC-2019 rows missing from `pathogen_characteristics.csv`.** Source is registered; rows not yet populated (§6.3).
-6. **`test_llm_client.py` content.** Inspection shows its test classes duplicate `test_config.py` rather than testing the LLM client (likely a mis-saved file). Verify and restore.
-7. **`data_year` and `notes` columns** specified in the pathogen-characteristics schema but not present in the CSV. Schema documentation should be aligned with file content.
+2. **Ratkowsky vs. Baranyi in documentation.** Implementation is Baranyi + 2nd-order polynomial secondary (§5.4); some legacy text and an advisory-review aside described it as Ratkowsky. Old tech docs (`problem_translation_module_complete_techincal_documentation.md`, `grounding_service_documentation.md`, `grounding_service_architecture_expanded.md`) should be either updated or formally retired in favour of the planned `specifications.md`.
+3. **Two query artefacts.** `sensitivity_analysis_queries.md` (30 queries, paper-oriented) vs. `benchmarks/datasets/extraction_queries.json` (engineering ground truth for exp_3_3). Overlap unknown; consolidation or derivation relationship not documented.
+4. **CDC-2019 rows missing from `pathogen_characteristics.csv`.** Source is registered; rows not yet populated (§6.3).
+5. **`test_llm_client.py` content.** Inspection shows its test classes duplicate `test_config.py` rather than testing the LLM client (likely a mis-saved file). Verify and restore.
+6. **`data_year` and `notes` columns** specified in the pathogen-characteristics schema but not present in the CSV. Schema documentation should be aligned with file content.
+7. **Embedding-fallback path verification.** The temperature embedding-fallback path exists in `rules.py` but no captured live query has triggered it during testing. The path's structural correctness has been verified against synthetic fixtures only. Worth a query that genuinely fires this path before relying on its production behaviour.
+
+### Resolved in this session (2026-04-28)
+
+The following inconsistencies present in v1.1 have been resolved in v1.2:
+
+- ~~`default_ph_neutral` value (6.5 vs 7.0)~~ — resolved: 7.0 is the current default (§5.3).
+- ~~Bias correction direction documentation~~ — resolved: bias correction layer removed entirely (§8.1, §8.7); the documentation now reflects the simpler architecture.
+- ~~Audit metadata pre-standardization snapshot~~ — resolved: orchestrator now captures post-standardization (§5.5).
+- ~~`bias_corrections` list with optimistic-duration entries~~ — resolved: list removed from response shape; replaced by `defaults_imputed` (structured) for the only case that remained.
 
 ---
 
@@ -741,6 +853,7 @@ Items worth verifying the next time Daniel works on the related area:
 |---------|------|--------|
 | 1.0 | 2026-04-24 | Initial consolidated context document. Covers PTM core + benchmark suite through end of Phase 9.1. Synthesises 15+ source files (technical doc, issues, sensitivity queries, grounding architecture, RAG system, extraction notes, benchmark experiments, dashboard specs) and the 2026-04-17 RAG audit. Naming normalised to PTM throughout. |
 | 1.1 | 2026-04-25 | Added §2 "Scientific philosophy and project vision" — captures the project thesis (LLMs as the means to model the previously-unmodellable human input/output layer of food safety assessment), the Holistic Risk Model three-layer framing, the three work packages with PTM as WP1, the two distinct sources of variability (human + LLM stochasticity), the scientific framing for biology-oriented audiences, the case for curated RAG over frontier-model web search, and the strategic ComBase integration target. Sections 3–15 renumbered accordingly (cross-references updated throughout). The philosophy is the lens for evaluating future design decisions but is explicitly not immutable. |
+| 1.2 | 2026-04-28 | Major audit-trail and architecture cleanup landed. Phases 9.2 / 9.3 / 9.4 closed. Specific changes: (a) range-bound selection moved from GroundingService to StandardizationService — §5.2, §5.3, §8.8; (b) bias-correction layer removed entirely (no duration multiplier, no temperature bump) — §5.3, §8.1, §8.7; (c) confidence numbers removed (per-rule, per-field, overall, intent) — §5.2, §5.6, §8.7; (d) audit metadata captured post-standardization with structured per-field `standardization` block populated for all events — §5.5, §5.6, §8.9; (e) out-of-range values clamped (not extrapolated) with structured `RangeClampInfo` — §8.10; (f) multi-source citation attribution at ingestion — §8.11; (g) RAG manifest at ingestion for store provenance stamping — §8.12; (h) default organism imputation as structured event — §8.13; (i) thermal_inactivation routing fixed via intent classifier prompt — §10.1. Closed inconsistencies #2 (default_ph_neutral), #3 (bias direction), #6 (audit pre-standardization snapshot), and removed `bias_corrections` from response shape. Standardization-block-as-a-list refactor filed in §16 as a deferred future enhancement. Older tech docs (`problem_translation_module_complete_techincal_documentation.md`, `grounding_service_documentation.md`, `grounding_service_architecture_expanded.md`) are now formally out of date pending replacement by a `specifications.md` reverse-engineered from the codebase (planned). |
 
 ---
 

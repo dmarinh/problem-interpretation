@@ -1,5 +1,25 @@
 # Problem Translation Module: Complete Technical Documentation
 
+> ## ⚠️ HISTORICAL DOCUMENT — DO NOT USE AS REFERENCE
+>
+> **Status:** Out of date as of 2026-04-28. Last accurate as of 2026-03-19 (pre-Phase-9.1).
+>
+> This is the most outdated of the legacy documentation files. It pre-dates Phase 9.1 (model-type-aware bias direction) and therefore also pre-dates the entire chain of cleanups in Phases 9.2 / 9.3 / 9.4. Many of its assertions no longer reflect the codebase:
+>
+> - Bias correction architecture: removed in Phase 9.3.
+> - Per-source confidence numbers: removed in Phase 9.3.
+> - Pre-standardization audit metadata snapshot: corrected in Phase 9.3.
+> - Ratkowsky vs Baranyi description (where it occurs): the implementation is Baranyi + 2nd-order polynomial secondary; documentation in this file may use Ratkowsky as a simplification, which is incorrect.
+> - Out-of-range value handling: the system now clamps (Phase 9.4); earlier behaviour described here was extrapolation with warning.
+>
+> **For the current architecture, see:**
+> - `ptm_context.md` (v1.2 or later) — the authoritative session context.
+> - The planned `specifications.md` (to be reverse-engineered from the codebase) — will be the long-form replacement for this document.
+>
+> This document is retained for historical reference only. Do not feed it to new sessions or use it for design decisions.
+
+---
+
 A system for translating natural language food safety queries into predictive microbiology model executions.
 
 ---
