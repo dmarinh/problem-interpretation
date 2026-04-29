@@ -156,3 +156,13 @@ Don't update from the deliverable summary alone. Verify against the codebase or 
 ## Lessons
 
 Read `specs/lessons.md` at the start of every session for project-specific rules learned from past mistakes.
+
+## Documentation Maintenance
+
+After any code or design change, check whether the following files need updating and update them in the same change if so:
+
+`specs/specifications.md` — update if the change alters intended behaviour, scope, interfaces, data contracts, or requirements.
+`docs/ptm_context.md` — update if the change affects the Problem Translation Module's architecture, components, dependencies, parameter handling, or RAG/knowledge-base setup.
+`specs/lessons.md` — append an entry if the change surfaced a non-obvious gotcha, a design trade-off, a fix worth remembering, or a decision that future-you (or another contributor) would otherwise have to rediscover.
+
+If a change clearly does not affect a given file, state so briefly in the change summary rather than silently skipping it. Keep edits minimal and consistent with the existing structure and tone of each file.
