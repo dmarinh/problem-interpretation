@@ -128,16 +128,31 @@ The orchestrator (stage 5) is the coordination layer, not a processing stage in 
 **Value source priority (highest to lowest):**
 1. `USER_EXPLICIT` — value stated directly by user ("pH 6.5", "25°C")
 2. `USER_INFERRED` — value derived from linguistic rules ("room temperature" → 25°C)
-3. `RAG_RETRIEVAL` — value retrieved from knowledge base (chicken → pH 6.2–6.4)
-4. `CONSERVATIVE_DEFAULT` — safety default (applied in StandardizationService, not here)
+3. `RAG_RETRIEVAL` — value retrieved from the primary food-properties query (specific-food doc above 0.70 threshold)
+4. `RAG_RETRIEVAL_FALLBACK` — value retrieved via per-field secondary query (category-level doc, threshold 0.62)
+5. `CONSERVATIVE_DEFAULT` — safety default (applied in StandardizationService, not here)
 
 Higher-priority sources are never overwritten by lower-priority sources.
 
 **Processing sequence for `ground_scenario()`:**
 1. Ground environmental conditions (pH, aw, CO2, nitrite, lactic acid, acetic acid) from `ExtractedScenario.environmental_conditions` — `USER_EXPLICIT` source
 2. Ground pathogen from `scenario.pathogen_mentioned` — `USER_EXPLICIT` via `ComBaseOrganism.from_string()` alias dict lookup
-3. RAG query for food pH and aw (only if not already grounded)
-4. RAG query for pathogen from food description (only if organism not yet grounded)
+3. Two-tier RAG retrieval for food pH and aw (only if not already grounded) — see **Food property retrieval** below
+4. Two-stage RAG lookup for pathogen (only if organism not yet grounded): Stage 1 calls `query_pathogen_hazards()` to resolve the food description to a canonical `food_name` metadata key; Stage 2 calls `get_hazards_for_food(food_name)` to fetch all hazard documents for that food and selects the pathogen with the highest `annual_deaths_us` (deterministic danger ranking). Falls back to Stage 1's top embedding result if Stage 2 returns no documents (food not in `food_pathogen_hazards.csv`). `extraction_method` is `"ranked_by_annual_deaths"` on the Stage 2 path and `"direct"` on the fallback path.
+
+**Food property retrieval (`_ground_food_properties`):** Two-tier design.
+
+*Tier 1 — primary query* (`query_food_properties`, threshold 0.70): single query `"{food} pH water activity properties"` against `TYPE_FOOD_PROPERTIES`. If above threshold, extracts pH and aw from the top document's text using hybrid regex+LLM extraction. Source tier: `RAG_RETRIEVAL`. A specific-food row may have only one field populated (e.g., the `chicken` row has pH but no aw); in that case only the present field is grounded.
+
+*Tier 2 — per-field fallback* (`_ground_field_fallback`, threshold 0.62): fires for each field still ungrounded after Tier 1, regardless of whether Tier 1 missed threshold entirely or the top doc lacked the field. Issues a targeted single-property query:
+- Missing pH: `"{food} pH acidity"` via `query_food_ph()`
+- Missing aw: `"{food} water activity aw moisture"` via `query_food_water_activity()`
+
+Tier 2 can match category-level docs (e.g., `"fresh poultry water activity 0.99–1.0"`) that Tier 1 may miss or not extract from. Source tier: `RAG_RETRIEVAL_FALLBACK`. The `RetrievalResult` for a Tier 2 retrieval has `attributed_field` set to the specific field name (`"ph"` or `"water_activity"`); primary retrievals have `attributed_field=None`.
+
+`CONSERVATIVE_DEFAULT` fires only when both tiers produce no hit above their respective thresholds.
+
+*Threshold calibration (2026-04-30):* 13 known-good food/property pairs scored ≥ 0.6587 on Tier 2 queries; 8 should-not-match cases scored ≤ 0.5991. The gap is 0.0596; 0.62 sits in it with ~0.04 margin on each side. Key validated cases: `"chicken" → water_activity` finds the `"fresh poultry"` aw doc at 0.7145; `"poultry" → ph/aw` finds category docs at 0.6896/0.7584.
 5. If `scenario.is_multi_step and scenario.time_temperature_steps` → `_ground_multi_step_profile()` (results to `grounded.steps`, not to flat key-value store)
 6. Otherwise → single-step `_ground_temperature()` and `_ground_duration()`
 
@@ -154,7 +169,7 @@ Higher-priority sources are never overwritten by lower-priority sources.
 
 **Provenance fields populated by GroundingService:**
 - `source` (ValueSource enum)
-- `extraction_method` ("direct", "regex", "llm", "regex+llm", "rule_match", "embedding_fallback")
+- `extraction_method` ("direct", "regex", "llm", "regex+llm", "rule_match", "embedding_fallback", "ranked_by_annual_deaths")
 - `original_text` (raw text from RAG or user)
 - `retrieval_source` (doc_id for RAG values)
 - `raw_match` (matched text fragment from regex before parsing)
@@ -163,7 +178,7 @@ Higher-priority sources are never overwritten by lower-priority sources.
 - `matched_pattern`, `rule_conservative`, `rule_notes` (for USER_INFERRED values)
 - `embedding_similarity`, `canonical_phrase` (for embedding-fallback values)
 
-**Side effects:** Appends `RetrievalResult` objects to `grounded.retrievals` (one per RAG call). Appends warning strings to `grounded.warnings` for unresolvable fields.
+**Side effects:** Appends `RetrievalResult` objects to `grounded.retrievals` (one per RAG call; Tier 2 fallback retrievals have `attributed_field` set). Appends warning strings to `grounded.warnings` for unresolvable fields.
 
 **Confidence levels:** Defined in `RetrievalService._classify_confidence()`:
 - HIGH: cosine similarity ≥ 0.85
@@ -172,7 +187,8 @@ Higher-priority sources are never overwritten by lower-priority sources.
 - FAILED: similarity ≤ 0.0
 
 **Retrieval thresholds (`settings.py`):**
-- `food_properties_confidence = 0.70` — used by `query_food_properties()`
+- `food_properties_confidence = 0.70` — used by `query_food_properties()` (Tier 1 primary)
+- `food_properties_fallback_confidence = 0.62` — used by `query_food_ph()` and `query_food_water_activity()` (Tier 2 per-field fallback)
 - `pathogen_hazards_confidence = 0.75` — used by `query_pathogen_hazards()`
 - `global_min_confidence = 0.65` — default for other queries
 
@@ -414,7 +430,7 @@ Tracks origin and transformations of a single value. Key fields:
 
 | Field | Type | Description |
 |---|---|---|
-| `source` | `ValueSource` | Categorical source tier (USER_EXPLICIT, USER_INFERRED, RAG_RETRIEVAL, CONSERVATIVE_DEFAULT, etc.) |
+| `source` | `ValueSource` | Categorical source tier (USER_EXPLICIT, USER_INFERRED, RAG_RETRIEVAL, RAG_RETRIEVAL_FALLBACK, CONSERVATIVE_DEFAULT, etc.) |
 | `original_text` | `str \| None` | Raw text from user or RAG |
 | `retrieval_source` | `str \| None` | RAG doc_id |
 | `transformation_applied` | `str \| None` | Free-text description of transformation (legacy, supplemented by structured `standardization` block) |
@@ -577,8 +593,11 @@ Read at request time by `build_system_audit()` and attached to `SystemAudit` in 
 `RetrievalService.query()` fetches n_results from ChromaDB, optionally applies a reranker (cross-encoder), sorts by confidence, and returns the top result above threshold as `has_confident_result`.
 
 Queries:
-- `query_food_properties(food_description)`: query `"{food} pH water activity properties"` with threshold 0.70
-- `query_pathogen_hazards(food_description)`: query `"{food} pathogen bacteria hazard contamination"` with threshold 0.75
+- `query_food_properties(food_description)`: `"{food} pH water activity properties"`, threshold 0.70 — Tier 1 primary
+- `query_food_ph(food_description)`: `"{food} pH acidity"`, threshold 0.62 — Tier 2 per-field fallback for pH
+- `query_food_water_activity(food_description)`: `"{food} water activity aw moisture"`, threshold 0.62 — Tier 2 per-field fallback for aw
+- `query_pathogen_hazards(food_description)`: `"{food} pathogen bacteria hazard contamination"`, threshold 0.75 — Stage 1 food-name resolver in `_ground_pathogen_from_rag`
+- `get_hazards_for_food(food_name)`: metadata filter `{"food_name": food_name, "type": "pathogen_hazards"}` via `VectorStore.get_documents()`, sorted by `annual_deaths_us` descending — no embedding ranking involved
 
 `_build_retrieval_metadata()` (`grounding_service.py`) converts `RetrievalResponse` to `RetrievalResult`, computing `embedding_score = 1.0 - distance` and capturing up to 3 runners-up with previews.
 
@@ -899,7 +918,7 @@ LiteLLM + Instructor. Model specified via `LLM_MODEL`. Supported providers inclu
 | `TCS` | Time/Temperature Control for Safety — regulatory food classification |
 | `TranslationResult` | Top-level return from the orchestrator (.state, .success, .error, .execution_result, .metadata) |
 | `ValueProvenance` | Per-field metadata tracking source, extraction method, range bounds, and standardization events |
-| `ValueSource` | Categorical reliability tier: USER_EXPLICIT, USER_INFERRED, RAG_RETRIEVAL, CONSERVATIVE_DEFAULT, FUZZY_MATCH, CALCULATED, CLAMPED_TO_RANGE, CLARIFICATION_RESPONSE |
+| `ValueSource` | Categorical reliability tier: USER_EXPLICIT, USER_INFERRED, RAG_RETRIEVAL (primary food-properties query), RAG_RETRIEVAL_FALLBACK (per-field Tier 2 fallback query), CONSERVATIVE_DEFAULT, FUZZY_MATCH, CALCULATED, CLAMPED_TO_RANGE, CLARIFICATION_RESPONSE |
 
 ---
 

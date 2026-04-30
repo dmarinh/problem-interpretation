@@ -11,7 +11,6 @@ from typing import Optional
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pathlib import Path
 
 # Find project root by looking for .env or pyproject.toml
 def find_project_root() -> Path:
@@ -122,7 +121,15 @@ class Settings(BaseSettings):
         le=500,
         description="Overlap between chunks"
     )
-    
+    reranker_enabled: bool = Field(
+        default=True,
+        description="Enable cross-encoder reranking after initial vector search"
+    )
+    reranker_model: str = Field(
+        default="cross-encoder/ms-marco-MiniLM-L-6-v2",
+        description="Sentence-transformers cross-encoder model for reranking"
+    )
+
     # -------------------------------------------------------------------------
     # Retrieval Confidence Thresholds
     # -------------------------------------------------------------------------
@@ -137,6 +144,20 @@ class Settings(BaseSettings):
         ge=0.0,
         le=1.0,
         description="Confidence threshold for food properties retrieval"
+    )
+    food_properties_fallback_confidence: float = Field(
+        default=0.62,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Confidence threshold for the per-field secondary retrieval tier used when the "
+            "primary food-properties query misses threshold or returns a doc that lacks a field. "
+            "Calibrated 2026-04-30 against 13 known-good food/property pairs (min score 0.6587) "
+            "and 8 should-not-match cases (max score 0.5991); gap = 0.0596. 0.62 sits in the "
+            "gap with ~0.04 margin on each side. Key validated cases: 'chicken' aw-fallback "
+            "finds 'fresh poultry' doc at 0.7145 (Capture A target); 'poultry' ph/aw-fallback "
+            "finds category docs at 0.6896/0.7584 (Capture B target). See §5.2 of specifications.md."
+        ),
     )
     pathogen_hazards_confidence: float = Field(
         default=0.75,

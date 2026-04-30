@@ -86,8 +86,7 @@ def _build_field_audit(result: TranslationResult) -> dict[str, FieldAuditEntry]:
         c.field_name: c for c in (metadata.range_clamps or [])
     }
 
-    # ── Index retrieval results by query for field matching ─────────────────────
-    rag_retrievals = {r.query: r for r in (metadata.retrievals or [])}
+    rag_retrievals: list = metadata.retrievals or []
 
     field_audit: dict[str, FieldAuditEntry] = {}
 
@@ -117,18 +116,27 @@ def _build_field_audit(result: TranslationResult) -> dict[str, FieldAuditEntry]:
 
         # ── Retrieval block (RAG-sourced fields only) ─────────────────────────
         retrieval_info: RetrievalAuditInfo | None = None
-        if prov.source == ValueSource.RAG_RETRIEVAL and rag_retrievals:
-            r = next(iter(rag_retrievals.values()))
-            if "pathogen" in field_name or field_name == "organism":
-                r = next(
-                    (v for k, v in rag_retrievals.items() if "pathogen" in k.lower()),
-                    r,
-                )
-            elif field_name in ("ph", "water_activity"):
-                r = next(
-                    (v for k, v in rag_retrievals.items() if "ph" in k.lower() or "water" in k.lower()),
-                    r,
-                )
+        is_rag_source = prov.source in (ValueSource.RAG_RETRIEVAL, ValueSource.RAG_RETRIEVAL_FALLBACK)
+        if is_rag_source and rag_retrievals:
+            # Priority 1: exact attributed_field match (Tier 2 per-field fallback retrievals
+            # are tagged at creation time; collision-safe even when query strings overlap).
+            r = next(
+                (v for v in rag_retrievals if v.attributed_field == field_name),
+                None,
+            )
+            # Priority 2: keyword heuristic (untagged primary retrievals only).
+            if r is None:
+                r = rag_retrievals[0]
+                if "pathogen" in field_name or field_name == "organism":
+                    r = next(
+                        (v for v in rag_retrievals if "pathogen" in v.query.lower()),
+                        r,
+                    )
+                elif field_name in ("ph", "water_activity"):
+                    r = next(
+                        (v for v in rag_retrievals if "ph" in v.query.lower() or "water" in v.query.lower()),
+                        r,
+                    )
             top_match = RetrievalTopMatchInfo(
                 doc_id=r.chunk_id,
                 embedding_score=r.embedding_score,

@@ -39,6 +39,12 @@ def make_grounding_service() -> GroundingService:
     mock_retrieval.query_food_properties.return_value = MagicMock(
         has_confident_result=False, results=[]
     )
+    mock_retrieval.query_food_ph.return_value = MagicMock(
+        has_confident_result=False, results=[]
+    )
+    mock_retrieval.query_food_water_activity.return_value = MagicMock(
+        has_confident_result=False, results=[]
+    )
     mock_retrieval.query_pathogen_hazards.return_value = MagicMock(
         has_confident_result=False, results=[]
     )

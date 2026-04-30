@@ -3,12 +3,11 @@ Unit tests for grounding service.
 """
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 from app.services.grounding.grounding_service import (
     GroundingService,
     GroundedValues,
-    ExtractedNumericValue,
     get_grounding_service,
     reset_grounding_service,
 )
@@ -470,12 +469,16 @@ class TestGroundScenario:
         mock_food_response.top_result = mock_food_response.results[0]
         mock_retrieval.query_food_properties.return_value = mock_food_response
         
+        # Tier 2 fallback for water_activity (not user-explicit) returns no result
+        mock_retrieval.query_food_ph.return_value = MagicMock(has_confident_result=False, results=[])
+        mock_retrieval.query_food_water_activity.return_value = MagicMock(has_confident_result=False, results=[])
+
         # Setup RAG for pathogen (won't be used since pathogen not needed)
         mock_pathogen_response = MagicMock()
         mock_pathogen_response.has_confident_result = False
         mock_pathogen_response.results = []
         mock_retrieval.query_pathogen_hazards.return_value = mock_pathogen_response
-        
+
         scenario = ExtractedScenario(
             food_description="chicken",
             single_step_temperature=ExtractedTemperature(value_celsius=25.0),
@@ -507,8 +510,8 @@ class TestGroundScenario:
             ),
         )
         
-        grounded = await service.ground_scenario(scenario)
-        
+        await service.ground_scenario(scenario)
+
         # RAG for food properties should not be called
         mock_retrieval.query_food_properties.assert_not_called()
         
@@ -519,24 +522,235 @@ class TestGroundScenario:
     async def test_explicit_pathogen_grounded(self, grounding_service):
         """Explicit pathogen mention should be grounded."""
         service, mock_retrieval, _ = grounding_service
-        
-        # Mock food properties (will be called since pH/aw not provided)
+
+        # Primary food-properties query: not confident
         mock_food_response = MagicMock()
         mock_food_response.has_confident_result = False
         mock_food_response.results = []
+        mock_food_response.query = "chicken pH water activity properties"
         mock_retrieval.query_food_properties.return_value = mock_food_response
-    
+
+        # Tier 2 fallback queries: also not confident (food description doesn't match KB)
+        mock_fallback_ph = MagicMock()
+        mock_fallback_ph.has_confident_result = False
+        mock_fallback_ph.results = []
+        mock_fallback_ph.query = "chicken pH acidity"
+        mock_retrieval.query_food_ph.return_value = mock_fallback_ph
+
+        mock_fallback_aw = MagicMock()
+        mock_fallback_aw.has_confident_result = False
+        mock_fallback_aw.results = []
+        mock_fallback_aw.query = "chicken water activity aw moisture"
+        mock_retrieval.query_food_water_activity.return_value = mock_fallback_aw
+
+        # Pathogen also not in hazards KB (not needed — user provided it)
+        mock_retrieval.query_pathogen_hazards.return_value = MagicMock(
+            has_confident_result=False, results=[]
+        )
+
         scenario = ExtractedScenario(
             food_description="chicken",
             pathogen_mentioned="Salmonella",
             single_step_temperature=ExtractedTemperature(value_celsius=25.0),
             single_step_duration=ExtractedDuration(value_minutes=180.0),
         )
-    
+
         grounded = await service.ground_scenario(scenario)
-    
+
         assert grounded.get("organism") == ComBaseOrganism.SALMONELLA
         assert grounded.provenance["organism"].source == ValueSource.USER_EXPLICIT
+
+
+class TestGroundFoodPropertiesTwoTier:
+    """Tests for two-tier food property retrieval (Tier 1 primary + Tier 2 per-field fallback)."""
+
+    def _make_confident_response(self, content: str, query: str, doc_id: str = "doc_1") -> MagicMock:
+        """Build a mock RetrievalResponse with a confident top result."""
+        top = MagicMock()
+        top.doc_id = doc_id
+        top.content = content
+        top.source = "food_properties"
+        top.distance = None      # suppresses isinstance(dist, (int, float)) branch
+        top.rerank_score = None
+        top.metadata = {}
+
+        r = MagicMock()
+        r.has_confident_result = True
+        r.top_result = top
+        r.results = [top]
+        r.query = query
+        return r
+
+    def _make_no_result_response(self, query: str) -> MagicMock:
+        """Build a mock RetrievalResponse with no confident result."""
+        r = MagicMock()
+        r.has_confident_result = False
+        r.results = []
+        r.top_result = None
+        r.query = query
+        return r
+
+    @pytest.mark.asyncio
+    async def test_capture_a_aw_fallback_when_primary_doc_lacks_aw(self, grounding_service):
+        """Capture A: primary returns chicken pH doc (no aw) → Tier 2 aw query fires and grounds aw."""
+        service, mock_retrieval, _ = grounding_service
+
+        primary_query = "chicken pH water activity properties"
+        mock_retrieval.query_food_properties.return_value = self._make_confident_response(
+            content="chicken (poultry): pH range 6.2 to 6.4. Raw chicken [IFT-2003-T33]",
+            query=primary_query,
+        )
+        # No fallback pH query should fire — pH is already grounded
+        aw_fallback_query = "chicken water activity aw moisture"
+        mock_retrieval.query_food_water_activity.return_value = self._make_confident_response(
+            content="fresh poultry (poultry): water activity 0.99 to 1.0. All fresh poultry [IFT-2003-T31]",
+            query=aw_fallback_query,
+            doc_id="doc_26",
+        )
+
+        grounded = GroundedValues()
+        await service._ground_food_properties("chicken", grounded)
+
+        # pH: grounded from primary, RAG_RETRIEVAL
+        assert grounded.has("ph")
+        assert grounded.provenance["ph"].source == ValueSource.RAG_RETRIEVAL
+        assert grounded.get("ph") == 6.2  # lower bound of range stored pending
+        assert grounded.provenance["ph"].parsed_range == [6.2, 6.4]
+
+        # aw: grounded from fallback, RAG_RETRIEVAL_FALLBACK
+        assert grounded.has("water_activity")
+        assert grounded.provenance["water_activity"].source == ValueSource.RAG_RETRIEVAL_FALLBACK
+        assert grounded.get("water_activity") == 0.99
+
+        # Tier 2 pH query must NOT have fired (pH already grounded after Tier 1)
+        mock_retrieval.query_food_ph.assert_not_called()
+
+        # Tier 2 aw retrieval must be tagged with attributed_field
+        aw_retrieval = next(
+            (r for r in grounded.retrievals if r.attributed_field == "water_activity"), None
+        )
+        assert aw_retrieval is not None
+        assert aw_retrieval.query == aw_fallback_query
+
+    @pytest.mark.asyncio
+    async def test_capture_b_both_fields_from_fallback_when_primary_misses(self, grounding_service):
+        """Capture B: primary not confident → both Tier 2 fallback queries fire and ground both fields."""
+        service, mock_retrieval, _ = grounding_service
+
+        mock_retrieval.query_food_properties.return_value = self._make_no_result_response(
+            "poultry pH water activity properties"
+        )
+        ph_fallback_query = "poultry pH acidity"
+        mock_retrieval.query_food_ph.return_value = self._make_confident_response(
+            content="chicken (poultry): pH range 6.2 to 6.4. Raw chicken [IFT-2003-T33]",
+            query=ph_fallback_query,
+        )
+        aw_fallback_query = "poultry water activity aw moisture"
+        mock_retrieval.query_food_water_activity.return_value = self._make_confident_response(
+            content="fresh poultry (poultry): water activity 0.99 to 1.0. All fresh poultry [IFT-2003-T31]",
+            query=aw_fallback_query,
+        )
+
+        grounded = GroundedValues()
+        await service._ground_food_properties("poultry", grounded)
+
+        assert grounded.has("ph")
+        assert grounded.provenance["ph"].source == ValueSource.RAG_RETRIEVAL_FALLBACK
+        assert grounded.has("water_activity")
+        assert grounded.provenance["water_activity"].source == ValueSource.RAG_RETRIEVAL_FALLBACK
+
+        # Both fallback retrievals tagged with their respective fields
+        ph_retrieval = next((r for r in grounded.retrievals if r.attributed_field == "ph"), None)
+        aw_retrieval = next((r for r in grounded.retrievals if r.attributed_field == "water_activity"), None)
+        assert ph_retrieval is not None and ph_retrieval.query == ph_fallback_query
+        assert aw_retrieval is not None and aw_retrieval.query == aw_fallback_query
+
+    @pytest.mark.asyncio
+    async def test_unknown_food_defaults_when_both_tiers_miss(self, grounding_service):
+        """Unmatchable food: both tiers below threshold → neither field grounded → defaults later."""
+        service, mock_retrieval, _ = grounding_service
+
+        mock_retrieval.query_food_properties.return_value = self._make_no_result_response(
+            "zarflonite pH water activity properties"
+        )
+        mock_retrieval.query_food_ph.return_value = self._make_no_result_response(
+            "zarflonite pH acidity"
+        )
+        mock_retrieval.query_food_water_activity.return_value = self._make_no_result_response(
+            "zarflonite water activity aw moisture"
+        )
+
+        grounded = GroundedValues()
+        await service._ground_food_properties("zarflonite", grounded)
+
+        assert not grounded.has("ph")
+        assert not grounded.has("water_activity")
+        # Both fallback-miss warnings emitted
+        assert any("ph" in w.lower() for w in grounded.warnings)
+        assert any("water" in w.lower() for w in grounded.warnings)
+
+    @pytest.mark.asyncio
+    async def test_known_rich_row_no_fallback_fired(self, grounding_service):
+        """Regression guard: primary returns both pH and aw → no Tier 2 queries fired."""
+        service, mock_retrieval, _ = grounding_service
+
+        mock_retrieval.query_food_properties.return_value = self._make_confident_response(
+            content="bread white (grain): pH range 5.0 to 6.2. water activity 0.94 to 0.97.",
+            query="bread white pH water activity properties",
+        )
+
+        grounded = GroundedValues()
+        await service._ground_food_properties("bread white", grounded)
+
+        assert grounded.has("ph")
+        assert grounded.provenance["ph"].source == ValueSource.RAG_RETRIEVAL
+        assert grounded.has("water_activity")
+        assert grounded.provenance["water_activity"].source == ValueSource.RAG_RETRIEVAL
+
+        mock_retrieval.query_food_ph.assert_not_called()
+        mock_retrieval.query_food_water_activity.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_asymmetric_primary_supplies_aw_fallback_supplies_ph(self, grounding_service):
+        """Asymmetric: primary doc has aw only → aw=RAG_RETRIEVAL, pH fires Tier 2 fallback.
+
+        Tightened assertion: attributed_field tags verify which retrieval the audit routing
+        would assign to each field — pH must reference the Tier 2 query, aw Tier 1.
+        """
+        service, mock_retrieval, _ = grounding_service
+
+        primary_query = "soy sauce pH water activity properties"
+        mock_retrieval.query_food_properties.return_value = self._make_confident_response(
+            content="soy sauce (condiment): water activity 0.80. Fermented [FDA-PH-2007]",
+            query=primary_query,
+        )
+        ph_fallback_query = "soy sauce pH acidity"
+        mock_retrieval.query_food_ph.return_value = self._make_confident_response(
+            content="soy sauce (condiment): pH range 4.4 to 5.4. Fermented soy sauce [FDA-PH-2007]",
+            query=ph_fallback_query,
+        )
+
+        grounded = GroundedValues()
+        await service._ground_food_properties("soy sauce", grounded)
+
+        # aw from primary (Tier 1)
+        assert grounded.has("water_activity")
+        assert grounded.provenance["water_activity"].source == ValueSource.RAG_RETRIEVAL
+
+        # pH from fallback (Tier 2)
+        assert grounded.has("ph")
+        assert grounded.provenance["ph"].source == ValueSource.RAG_RETRIEVAL_FALLBACK
+
+        # Tier 2 aw query must NOT have fired (aw already grounded from primary)
+        mock_retrieval.query_food_water_activity.assert_not_called()
+
+        # Audit routing: untagged primary covers aw, tagged fallback covers pH
+        ph_retrieval = next((r for r in grounded.retrievals if r.attributed_field == "ph"), None)
+        untagged = next((r for r in grounded.retrievals if r.attributed_field is None), None)
+        assert ph_retrieval is not None, "Tier 2 pH retrieval must be tagged attributed_field='ph'"
+        assert ph_retrieval.query == ph_fallback_query
+        assert untagged is not None, "Primary retrieval must be untagged (attributed_field=None)"
+        assert untagged.query == primary_query
 
 
 class TestExtractFoodProperties:
@@ -596,6 +810,126 @@ class TestExtractedFoodProperties:
         """Should return False when aw not set."""
         props = ExtractedFoodProperties()
         assert props.has_aw is False
+
+
+class TestGroundPathogenFromRag:
+    """Tests for two-stage pathogen grounding via RAG."""
+
+    def _make_stage1_response(self, food_name: str, doc_id: str = "doc_1", content: str = ""):
+        """Build a mock Stage 1 RetrievalResponse with a confident top result."""
+        top = MagicMock()
+        top.doc_id = doc_id
+        top.content = content or f"Hazard for {food_name}: Salmonella spp. (238 annual US deaths)."
+        top.metadata = {"food_name": food_name, "pathogen": "Salmonella spp."}
+        top.source = None
+        top.distance = None
+        top.rerank_score = None
+
+        response = MagicMock()
+        response.has_confident_result = True
+        response.top_result = top
+        response.results = [top]
+        response.query = food_name
+        return response
+
+    def _make_hazard_dict(self, pathogen: str, deaths: int, food_name: str = "chicken raw") -> dict:
+        return {
+            "id": f"{food_name}_{pathogen}",
+            "document": f"Hazard for {food_name}: {pathogen} ({deaths} annual US deaths).",
+            "metadata": {
+                "food_name": food_name,
+                "pathogen": pathogen,
+                "annual_deaths_us": str(deaths),
+            },
+        }
+
+    @pytest.mark.asyncio
+    async def test_selects_pathogen_with_highest_annual_deaths(self, grounding_service):
+        """Stage 2 sort must select Salmonella (238) over Listeria (172) and Staph (6)."""
+        service, mock_retrieval, _ = grounding_service
+
+        mock_retrieval.query_pathogen_hazards.return_value = self._make_stage1_response("chicken raw")
+        mock_retrieval.get_hazards_for_food.return_value = [
+            self._make_hazard_dict("Salmonella spp.", 238),
+            self._make_hazard_dict("Listeria monocytogenes", 172),
+            self._make_hazard_dict("Staphylococcus aureus", 6),
+        ]
+
+        grounded = GroundedValues()
+        await service._ground_pathogen_from_rag("raw chicken", grounded)
+
+        assert grounded.has("organism")
+        assert grounded.get("organism") == ComBaseOrganism.SALMONELLA
+        assert grounded.provenance["organism"].extraction_method == "ranked_by_annual_deaths"
+
+    @pytest.mark.asyncio
+    async def test_staphylococcus_does_not_outrank_salmonella(self, grounding_service):
+        """Staphylococcus (6 deaths) must never be selected when Salmonella (238) is present."""
+        service, mock_retrieval, _ = grounding_service
+
+        mock_retrieval.query_pathogen_hazards.return_value = self._make_stage1_response("chicken raw")
+        # Return in "wrong" order as embedding would
+        # Mock returns already sorted (as the real get_hazards_for_food would)
+        mock_retrieval.get_hazards_for_food.return_value = [
+            self._make_hazard_dict("Salmonella spp.", 238),
+            self._make_hazard_dict("Campylobacter jejuni", 197),
+            self._make_hazard_dict("Listeria monocytogenes", 172),
+            self._make_hazard_dict("Staphylococcus aureus", 6),
+        ]
+
+        grounded = GroundedValues()
+        await service._ground_pathogen_from_rag("raw chicken", grounded)
+
+        assert grounded.get("organism") == ComBaseOrganism.SALMONELLA
+
+    @pytest.mark.asyncio
+    async def test_fallback_to_stage1_when_stage2_empty(self, grounding_service):
+        """If get_hazards_for_food returns empty, falls back to Stage 1 top result."""
+        service, mock_retrieval, _ = grounding_service
+
+        stage1_response = self._make_stage1_response(
+            food_name="chicken raw",
+            content="Hazard for chicken raw: Salmonella spp. (238 annual US deaths). [CDC-2019-T1T2]",
+        )
+        mock_retrieval.query_pathogen_hazards.return_value = stage1_response
+        mock_retrieval.get_hazards_for_food.return_value = []
+
+        grounded = GroundedValues()
+        await service._ground_pathogen_from_rag("raw chicken", grounded)
+
+        assert grounded.has("organism")
+        assert grounded.get("organism") == ComBaseOrganism.SALMONELLA
+        assert grounded.provenance["organism"].extraction_method == "direct"
+
+    @pytest.mark.asyncio
+    async def test_nothing_grounded_when_stage1_not_confident(self, grounding_service):
+        """If Stage 1 has no confident result, nothing is grounded."""
+        service, mock_retrieval, _ = grounding_service
+
+        response = MagicMock()
+        response.has_confident_result = False
+        response.results = []
+        mock_retrieval.query_pathogen_hazards.return_value = response
+
+        grounded = GroundedValues()
+        await service._ground_pathogen_from_rag("unknown food xyz", grounded)
+
+        assert not grounded.has("organism")
+
+    @pytest.mark.asyncio
+    async def test_stage2_called_with_canonical_food_name(self, grounding_service):
+        """Stage 2 must be called with the food_name from Stage 1 metadata, not the raw description."""
+        service, mock_retrieval, _ = grounding_service
+
+        mock_retrieval.query_pathogen_hazards.return_value = self._make_stage1_response("beef raw")
+        mock_retrieval.get_hazards_for_food.return_value = [
+            self._make_hazard_dict("Salmonella spp.", 238, food_name="beef raw"),
+        ]
+
+        grounded = GroundedValues()
+        await service._ground_pathogen_from_rag("raw beef steak", grounded)
+
+        mock_retrieval.get_hazards_for_food.assert_called_once_with("beef raw")
 
 
 class TestSingleton:

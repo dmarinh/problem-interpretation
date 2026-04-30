@@ -502,6 +502,199 @@ class TestVerboseAudit:
         assert sys_block["ptm_version"] == "a1b2c3d"
 
 
+    def _make_fallback_result(self):
+        """
+        Mock result where pH comes from the primary RAG query (RAG_RETRIEVAL)
+        and water_activity comes from the Tier 2 per-field fallback query
+        (RAG_RETRIEVAL_FALLBACK, with attributed_field tag on the retrieval).
+
+        This mirrors Capture A from the two-tier fallback design: the primary
+        doc had pH but a blank aw field, so the fallback fired for aw.
+        """
+        from app.models.execution.combase import (
+            ComBaseExecutionResult, ComBaseModelResult,
+            ComBaseExecutionPayload, ComBaseModelSelection, ComBaseParameters,
+        )
+        from app.models.execution.base import TimeTemperatureStep, TimeTemperatureProfile
+        from app.core.orchestrator import TranslationResult
+        from app.models.metadata import (
+            ValueProvenance, ValueSource, RetrievalResult,
+            DefaultImputed, ComBaseModelAudit, SystemAudit,
+        )
+
+        state = SessionState(user_input="raw chicken at 25C for 4 hours")
+        state.status = SessionStatus.COMPLETED
+        state.grounded_values = {"ph": 6.2, "water_activity": 0.98}
+
+        meta = InterpretationMetadata(
+            session_id=state.session_id,
+            original_input=state.user_input,
+            status=state.status,
+        )
+
+        # pH from primary RAG query
+        meta.add_provenance(
+            "ph",
+            ValueProvenance(
+                source=ValueSource.RAG_RETRIEVAL,
+                retrieval_source="food_properties:chicken_raw",
+                original_text="Raw chicken: pH 5.9–6.5",
+                extraction_method="regex",
+                raw_match="5.9–6.5",
+                parsed_range=[5.9, 6.5],
+            ),
+        )
+        # water_activity from Tier 2 fallback query
+        meta.add_provenance(
+            "water_activity",
+            ValueProvenance(
+                source=ValueSource.RAG_RETRIEVAL_FALLBACK,
+                retrieval_source="food_properties:poultry_category",
+                original_text="Poultry (fresh): water activity 0.97–0.99",
+                extraction_method="regex",
+                raw_match="0.97–0.99",
+                parsed_range=[0.97, 0.99],
+            ),
+        )
+
+        # Primary retrieval (untagged — attributed_field=None)
+        meta.add_retrieval(
+            RetrievalResult(
+                query="raw chicken pH water activity food properties",
+                source_document="food_properties",
+                chunk_id="food_properties:chicken_raw",
+                retrieved_text="Raw chicken: pH 5.9–6.5 [FDA-PH-2007]",
+                embedding_score=0.78,
+                source_ids=["FDA-PH-2007"],
+                full_citations={"FDA-PH-2007": "FDA/CFSAN (2007). Approximate pH of Foods."},
+            )
+        )
+        # Fallback retrieval for water_activity (tagged)
+        meta.add_retrieval(
+            RetrievalResult(
+                query="raw chicken water activity aw moisture",
+                source_document="food_properties",
+                chunk_id="food_properties:poultry_category",
+                retrieved_text="Poultry (fresh): water activity 0.97–0.99 [IFT-2003]",
+                embedding_score=0.66,
+                source_ids=["IFT-2003"],
+                full_citations={"IFT-2003": "IFT (2003). Kinetics of Microbial Inactivation."},
+                attributed_field="water_activity",
+            )
+        )
+
+        meta.add_default_imputed(
+            DefaultImputed(
+                field_name="temperature_celsius",
+                imputed_value=25.0,
+                reason="No temperature specified; using conservative abuse temperature.",
+            )
+        )
+        meta.combase_model = ComBaseModelAudit(
+            organism="SALMONELLA",
+            model_type="growth",
+            model_id=1,
+            coefficients_str="0.1;0.2;0.3",
+            valid_ranges={"temperature_celsius": (5.0, 45.0)},
+            selection_reason="default",
+        )
+        meta.system = SystemAudit(
+            rag_store_hash="abc123",
+            rag_ingested_at="2026-04-30T00:00:00+00:00",
+            source_csv_audit_date="2026-04-17T00:00:00+00:00",
+            ptm_version="a1b2c3d",
+            combase_model_table_hash="deadbeef",
+        )
+
+        state.metadata = meta
+
+        model_result = ComBaseModelResult(
+            mu_max=0.926,
+            doubling_time_hours=0.75,
+            model_type=ModelType.GROWTH,
+            organism=ComBaseOrganism.SALMONELLA,
+            temperature_used=25.0,
+            ph_used=6.2,
+            aw_used=0.98,
+            engine_type=EngineType.COMBASE_LOCAL,
+        )
+        state.execution_payload = ComBaseExecutionPayload(
+            model_selection=ComBaseModelSelection(
+                organism=ComBaseOrganism.SALMONELLA,
+                model_type=ModelType.GROWTH,
+            ),
+            parameters=ComBaseParameters(
+                temperature_celsius=25.0,
+                ph=6.2,
+                water_activity=0.98,
+            ),
+            time_temperature_profile=TimeTemperatureProfile(
+                is_multi_step=False,
+                steps=[TimeTemperatureStep(temperature_celsius=25.0, duration_minutes=240.0, step_order=1)],
+                total_duration_minutes=240.0,
+            ),
+        )
+        state.execution_result = ComBaseExecutionResult(
+            model_result=model_result,
+            step_predictions=[],
+            total_log_increase=1.61,
+            engine_type=EngineType.COMBASE_LOCAL,
+            warnings=[],
+        )
+
+        mock_result = MagicMock(spec=TranslationResult)
+        mock_result.success = True
+        mock_result.error = None
+        mock_result.state = state
+        mock_result.execution_result = state.execution_result
+        mock_result.metadata = meta
+        return mock_result
+
+    def test_fallback_source_tier_appears_in_field_audit(self, client):
+        """
+        RAG_RETRIEVAL_FALLBACK provenance must flow through _build_audit_detail
+        and appear correctly in field_audit. Regression guard: the Tier 2
+        fallback was added after the verbose audit tests were written, so the
+        existing mocks don't exercise this source tier through _build_audit_detail.
+        """
+        with patch("app.api.routes.translation.get_orchestrator") as mock_get:
+            mock_orch = MagicMock()
+            mock_orch.translate = AsyncMock(return_value=self._make_fallback_result())
+            mock_get.return_value = mock_orch
+
+            response = client.post(
+                "/api/v1/translate?verbose=true",
+                json={"query": "raw chicken at 25C for 4 hours"},
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+
+        # Top-level audit block must be present
+        assert data["audit"] is not None
+        field_audit = data["audit"]["field_audit"]
+
+        # pH: primary RAG — retrieval block references the primary query
+        ph = field_audit["ph"]
+        assert ph["source"] == "rag_retrieval"
+        assert ph["retrieval"] is not None
+        assert "raw chicken" in ph["retrieval"]["query"]
+        assert "water activity" in ph["retrieval"]["query"]  # primary is combined
+
+        # water_activity: fallback RAG — retrieval block references the fallback query
+        aw = field_audit["water_activity"]
+        assert aw["source"] == "rag_retrieval_fallback"
+        assert aw["retrieval"] is not None
+        assert "water activity" in aw["retrieval"]["query"]
+        # The fallback query must NOT be the combined primary query
+        assert "ph" not in aw["retrieval"]["query"].lower()
+
+        # All four top-level audit sub-blocks present
+        assert data["audit"]["combase_model"] is not None
+        assert data["audit"]["audit"] is not None
+        assert data["audit"]["system"] is not None
+
+
 class TestAuditPostStandardization:
     """
     Tests that verify the audit snapshot is post-standardization.

@@ -101,13 +101,13 @@ def cmd_verify(store: VectorStore) -> int:
             confidence = 1.0 / (1.0 + distance) if distance else 1.0
             print(f"\n  ✅ PASS: '{query}'")
             print(f"     Confidence: {confidence:.3f}")
-            preview = top["document"][:70] + "..." if len(top["document"]) > 70 else top["document"]
+            preview = top["document"][:300] + "..." if len(top["document"]) > 300 else top["document"]
             print(f"     Result: {preview}")
             passed += 1
         else:
             print(f"\n  ❌ FAIL: '{query}'")
             print(f"     Expected: {expected_terms}")
-            preview = top["document"][:70] + "..." if len(top["document"]) > 70 else top["document"]
+            preview = top["document"][:300] + "..." if len(top["document"]) > 300 else top["document"]
             print(f"     Got: {preview}")
             failed += 1
 

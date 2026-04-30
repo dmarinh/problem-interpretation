@@ -1,6 +1,6 @@
 ---
 name: Project Architecture & Safety Invariants
-description: Core architecture, safety-critical invariants, and canonical patterns discovered during Phase 2–7 reviews
+description: Core architecture, safety-critical invariants, and canonical patterns discovered during Phase 2–7 reviews + Phase 3 two-tier RAG review
 type: project
 ---
 
@@ -29,17 +29,35 @@ Pipeline: User Query → SemanticParser (LLM) → GroundingService (RAG + rules)
 - Both layers must be consistent
 
 ## Provenance Tracking
-- ValueSource enum: USER_EXPLICIT, USER_INFERRED, RAG_RETRIEVAL, CONSERVATIVE_DEFAULT, CLAMPED_TO_RANGE, CALCULATED, CLARIFICATION_RESPONSE
-- NOTE: FUZZY_MATCH enum value is documented in CLAUDE.md but does NOT exist in ValueSource enum in metadata.py — only in the architecture description
+- ValueSource enum (current, post Phase 3 two-tier RAG): USER_EXPLICIT, USER_INFERRED, FUZZY_MATCH, RAG_RETRIEVAL, RAG_RETRIEVAL_FALLBACK, CONSERVATIVE_DEFAULT, CLARIFICATION_RESPONSE, CLAMPED_TO_RANGE, CALCULATED
+- NOTE: FUZZY_MATCH now present in metadata.py ValueSource enum (was previously missing); RAG_RETRIEVAL_FALLBACK added for Tier 2 per-field queries
+- attributed_field on RetrievalResult (metadata.py): None for primary queries, set to field name ("ph"/"water_activity") for Tier 2 fallback queries; drives audit routing in translation.py Priority 1 path
+- No confidence numbers emitted in audit response; embedding_score (cosine similarity) is the only numeric score — categorical source tier is the reliability signal
 - BiasCorrection model tracks: bias_type, field_name, original_value, corrected_value, correction_reason, correction_magnitude
 - StandardizationResult is a plain class (not Pydantic) — used internally only
 
-## Known Pattern Issues Found in Phase 2
-- `_ground_food_properties()` is NOT async-called correctly: it calls `self._retrieval.query_food_properties()` synchronously (not awaited) — check if RetrievalService is sync or async
-- `_extract_food_properties()` regex builder sets ph_max = ph.value when not a range — this creates a range (min=None, max=single_value) that may confuse downstream range selection
-- `standardize()` catches bare `except Exception` at payload build — should narrow
-- `_extract_food_properties_llm()` catches bare `except Exception` silently — LLM failures swallowed without logging
-- `LLMClient.health_check()` catches bare `except Exception`
+## Known Pattern Issues Found in Phase 2 (some resolved)
+- `_ground_food_properties()` sync call issue: RESOLVED — all retrieval calls now use `asyncio.to_thread()` correctly
+- `_extract_food_properties()` ph_max bug: RESOLVED — ph_max only set when is_range=True
+- `standardize()` catches bare `except Exception` at payload build — still present, should narrow
+- `_extract_food_properties_llm()` catches bare `except Exception` — PARTIALLY RESOLVED: now logs warning before returning; still overbroad but no longer silent
+- `LLMClient.health_check()` catches bare `except Exception` — not in scope of recent review
+
+## Two-Tier RAG Architecture (Phase 3, 2026-04-30)
+- Tier 1 threshold: food_properties_confidence = 0.70 (primary query, combined pH+aw)
+- Tier 2 threshold: food_properties_fallback_confidence = 0.62 (per-field queries, calibrated)
+- Tier 2 fires unconditionally for any field still ungrounded after Tier 1
+- RetrievalService methods: query_food_properties (Tier 1), query_food_ph (Tier 2), query_food_water_activity (Tier 2) — all sync, called via asyncio.to_thread()
+- rag_retrievals dict in _build_field_audit is keyed by query string — duplicate queries would collide; not a current risk since queries are distinct
+- test_user_explicit_takes_priority: user provides pH=6.5 but NOT aw; primary returns confident result; Tier 2 aw fallback fires — mock_retrieval for query_food_water_activity NOT set up explicitly in this test (relies on MagicMock auto-return which has has_confident_result=MagicMock(), not False). This is a latent mock-completeness gap.
+
+## Reranker Wiring (Phase N, 2026-04-30)
+- CrossEncoderReranker was implemented but never injected into get_retrieval_service(); fixed so create_reranker() is called at singleton init
+- create_reranker(enabled=False) returns NoOpReranker (model_name="noop") — NOT None. This means when RERANKER_ENABLED=False, NoOpReranker is still injected, it fires (truthy object), and the audit reports reranker_used="noop" + non-null rerank_scores. The reranker_used="noop" string is disclosed in the audit doc as intentional.
+- Top-result threshold gate (line 175, retrieval.py): uses results[0].confidence (embedding score) NOT rerank_score. This is a known semantic gap: a reranker-promoted result below embedding threshold is rejected even if the reranker thinks it is the best match.
+- Sort key mixes rerank_score and confidence in the same lambda: when reranker fires, ALL results have non-null rerank_score (NoOp assigns artificial 1.0, 0.99… scores), so the mixing issue only manifests if rerank_score is None on some results and non-None on others from the same query — which shouldn't happen in practice but could theoretically if _apply_reranker returns fewer results than n_results fetch from the store.
+- Settings: reranker_enabled (default True) and reranker_model — NOT yet in .env.example
+- The async-sync concern: get_retrieval_service() is called from GroundingService.__init__(), which runs synchronously. CrossEncoderReranker.__init__() loads the model synchronously (sentence_transformers). First call blocks the thread but NOT the event loop (init happens before async ground_scenario() is awaited). Not a correctness risk but a latency concern on cold start.
 
 ## Benchmark Suite (exp_3_3_model_comparison.py)
 - Monkey-patches `litellm.acompletion` globally for token/cost tracking — not thread-safe

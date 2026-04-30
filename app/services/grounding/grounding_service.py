@@ -118,6 +118,7 @@ def _build_retrieval_metadata(response: RetrievalResponse) -> RetrievalResult:
         runners_up = [_to_runner_up(r) for r in response.results[1:4]]
 
     query = response.query if isinstance(response.query, str) else ""
+    reranker_used = response.reranker_used if isinstance(response.reranker_used, str) else None
 
     return RetrievalResult(
         query=query,
@@ -127,6 +128,7 @@ def _build_retrieval_metadata(response: RetrievalResponse) -> RetrievalResult:
         fallback_used=not response.has_confident_result,
         embedding_score=embedding_score,
         rerank_score=rerank_score,
+        reranker_used=reranker_used,
         source_ids=source_ids,
         full_citations=full_citations,
         runners_up=runners_up,
@@ -403,99 +405,177 @@ class GroundingService:
         grounded: GroundedValues,
     ) -> None:
         """
-        Ground food pH and water activity via RAG with hybrid extraction.
+        Ground food pH and water activity via two-tier RAG retrieval.
 
-        When a range is retrieved, both bounds are preserved: the lower bound is
-        stored as the placeholder value with range_pending=True and
-        parsed_range=[min, max].  StandardizationService selects the conservative
-        bound based on model type.
+        Tier 1 — primary query (threshold food_properties_confidence = 0.70):
+          Single query retrieving the best-matching food doc.  Both pH and aw
+          are extracted from that doc if present.  Source: RAG_RETRIEVAL.
+
+        Tier 2 — per-field fallback (threshold food_properties_fallback_confidence = 0.62):
+          Fires for each field still ungrounded after Tier 1, whether because
+          the primary query missed threshold or because the top doc lacked that
+          field.  Uses a targeted single-property query that can match
+          category-level docs (e.g. "fresh poultry water activity").
+          Source: RAG_RETRIEVAL_FALLBACK, with attributed_field set so the
+          audit routing can link this retrieval to the correct field without
+          relying on query-string keyword matching.
+
+        CONSERVATIVE_DEFAULT fires only when both tiers produce no hit above
+        their respective thresholds — it is the last resort, not the second.
+
+        Range handling: both bounds are preserved with range_pending=True;
+        StandardizationService selects the conservative bound based on model type.
         """
-        response = await asyncio.to_thread(
+        # ── Tier 1: primary query ─────────────────────────────────────────────
+        primary_response = await asyncio.to_thread(
             self._retrieval.query_food_properties, food_description
         )
+        primary_meta = _build_retrieval_metadata(primary_response)
+        grounded.retrievals.append(primary_meta)
 
-        # Build and record enriched retrieval metadata
-        retrieval_meta = _build_retrieval_metadata(response)
-        grounded.retrievals.append(retrieval_meta)
+        if primary_response.has_confident_result:
+            top = primary_response.top_result
+            content = top.content
+            props, ph_raw_match, aw_raw_match = await self._extract_food_properties(content)
+
+            if not grounded.has("ph") and props.has_ph:
+                self._set_ph_from_props(grounded, props, top, content, ph_raw_match, ValueSource.RAG_RETRIEVAL)
+
+            if not grounded.has("water_activity") and props.has_aw:
+                self._set_aw_from_props(grounded, props, top, content, aw_raw_match, ValueSource.RAG_RETRIEVAL)
+
+        # ── Tier 2: per-field fallback queries ───────────────────────────────
+        # Fire for any field still ungrounded — regardless of whether Tier 1
+        # missed threshold entirely or returned a doc that lacked the field.
+        if not grounded.has("ph"):
+            await self._ground_field_fallback(food_description, "ph", grounded)
+
+        if not grounded.has("water_activity"):
+            await self._ground_field_fallback(food_description, "water_activity", grounded)
+
+    async def _ground_field_fallback(
+        self,
+        food_description: str,
+        field: str,
+        grounded: GroundedValues,
+    ) -> None:
+        """
+        Fire a targeted per-field fallback retrieval (Tier 2).
+
+        Uses food_properties_fallback_confidence threshold (0.62).  The
+        RetrievalResult is tagged with attributed_field so the audit routing
+        in translation.py can link it to the correct field without relying on
+        query-string keyword heuristics.
+        """
+        if field == "ph":
+            response = await asyncio.to_thread(
+                self._retrieval.query_food_ph, food_description
+            )
+        else:
+            response = await asyncio.to_thread(
+                self._retrieval.query_food_water_activity, food_description
+            )
+
+        fallback_meta = _build_retrieval_metadata(response)
+        fallback_meta.attributed_field = field
+        grounded.retrievals.append(fallback_meta)
 
         if not response.has_confident_result:
-            if not grounded.has("ph"):
-                grounded.warnings.append(
-                    f"Could not retrieve pH for '{food_description}' from knowledge base"
-                )
-            if not grounded.has("water_activity"):
-                grounded.warnings.append(
-                    f"Could not retrieve water activity for '{food_description}' from knowledge base"
-                )
+            grounded.warnings.append(
+                f"Could not retrieve {field} for '{food_description}' from knowledge base "
+                f"(primary and fallback queries both below threshold)"
+            )
             return
 
         top = response.top_result
         content = top.content
-
-        # Extract properties using hybrid approach (returns props + raw match strings)
         props, ph_raw_match, aw_raw_match = await self._extract_food_properties(content)
 
-        # Set pH if found and not already set
-        if not grounded.has("ph") and props.has_ph:
-            if props.ph_value is not None:
+        if field == "ph" and props.has_ph:
+            self._set_ph_from_props(grounded, props, top, content, ph_raw_match, ValueSource.RAG_RETRIEVAL_FALLBACK)
+        elif field == "water_activity" and props.has_aw:
+            self._set_aw_from_props(grounded, props, top, content, aw_raw_match, ValueSource.RAG_RETRIEVAL_FALLBACK)
+        else:
+            grounded.warnings.append(
+                f"Fallback retrieval for {field} returned a doc with no {field} data "
+                f"(food='{food_description}', doc='{top.doc_id}')"
+            )
+
+    def _set_ph_from_props(
+        self,
+        grounded: GroundedValues,
+        props,
+        top,
+        content: str,
+        ph_raw_match: str | None,
+        source: ValueSource,
+    ) -> None:
+        """Write pH into grounded values from an ExtractedFoodProperties result."""
+        if props.ph_value is not None:
+            grounded.set(
+                "ph",
+                props.ph_value,
+                source=source,
+                retrieval_source=top.doc_id,
+                original_text=content,
+                transformation_applied=f"Extracted via {props.extraction_method}",
+                extraction_method=props.extraction_method,
+                raw_match=ph_raw_match,
+            )
+        elif props.ph_min is not None and props.ph_max is not None:
+            grounded.set(
+                "ph",
+                props.ph_min,
+                source=source,
+                retrieval_source=top.doc_id,
+                original_text=content,
+                transformation_applied="range extracted, awaiting standardization",
+                extraction_method=props.extraction_method,
+                raw_match=ph_raw_match,
+                parsed_range=[props.ph_min, props.ph_max],
+                range_pending=True,
+            )
+
+    def _set_aw_from_props(
+        self,
+        grounded: GroundedValues,
+        props,
+        top,
+        content: str,
+        aw_raw_match: str | None,
+        source: ValueSource,
+    ) -> None:
+        """Write water_activity into grounded values from an ExtractedFoodProperties result."""
+        if props.aw_value is not None:
+            if 0.0 <= props.aw_value <= 1.0:
                 grounded.set(
-                    "ph",
-                    props.ph_value,
-                    source=ValueSource.RAG_RETRIEVAL,
+                    "water_activity",
+                    props.aw_value,
+                    source=source,
                     retrieval_source=top.doc_id,
                     original_text=content,
                     transformation_applied=f"Extracted via {props.extraction_method}",
                     extraction_method=props.extraction_method,
-                    raw_match=ph_raw_match,
-                )
-            elif props.ph_min is not None and props.ph_max is not None:
-                # Range — store lower bound as placeholder; standardization picks the bound.
-                grounded.set(
-                    "ph",
-                    props.ph_min,
-                    source=ValueSource.RAG_RETRIEVAL,
-                    retrieval_source=top.doc_id,
-                    original_text=content,
-                    transformation_applied="range extracted, awaiting standardization",
-                    extraction_method=props.extraction_method,
-                    raw_match=ph_raw_match,
-                    parsed_range=[props.ph_min, props.ph_max],
-                    range_pending=True,
-                )
-
-        # Set water activity if found and not already set
-        if not grounded.has("water_activity") and props.has_aw:
-            if props.aw_value is not None:
-                if 0.0 <= props.aw_value <= 1.0:
-                    grounded.set(
-                        "water_activity",
-                        props.aw_value,
-                        source=ValueSource.RAG_RETRIEVAL,
-                        retrieval_source=top.doc_id,
-                        original_text=content,
-                        transformation_applied=f"Extracted via {props.extraction_method}",
-                        extraction_method=props.extraction_method,
-                        raw_match=aw_raw_match,
-                    )
-                else:
-                    grounded.warnings.append(
-                        f"Discarding invalid aw={props.aw_value} extracted from RAG "
-                        f"(must be 0–1; regex/LLM extraction error)"
-                    )
-            elif props.aw_min is not None and props.aw_max is not None:
-                # Range — store lower bound as placeholder; standardization picks the bound.
-                grounded.set(
-                    "water_activity",
-                    props.aw_min,
-                    source=ValueSource.RAG_RETRIEVAL,
-                    retrieval_source=top.doc_id,
-                    original_text=content,
-                    transformation_applied="range extracted, awaiting standardization",
-                    extraction_method=props.extraction_method,
                     raw_match=aw_raw_match,
-                    parsed_range=[props.aw_min, props.aw_max],
-                    range_pending=True,
                 )
+            else:
+                grounded.warnings.append(
+                    f"Discarding invalid aw={props.aw_value} extracted from RAG "
+                    f"(must be 0–1; regex/LLM extraction error)"
+                )
+        elif props.aw_min is not None and props.aw_max is not None:
+            grounded.set(
+                "water_activity",
+                props.aw_min,
+                source=source,
+                retrieval_source=top.doc_id,
+                original_text=content,
+                transformation_applied="range extracted, awaiting standardization",
+                extraction_method=props.extraction_method,
+                raw_match=aw_raw_match,
+                parsed_range=[props.aw_min, props.aw_max],
+                range_pending=True,
+            )
     
     async def _extract_food_properties(
         self, text: str
@@ -674,11 +754,19 @@ class GroundingService:
         grounded: GroundedValues,
     ) -> None:
         """
-        Ground pathogen via RAG retrieval.
-        
-        Looks up the food in the pathogen hazards collection to find
-        associated pathogens (e.g., chicken → Salmonella).
+        Ground pathogen via two-stage RAG retrieval.
+
+        Stage 1 — food name resolution: semantic query identifies the canonical
+        food_name metadata key (e.g. "raw chicken" → "chicken raw").
+
+        Stage 2 — ranked fetch: metadata filter retrieves all hazards for that
+        food, sorted by annual_deaths_us descending so the most dangerous
+        pathogen is selected deterministically, not by embedding similarity.
+
+        Falls back to Stage 1's top result if Stage 2 returns no documents
+        (food has no registered hazards).
         """
+        # Stage 1: resolve food description to canonical food_name
         response = await asyncio.to_thread(
             self._retrieval.query_pathogen_hazards, food_description
         )
@@ -686,18 +774,42 @@ class GroundingService:
         retrieval_meta = _build_retrieval_metadata(response)
         grounded.retrievals.append(retrieval_meta)
 
-        if response.has_confident_result:
-            top = response.top_result
-            organism = ComBaseOrganism.from_text(top.content)
-            if organism:
-                grounded.set(
-                    "organism",
-                    organism,
-                    source=ValueSource.RAG_RETRIEVAL,
-                    retrieval_source=top.doc_id,
-                    original_text=top.content,
-                    extraction_method="direct",
-                )
+        if not response.has_confident_result:
+            return
+
+        top = response.top_result
+        food_name = top.metadata.get("food_name") if top.metadata else None
+
+        # Stage 2: fetch all hazards for this food, ranked by annual deaths
+        if food_name:
+            ranked = await asyncio.to_thread(
+                self._retrieval.get_hazards_for_food, food_name
+            )
+            if ranked:
+                best = ranked[0]
+                organism = ComBaseOrganism.from_text(best.get("document", ""))
+                if organism:
+                    grounded.set(
+                        "organism",
+                        organism,
+                        source=ValueSource.RAG_RETRIEVAL,
+                        retrieval_source=best.get("id"),
+                        original_text=best.get("document", ""),
+                        extraction_method="ranked_by_annual_deaths",
+                    )
+                    return
+
+        # Fallback: Stage 1 top result (food not in hazards CSV)
+        organism = ComBaseOrganism.from_text(top.content)
+        if organism:
+            grounded.set(
+                "organism",
+                organism,
+                source=ValueSource.RAG_RETRIEVAL,
+                retrieval_source=top.doc_id,
+                original_text=top.content,
+                extraction_method="direct",
+            )
     
     # =========================================================================
     # INTERPRETATION RULES
