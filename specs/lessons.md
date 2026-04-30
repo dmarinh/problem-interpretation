@@ -145,4 +145,72 @@ A long working session that started with a single bug report (the bread query's 
 
 ---
 
+### 2026-04-29 — RAG pathogen ranking: multi-option analysis and two-stage implementation
+
+**Context:** The RAG system was selecting the default pathogen for a food by taking the top embedding-similarity result. This meant Staphylococcus (6 deaths) could outrank Listeria (172 deaths) for raw chicken depending on query phrasing. Four options were evaluated (embedding reranking, metadata sort, LLM-as-reranker, cross-encoder) before implementing Option A (two-stage: food name resolution + metadata sort by `annual_deaths_us`).
+
+**What went well**
+
+- **Option analysis before implementation caught a non-obvious dependency.** Option B ("wider n_results + sort") appeared simpler, but the analysis showed that sorting across foods without a `food_name` filter would always select the globally most deadly pathogen regardless of which food was queried. That insight — that n_results size is irrelevant without a filter — collapsed Option B into Option A. The two hours spent on the option comparison prevented a subtly broken implementation.
+
+- **Tests caught a real production bug.** Stage 2 originally used `ComBaseOrganism.from_string(metadata["pathogen"])`. The unit test failed because `from_string("Salmonella spp.")` returns `None` — the CSV's pathogen format doesn't match the alias dict. The fix (`from_text(document)`) is more robust and consistent with the fallback path. Without the test, this bug would have silently caused Stage 2 to always fall through to Stage 1's single top result, making the entire two-stage logic inert.
+
+**Failure mode worth naming: enum alias dict vs. CSV field format mismatch**
+
+`ComBaseOrganism.from_string()` does an alias dict lookup. The CSV `pathogen` metadata field stores strings like "Salmonella spp.", "Listeria monocytogenes" — full scientific names that don't appear in the alias dict. `from_text()` uses rapidfuzz on the full document text and is the correct method for any RAG-sourced content. Reserve `from_string()` for user input (which goes through LLM extraction first and emerges as a clean name) and `from_string()` exact alias lookups. Never call `from_string()` directly on a CSV field value.
+
+**Test design for mocked two-stage retrieval**
+
+When mocking `get_hazards_for_food()`, the mock must return results in already-sorted order. The real function sorts; the mock doesn't. The grounding service takes `ranked[0]` — first element — trusting that the list is pre-sorted. Tests for grounding service behavior should pass sorted data; tests for sorting behavior belong in `TestGetHazardsForFood`.
+
 *End of lessons.md. Append future sessions below.*
+
+---
+
+### 2026-04-30 — Two-tier RAG fallback for food properties (pH / water activity)
+
+**Context:** Food-property RAG retrieval used a single combined query that took the top document and extracted both pH and water activity from it. CSV data is structured with separate rows for specific-food pH and category-level water activity, so a single retrieval could not populate both fields when the best match was a "partial" row.
+
+**What went well**
+
+- **Capturing A and B as concrete test cases before designing forced a realistic design.** Framing the bug as two named captures ("Capture A: matched food has blank aw field", "Capture B: primary query score below threshold for aw but not pH") immediately showed that a single re-parse of runners_up would handle Capture A but not Capture B. That distinction ruled out a simpler patch and made the two-tier design (new query per missing field) the only approach that covers both uniformly.
+
+- **Calibrating the fallback threshold against real data prevented an arbitrary constant.** First pass proposed 0.65 by intuition. Running 13 known-good pairs (min 0.6587) and 8 should-not-match pairs (max 0.5991) produced a gap of 0.0596 and placed 0.62 in the middle with documented margin. The calibration log is in `settings.py` as part of the field description — it lives with the constant so it cannot drift.
+
+**Failure modes worth naming**
+
+- **"Naturally resolves" is a red flag.** The first audit-routing plan said the keyword heuristic "naturally resolves" the asymmetric case because both the primary and fallback queries contain "pH", so `next()` returns... the first one. That assumption was wrong — the primary query also contains "pH" so the heuristic was ambiguous. The fix (`attributed_field` exact-match before keyword heuristic) is precise; the original plan was wishful. When a routing claim depends on implicit ordering, test it explicitly.
+
+- **Existing tests break silently when new code paths are added.** `test_explicit_pathogen_grounded` mocked `query_food_properties` returning no result but didn't mock the two new Tier 2 fallback methods. With the two-tier design, those methods now fire unconditionally when the primary misses. The test would have hung or errored at the mock boundary. Pattern: when adding a new unconditional code path, scan all existing tests for ones that mock the entry condition but not the new downstream calls.
+
+**What to do differently**
+
+- Tag per-field retrieval results at creation time (`attributed_field = field`), not at audit-routing time. Routing ambiguity is a symptom of insufficiently typed data; the fix is to carry the attribution in the object, not to add smarter routing logic.
+- When a threshold is a named constant with safety implications, put the calibration evidence in the same file as the constant (e.g., as part of the `Field(description=...)` string), not in a separate document that can go stale.
+
+---
+
+### 2026-04-30 — Reranker wiring: implementation existed, singleton never injected
+
+**Context:** `CrossEncoderReranker` and its factory were fully implemented. `RetrievalService` accepted a `reranker` argument. But `get_retrieval_service()` — the singleton used everywhere — called `RetrievalService()` with no argument, so `self._reranker = None` and the reranker branch never fired. The audit showed `rerank_score: null` on every response. A secondary bug was discovered during the fix: even if the reranker had fired, the post-build `results.sort(key=lambda r: r.confidence)` would have silently discarded the reranker's ordering.
+
+**What went well**
+
+- **Phase-gated investigation before implementation.** The three-phase structure (investigate → plan → implement) caught a second bug (the sort issue) that wasn't in the original symptom description. The plan proposal named the sort fix explicitly; implementation had no surprises.
+
+- **Code review caught two more bugs after initial implementation.** The `NoOpReranker`-on-disabled audit misrepresentation (reranker_used="noop" appearing in audit when disabled) and the threshold gate inconsistency (gate used embedding confidence after reranker sort, so reranker's promoted pick could silently fail the gate) were caught in review, not in manual testing. Both were genuine correctness issues that would have been invisible without deliberate review.
+
+- **`isinstance` guard pattern was already established.** `_build_retrieval_metadata()` already guarded `response.query` with `isinstance`. The same guard was needed for `reranker_used`. Recognising the existing pattern made the fix immediate and consistent.
+
+**Failure modes worth naming**
+
+- **"Exists in the code" is not the same as "wired into production."** The reranker class, the factory, and the `RetrievalService` parameter all existed for months. The singleton factory was the only missing connection. Investigation protocol: when docs say feature X is enabled, check the singleton factory / DI root — that is the one place where components are assembled, and it can silently omit a dependency.
+
+- **Pass-through stubs (`NoOpReranker`) must not produce observable side effects.** `NoOpReranker` produces artificial `rerank_score` values (1.0, 0.99, ...) and sets `reranker_used="noop"`. Any downstream consumer checking `reranker_used is not None` as "reranking was active" would get a false positive. The fix: pass `None`, not a `NoOpReranker`, when the feature is disabled. `NoOpReranker` is a useful abstraction for tests that need to inject a reranker-shaped object; it should not appear in the production singleton when the feature is off.
+
+- **Sort order and threshold gate are semantically coupled.** Fixing one without the other creates a consistency hole: the reranker determines ordering, but the embedding confidence gate uses position 0 in the reranked list. If the reranker promotes a below-threshold doc, the gate rejects the reranker's top pick. The right fix is `next((r for r in results if r.confidence >= threshold), None)` — walk the reranked list for the first result that also clears the embedding bar. The embedding threshold is a quality gate; the reranker is an ordering mechanism; they are independent and must be applied independently.
+
+**What to do differently next time**
+
+- Add a startup warmup call (`get_retrieval_service()` in the FastAPI lifespan) any time a new singleton is wired. Lazy singletons that load large models (cross-encoder ~100 MB) should be warmed before the first request, not during it.
+- After any "component exists but may not be wired" investigation, grep for all singleton factories (`get_*_service`, `get_*_engine`) in `app/rag/`, `app/services/`, `app/core/` and verify each one assembles its full dependency chain.

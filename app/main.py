@@ -51,12 +51,21 @@ async def lifespan(app: FastAPI):
         store.initialize()
         doc_count = store.get_count()
         logger.info(f"Vector store initialized with {doc_count} documents")
-        
+
         if doc_count == 0:
             logger.warning("Vector store is empty. Run ingestion to add documents.")
     except Exception as e:
         logger.error(f"Failed to initialize vector store: {e}")
-    
+
+    # Warm the retrieval singleton (loads cross-encoder model if reranking is enabled).
+    # Done at startup so the first request does not block on a ~100 MB model download.
+    try:
+        from app.rag.retrieval import get_retrieval_service
+        get_retrieval_service()
+        logger.info("Retrieval service initialized")
+    except Exception as e:
+        logger.error(f"Failed to initialize retrieval service: {e}")
+
     logger.info("Application startup complete")
     
     yield

@@ -31,7 +31,8 @@ class ValueSource(str, Enum):
     USER_EXPLICIT = "user_explicit"           # User stated directly
     USER_INFERRED = "user_inferred"           # Inferred from user input
     FUZZY_MATCH = "fuzzy_match"               # Resolved via alias/fuzzy lookup
-    RAG_RETRIEVAL = "rag_retrieval"           # Retrieved from knowledge base
+    RAG_RETRIEVAL = "rag_retrieval"           # Retrieved from knowledge base (primary query, specific-food doc)
+    RAG_RETRIEVAL_FALLBACK = "rag_retrieval_fallback"  # Retrieved via per-field secondary query (category-level doc or lower threshold)
     CONSERVATIVE_DEFAULT = "conservative_default"  # Safety default applied
     CLARIFICATION_RESPONSE = "clarification_response"  # From user clarification
     CLAMPED_TO_RANGE = "clamped_to_range"     # Adjusted to valid range
@@ -259,6 +260,14 @@ class RetrievalResult(BaseModel):
     runners_up: list[RunnerUpResult] = Field(
         default_factory=list,
         description="Top non-winning retrieval candidates (up to 3)"
+    )
+    reranker_used: str | None = Field(
+        default=None,
+        description="Reranker model name if reranking was applied, None otherwise"
+    )
+    attributed_field: str | None = Field(
+        default=None,
+        description="Field this retrieval result is attributed to (set on per-field fallback queries; None for primary queries that may cover multiple fields)"
     )
 
 

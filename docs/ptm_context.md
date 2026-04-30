@@ -290,8 +290,9 @@ Resolves `ExtractedScenario` fields into a `GroundedValues` container with full 
 |---|---|---|
 | 1 | USER_EXPLICIT | User stated the value directly ("temperature was 25 °C"). User-supplied ranges (e.g., "10–15 °C") also use this source with `parsed_range` populated; bound selection happens downstream in standardization. |
 | 2 | USER_INFERRED | Value from interpretation rules ("room temperature" → 25 °C). The rule's structured details (matched_pattern, conservative flag, notes, method) are captured on the provenance entry. |
-| 3 | RAG_RETRIEVAL | Value retrieved from knowledge base. Ranges pass through with `parsed_range` populated and a `range_pending` flag; bound selection happens downstream in standardization. |
-| 4 | CONSERVATIVE_DEFAULT | Safety-first fallback (applied in standardization, not grounding). |
+| 3 | RAG_RETRIEVAL | Value retrieved from the primary food-properties query (specific-food doc, threshold 0.70). Ranges pass through with `parsed_range` populated and a `range_pending` flag; bound selection happens downstream in standardization. |
+| 4 | RAG_RETRIEVAL_FALLBACK | Value retrieved via a per-field secondary query (threshold 0.62). Fires when the primary query either misses threshold or the top doc lacks that field. Can match category-level docs (e.g., "fresh poultry water activity 0.99–1.0"). The `RetrievalResult` has `attributed_field` set to the specific field name for unambiguous audit routing. |
+| 5 | CONSERVATIVE_DEFAULT | Safety-first fallback (applied in standardization, not grounding). Fires only when both retrieval tiers fail. |
 
 **Invariant:** higher-priority sources are never overwritten by lower-priority ones.
 
@@ -301,8 +302,16 @@ Resolves `ExtractedScenario` fields into a `GroundedValues` container with full 
 
 **Numeric extraction from text:** regex handles single values (`pH 6.0`), ranges with hyphen (`pH 5.9-6.2`), ranges with "to" (`pH 5.5 to 6.0`), ranges with "and" (`pH between 5.5 and 6.0`). When ranges are extracted, BOTH bounds are preserved on the provenance (`parsed_range = [min, max]`); the standardization service later picks the model-type-appropriate bound (see §8.1, §8.8). Grounding does NOT collapse ranges to a single value.
 
+**Food property retrieval — two-tier design (`_ground_food_properties`):**
+
+*Tier 1 primary* (`query_food_properties`, threshold 0.70): query `"{food} pH water activity properties"`. Extracts both pH and aw from the top doc if present. A specific-food row may have only one field (e.g., `chicken` has pH but no aw); in that case only the present field is grounded.
+
+*Tier 2 per-field fallback* (`_ground_field_fallback`, threshold 0.62): fires for each field still missing after Tier 1. Uses targeted single-property queries via `query_food_ph("{food} pH acidity")` and `query_food_water_activity("{food} water activity aw moisture")`. Can reach category-level docs the primary query would not extract from. Threshold 0.62 calibrated 2026-04-30: min true-positive = 0.6587, max true-negative = 0.5991, gap = 0.0596.
+
+Audit tagging: Tier 2 `RetrievalResult` objects have `attributed_field = "ph"` or `"water_activity"`, ensuring the audit routing in `translation.py` links the retrieval block to the correct field via exact match rather than query-string keyword heuristic.
+
 **Reliability signals:**
-- The `source` enum tier (USER_EXPLICIT / USER_INFERRED / RAG_RETRIEVAL / CONSERVATIVE_DEFAULT) is the categorical reliability signal.
+- The `source` enum tier (USER_EXPLICIT / USER_INFERRED / RAG_RETRIEVAL / RAG_RETRIEVAL_FALLBACK / CONSERVATIVE_DEFAULT) is the categorical reliability signal.
 - For RAG retrievals, the embedding cosine similarity is the only mathematically-grounded numeric signal (`embedding_score`). Reranker scores are reported separately when the reranker is in use.
 - For rule-based interpretations, the rule's `conservative: bool` flag indicates whether the rule already errs on the conservative side of the underlying interval. No per-rule confidence number is reported (see §8.7).
 
@@ -383,11 +392,11 @@ Session state transitions go through `SessionStatus` (PENDING → EXTRACTING →
 ### 5.6 Metadata & provenance
 **Location:** `app/models/metadata.py`
 
-- `ValueProvenance` — `source` (categorical: USER_EXPLICIT / USER_INFERRED / RAG_RETRIEVAL / CONSERVATIVE_DEFAULT), `parsed_range`, `range_pending` (internal flag, cleared by standardization), `extraction` (method, raw_match, parsed_range, plus rule-specific fields: matched_pattern, conservative, notes, similarity, canonical_phrase), `retrieval` (query, top_match with embedding_score and rerank_score, runners_up, full_citations), and `standardization` (the structured event block; null when no standardization fired).
+- `ValueProvenance` — `source` (categorical: USER_EXPLICIT / USER_INFERRED / RAG_RETRIEVAL / RAG_RETRIEVAL_FALLBACK / CONSERVATIVE_DEFAULT), `parsed_range`, `range_pending` (internal flag, cleared by standardization), `extraction` (method, raw_match, parsed_range, plus rule-specific fields: matched_pattern, conservative, notes, similarity, canonical_phrase), `retrieval` (query, top_match with embedding_score and rerank_score, runners_up, full_citations), and `standardization` (the structured event block; null when no standardization fired).
 - `RangeBoundSelection` — rule="range_bound_selection", direction, before_value (range), after_value (selected bound), reason. Populated on the per-field block when a pending range was narrowed.
 - `RangeClamp` — field_name, original_value, clamped_value, valid_min, valid_max, reason. Populated both on the per-field block (`rule="range_clamp"`) and as a structured `RangeClampInfo` in the top-level `range_clamps` list.
 - `DefaultImputed` — field_name, imputed_value (float | str — strings used for organism), reason. Populated both on the per-field block (`rule="default_imputed"`) and as a structured `DefaultImputedInfo` in the top-level `defaults_imputed` list.
-- `RetrievalResult` — query, top_match (doc_id, embedding_score, rerank_score, retrieved_text, source_ids, full_citations), runners_up. The only mathematically-grounded numeric reliability signal is the embedding_score (cosine similarity).
+- `RetrievalResult` — query, top_match (doc_id, embedding_score, rerank_score, retrieved_text, source_ids, full_citations), runners_up, `attributed_field` (str | None — set on Tier 2 per-field fallback retrievals to enable exact-match audit routing; None on primary queries). The only mathematically-grounded numeric reliability signal is the embedding_score (cosine similarity).
 - `InterpretationMetadata` — top-level container: session_id, original_input, status, `field_audit` dict (canonical per-field map), `range_clamps` list, `defaults_imputed` list, `warnings` list, `combase_model` block (organism, organism_id, organism_display_name, model_type, model_id, coefficients_str, valid_ranges, selection_reason), `system` block (rag_store_hash, rag_ingested_at, source_csv_audit_date, ptm_version, combase_model_table_hash). The legacy `provenance` array is auto-derived from `field_audit` for backward compatibility.
 
 **No confidence numbers.** Earlier versions emitted a `confidence: float` per provenance entry, an `overall_confidence` at the top level, and a `confidence_formula` string. These were removed (see §8.7) because they were not mathematically grounded — they were authoring intuition (rules), hardcoded constants (USER_EXPLICIT = 0.90), or LLM self-reports. The categorical `source` tier carries the auditability signal those numbers were pretending to convey. The only numeric reliability signal in the audit is the RAG retrieval's embedding similarity, reported under its own name.
@@ -440,9 +449,9 @@ Four primary source documents, 14 registered source-IDs (tracked in `data/source
 5. For aw data: USDA FoodData Central is a future target for food-specific aw (replacing the category-level IFT estimates).
 
 **Open items:**
-- 🟡 CDC-2019 2019-data rows not yet merged into `pathogen_characteristics.csv`; the source_id is registered but no rows currently use it.
-- 🟡 `data_year` and `notes` columns specified in schema are absent from `pathogen_characteristics.csv`.
-- 🟡 `food_pathogen_hazards.csv` `annual_deaths_us` represents pathogen totals across all food sources, not food-specific deaths — potential interpretive issue for food-scoped RAG queries.
+- ✅ CDC-2019 data merged into `pathogen_characteristics.csv` and `food_pathogen_hazards.csv` (2026-04-29): 8 pathogens updated to 2019 values; `data_year` and `notes` columns added; see `rag_audit_changelog.md`.
+- ✅ `data_year` and `notes` columns now present in `pathogen_characteristics.csv`.
+- 🟡 `food_pathogen_hazards.csv` `annual_deaths_us` represents pathogen totals across all food sources, not food-specific deaths. The data limitation remains, but pathogen selection is now deterministic: `_ground_pathogen_from_rag()` uses a two-stage approach (Stage 1: semantic query resolves `food_name`; Stage 2: metadata filter + sort by `annual_deaths_us` DESC) so the most deadly pathogen for a food is always selected by the same criterion. Per-food-specific death estimates would require a different data source.
 
 ### 6.4 RAG system (ChromaDB)
 
@@ -451,7 +460,7 @@ Four primary source documents, 14 registered source-IDs (tracked in `data/source
 - Each RAG document is a natural-language sentence with an inline source tag, e.g.:
   > "Listeria monocytogenes epidemiology: 1591 annual illnesses. 255 annual deaths. Case fatality rate 15.9%. 99% foodborne transmission. [CDC-2011-T3]"
 - Confidence levels: HIGH ≥ 0.85, MEDIUM ≥ 0.70, LOW > 0.50, FAILED ≤ 0.50.
-- Reranking is enabled by default; `test_rag_evaluation.py` supports baseline vs. reranker comparison with MRR and nDCG@5.
+- Reranking is controlled by `RERANKER_ENABLED` (default `true`) and `RERANKER_MODEL` (default `cross-encoder/ms-marco-MiniLM-L-6-v2`). The `get_retrieval_service()` singleton reads these settings and injects a `CrossEncoderReranker` (or `NoOpReranker` when disabled) into `RetrievalService`. When active, reranker scores surface in the audit as `rerank_score` on `top_match` and `runners_up`, and the result ordering is driven by rerank score rather than embedding confidence. `test_rag_evaluation.py` (baseline vs. reranker MRR/nDCG@5 comparison) is planned but not yet written.
 
 ---
 
@@ -604,7 +613,7 @@ The system does not emit per-field confidence numbers, an overall confidence num
 - LLM intent confidence was an LLM self-report, not calibrated.
 - The "overall confidence" was a min over heterogeneous numbers, mixing real cosine similarities with hardcoded constants.
 
-The categorical `source` tier (USER_EXPLICIT / USER_INFERRED / RAG_RETRIEVAL / CONSERVATIVE_DEFAULT) carries the auditability signal. For RAG retrievals, the embedding cosine similarity is the only mathematically-grounded numeric signal and is reported as `embedding_score`. For rule-based interpretations, the rule's `conservative: bool` flag indicates whether the rule already errs on the conservative side.
+The categorical `source` tier (USER_EXPLICIT / USER_INFERRED / RAG_RETRIEVAL / RAG_RETRIEVAL_FALLBACK / CONSERVATIVE_DEFAULT) carries the auditability signal. For RAG retrievals, the embedding cosine similarity is the only mathematically-grounded numeric signal and is reported as `embedding_score`. For rule-based interpretations, the rule's `conservative: bool` flag indicates whether the rule already errs on the conservative side.
 
 The system also does not apply a bias-correction layer to inferred values. The earlier ×1.2 / ×0.8 duration margin and the (never implemented) ±5°C temperature bump were removed because they double-counted conservatism: rules already commit to conservative points within their underlying intervals, and adding a margin on top produced values past the rule's own range. Conservatism is now committed in two well-defined places: default values, and range-bound selection.
 

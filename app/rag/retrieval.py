@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from app.config import settings
 from app.rag.vector_store import VectorStore, get_vector_store
-from app.rag.reranker import BaseReranker, NoOpReranker
+from app.rag.reranker import BaseReranker, create_reranker
 from app.models.enums import RetrievalConfidenceLevel
 
 
@@ -161,16 +161,23 @@ class RetrievalService:
                 rerank_score=raw.get("rerank_score"),
             ))
         
-        # Sort by confidence (highest first)
-        results.sort(key=lambda r: r.confidence, reverse=True)
+        # Sort by rerank score when available (reranker ordering is authoritative),
+        # fall back to embedding confidence for unranked results.
+        results.sort(
+            key=lambda r: r.rerank_score if r.rerank_score is not None else r.confidence,
+            reverse=True,
+        )
         
-        # Determine top result
-        top_result = None
-        has_confident_result = False
-        
-        if results and results[0].confidence >= threshold:
-            top_result = results[0]
-            has_confident_result = True
+        # Find the best reranked result that also clears the embedding threshold.
+        # Reranker ordering is authoritative for ranking; embedding confidence is
+        # the quality gate. This handles the case where the reranker promotes a
+        # below-threshold document — we walk down the reranked list until we find
+        # one that passed the embedding bar.
+        top_result = next(
+            (r for r in results if r.confidence >= threshold),
+            None,
+        )
+        has_confident_result = top_result is not None
         
         return RetrievalResponse(
             query=query_text,
@@ -205,15 +212,57 @@ class RetrievalService:
         n_results: int = 3,
     ) -> RetrievalResponse:
         """
-        Query for food physicochemical properties.
-        
-        Uses the food_properties confidence threshold.
+        Query for food physicochemical properties (primary tier).
+
+        Used as Tier 1: retrieves the best-matching food doc and attempts to
+        extract both pH and water activity from it.  Uses the primary
+        food_properties_confidence threshold (0.70).
         """
         return self.query(
             query_text=f"{food_description} pH water activity properties",
             doc_type=VectorStore.TYPE_FOOD_PROPERTIES,
             n_results=n_results,
             threshold=settings.food_properties_confidence,
+        )
+
+    def query_food_ph(
+        self,
+        food_description: str,
+        n_results: int = 3,
+    ) -> RetrievalResponse:
+        """
+        Query for food pH specifically (fallback tier).
+
+        Used as Tier 2 when the primary query either misses threshold or
+        returns a doc that lacks pH data.  Uses the lower
+        food_properties_fallback_confidence threshold to accept category-level
+        docs (e.g. "fresh poultry pH").
+        """
+        return self.query(
+            query_text=f"{food_description} pH acidity",
+            doc_type=VectorStore.TYPE_FOOD_PROPERTIES,
+            n_results=n_results,
+            threshold=settings.food_properties_fallback_confidence,
+        )
+
+    def query_food_water_activity(
+        self,
+        food_description: str,
+        n_results: int = 3,
+    ) -> RetrievalResponse:
+        """
+        Query for food water activity specifically (fallback tier).
+
+        Used as Tier 2 when the primary query either misses threshold or
+        returns a doc that lacks water activity data.  Uses the lower
+        food_properties_fallback_confidence threshold to accept category-level
+        docs (e.g. "fresh poultry water activity").
+        """
+        return self.query(
+            query_text=f"{food_description} water activity aw moisture",
+            doc_type=VectorStore.TYPE_FOOD_PROPERTIES,
+            n_results=n_results,
+            threshold=settings.food_properties_fallback_confidence,
         )
     
     def query_pathogen_hazards(
@@ -233,6 +282,26 @@ class RetrievalService:
             threshold=settings.pathogen_hazards_confidence,
         )
     
+    def get_hazards_for_food(self, food_name: str) -> list[dict]:
+        """
+        Fetch all pathogen hazard documents for an exact food_name metadata key,
+        sorted by annual_deaths_us descending (most dangerous first).
+
+        Uses a metadata filter — no embedding ranking involved.  Returns an
+        empty list when the food_name is not present in the store.
+        """
+        results = self._store.get_documents(
+            where={"food_name": food_name, "type": VectorStore.TYPE_PATHOGEN_HAZARDS}
+        )
+
+        def _deaths(r: dict) -> int:
+            try:
+                return int(r["metadata"].get("annual_deaths_us", 0))
+            except (ValueError, TypeError):
+                return 0
+
+        return sorted(results, key=_deaths, reverse=True)
+
     def query_conservative_values(
         self,
         parameter: str,
@@ -264,7 +333,12 @@ def get_retrieval_service() -> RetrievalService:
     """Get or create the global RetrievalService instance."""
     global _service
     if _service is None:
-        _service = RetrievalService()
+        reranker = (
+            create_reranker(model_name=settings.reranker_model)
+            if settings.reranker_enabled
+            else None
+        )
+        _service = RetrievalService(reranker=reranker)
     return _service
 
 
