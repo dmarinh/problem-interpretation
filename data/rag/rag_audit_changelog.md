@@ -90,6 +90,67 @@ Percent_foodborne values for 27 pathogens verified against CDC 2011 Table 2 and 
 
 ---
 
+## CDC 2019 data merge into pathogen_characteristics.csv and food_pathogen_hazards.csv (2026-04-29)
+
+**Performed by:** Claude Sonnet 4.6  
+**Source:** Scallan Walter EJ et al. (2025). Foodborne Illness Acquired in the United States—Major Pathogens, 2019. *Emerging Infectious Diseases*, 31(4), 669-677. DOI: 10.3201/eid3104.240913  
+**Source file:** `data/sources/24-0913-combined.pdf` (Tables 1 and 2, text-extracted and cross-checked)  
+**Backups:** `pathogen_characteristics_backup_20260429.csv`, `food_pathogen_hazards_backup_20260429.csv`
+
+### pathogen_characteristics.csv — 8 rows updated, 2 columns added
+
+Added `data_year` and `notes` columns (all 30 rows). Updated 8 rows with 2019 epidemiology counts (illnesses, hospitalizations, deaths, 90% CrI, source_id → CDC-2019-T1T2):
+
+| Pathogen | Field | 2011 value | 2019 value | Source table |
+|---|---|---|---|---|
+| Campylobacter spp. | annual_illnesses | 845,024 | 1,870,000 (696k-3,760k) | Table 1 |
+| Campylobacter spp. | annual_hospitalizations | 8,463 | 13,000 (4,730-25,500) | Table 2 |
+| Campylobacter spp. | annual_deaths | 76 | 197 (0-585) | Table 2 |
+| Campylobacter spp. | percent_foodborne | 80 | 57 | Table 1 |
+| Clostridium perfringens | annual_illnesses | 965,958 | 889,000 (19,300-3,090,000) | Table 1 |
+| Clostridium perfringens | annual_hospitalizations | 438 | 338 (0-1,920) | Table 2 |
+| Clostridium perfringens | annual_deaths | 26 | 41 (0-189) | Table 2 |
+| STEC O157 | annual_illnesses | 63,153 | 86,200 (31,400-201,000) | Table 1 |
+| STEC O157 | annual_hospitalizations | 2,138 | 1,730 (574-4,070) | Table 2 |
+| STEC O157 | annual_deaths | 20 | 40 (0-180) | Table 2 |
+| STEC O157 | percent_foodborne | 68 | 60 | Table 1 |
+| STEC non-O157 | annual_illnesses | 112,752 | 271,000 (97,200-546,000) | Table 1 |
+| STEC non-O157 | annual_hospitalizations | 271 | 1,410 (465-3,020) | Table 2 |
+| STEC non-O157 | annual_deaths | 0 | 25 (0-94) | Table 2 |
+| STEC non-O157 | percent_foodborne | 82 | 50 | Table 1 |
+| Listeria monocytogenes | annual_illnesses | 1,591 | 1,250 (1,080-1,460) | Table 1 |
+| Listeria monocytogenes | annual_hospitalizations | 1,455 | 1,070 (922-1,240) | Table 2 |
+| Listeria monocytogenes | annual_deaths | 255 | 172 (144-204) | Table 2 |
+| Listeria monocytogenes | percent_foodborne | 99 | 100 | Table 1 |
+| Salmonella nontyphoidal | annual_illnesses | 1,027,561 | 1,280,000 (866k-1,760k) | Table 1 |
+| Salmonella nontyphoidal | annual_hospitalizations | 19,336 | 12,500 (8,250-17,700) | Table 2 |
+| Salmonella nontyphoidal | annual_deaths | 378 | 238 (7-602) | Table 2 |
+| Toxoplasma gondii | annual_hospitalizations | 4,428 | 848 (173-1,700) | Table 2 |
+| Toxoplasma gondii | annual_deaths | 327 | 44 (9-90) | Table 2 |
+| Norovirus | annual_illnesses | 5,461,731 | 5,540,000 (2,230k-10,300k) | Table 1 |
+| Norovirus | annual_hospitalizations | 14,663 | 22,400 (9,570-39,900) | Table 2 |
+| Norovirus | annual_deaths | 149 | 174 (76-308) | Table 2 |
+| Norovirus | percent_foodborne | 26 | 19 | Table 1 |
+
+**Not updated:** `hospitalization_rate_pct`, `death_rate_pct`, `percent_travel_related` — rate calculation methodology differs between 2011 and 2019 paper presentation; retained as 2011 values to avoid silent misinterpretation.  
+**Toxoplasma illnesses:** 2019 paper explicitly does not estimate total Toxoplasma illnesses ("most infected persons were asymptomatic"); 2011 value (86,686) retained.  
+**Salmonella % foodborne:** 2019 paper states per-serotype values only, no aggregate; 2011 value (94%) retained.
+
+### food_pathogen_hazards.csv — 40 rows updated
+
+`annual_deaths_us` and `source_id` updated for all rows whose pathogen has 2019 data. No schema change.
+
+| Pathogen | 2011 deaths | 2019 deaths | Rows updated |
+|---|---|---|---|
+| Campylobacter jejuni | 76 | 197 | 2 |
+| Clostridium perfringens | 26 | 41 | 3 |
+| Escherichia coli O157:H7 | 20 | 40 | 6 |
+| Listeria monocytogenes | 255 | 172 | 13 |
+| Norovirus | 149 | 174 | 1 |
+| Salmonella spp. / Salmonella Enteritidis | 378 | 238 | 15 |
+
+---
+
 ## Ingestion-layer workaround for multi-source rows (2026-04-27)
 
 Rows whose `notes` field cite a secondary source (entries #14, #15, #16, #17 above) are handled at ingestion time: `load_food_properties()` parses `notes` for source IDs matching `[SOURCE-ID]` bracket style or `"from SOURCE-ID"` prose style, validates each candidate against `data/sources/source_references.csv`, and stores the union of the column `source_id` and any validated extras as a comma-separated string in the ChromaDB `source_id` metadata field.  This means retrieval audit blocks now report both sources (e.g., `source_ids: ["FDA-PH-2007", "IFT-2003-T31"]`) for multi-source rows.  Per-field attribution (which source supports pH vs aw) requires a schema migration and is explicitly deferred.

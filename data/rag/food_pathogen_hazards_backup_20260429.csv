@@ -1,0 +1,57 @@
+food_name,food_category,pathogen,case_fatality_rate,annual_deaths_us,primary_hazard,control_methods,notes,source_id
+chicken raw,poultry,Salmonella spp.,<1%,378,yes,cooking to 74C; prevent cross-contamination,Most common pathogen in poultry. Leading cause of foodborne deaths by incidence.,CDC-2011-T3
+chicken raw,poultry,Campylobacter jejuni,<1%,76,yes,cooking to 74C; prevent cross-contamination,Leading cause of bacterial gastroenteritis.,CDC-2011-T3
+chicken raw,poultry,Listeria monocytogenes,15-30%,255,no,cooking to 74C; cold chain control,High case fatality rate in vulnerable populations.,CDC-2011-T3
+chicken raw,poultry,Clostridium perfringens,<1%,26,no,proper cooling; reheating to 74C,Temperature abuse concern. Requires high numbers.,CDC-2011-T3
+chicken raw,poultry,Staphylococcus aureus,<1%,6,no,temperature control; hygiene,Preformed toxin if temperature abused.,CDC-2011-T3
+beef raw,meat,Escherichia coli O157:H7,3-5% HUS,20,yes,cooking to 71C ground; prevent cross-contamination,Causes hemolytic uremic syndrome. Very low infective dose 10-100.,CDC-2011-T3
+beef raw,meat,Salmonella spp.,<1%,378,yes,cooking to 63C whole or 71C ground,Common in ground beef.,CDC-2011-T3
+beef raw,meat,Listeria monocytogenes,15-30%,255,no,cooking; cold chain control,Concern in RTE beef products.,CDC-2011-T3
+beef raw,meat,Clostridium perfringens,<1%,26,no,proper cooling; reheating,Common in temperature-abused roasts.,CDC-2011-T3
+beef raw,meat,Clostridium botulinum,5-10%,9,no,pH<4.6 or aw<0.94 or refrigeration,Concern in vacuum-packed products.,CDC-2011-T3
+pork raw,meat,Salmonella spp.,<1%,378,yes,cooking to 63C,Common in pork.,CDC-2011-T3
+pork raw,meat,Yersinia enterocolitica,<1%,29,yes,cooking to 63C; refrigeration,Psychrotrophic. Strong pork association.,CDC-2011-T3
+pork raw,meat,Listeria monocytogenes,15-30%,255,no,cooking; cold chain control,Can grow at refrigeration.,CDC-2011-T3
+pork raw,meat,Trichinella spiralis,<1%,0,no,cooking to 63C or freezing,Parasitic. Historically significant but now rare.,CDC-2011-T3
+ground beef,meat,Escherichia coli O157:H7,3-5% HUS,20,yes,cooking to 71C internal,Primary concern for ground beef. Surface contamination mixed throughout.,CDC-2011-T3
+ground beef,meat,Salmonella spp.,<1%,378,yes,cooking to 71C internal,Common contaminant.,CDC-2011-T3
+oysters raw,shellfish,Vibrio vulnificus,35%,96,yes,cooking; harvest controls,Highest case fatality rate of any foodborne pathogen.,CDC-2011-T3
+oysters raw,shellfish,Vibrio parahaemolyticus,<1%,4,yes,cooking; cold chain; harvest controls,Most common Vibrio illness.,CDC-2011-T3
+oysters raw,shellfish,Norovirus,<1%,149,yes,cooking; harvest area controls,Leading cause of foodborne illness overall.,CDC-2011-T3
+oysters raw,shellfish,Hepatitis A,<1%,7,no,cooking; harvest area controls,Viral. Sewage contamination.,CDC-2011-T3
+shrimp raw,shellfish,Vibrio parahaemolyticus,<1%,4,yes,cooking to 63C; cold chain,Common in raw shrimp.,CDC-2011-T3
+shrimp raw,shellfish,Salmonella spp.,<1%,378,no,cooking to 63C,Cross-contamination concern.,CDC-2011-T3
+shrimp raw,shellfish,Listeria monocytogenes,15-30%,255,no,cooking; cold chain control,Concern in cooked RTE shrimp.,CDC-2011-T3
+salmon raw,fish,Listeria monocytogenes,15-30%,255,yes,cooking or proper cold smoking,Major concern in smoked salmon.,CDC-2011-T3
+salmon raw,fish,Clostridium botulinum type E,5-10%,9,yes,proper smoking/curing; refrigeration <3C,Non-proteolytic type E grows at 3.3C.,CDC-2011-T3
+salmon raw,fish,Anisakis simplex,<1%,0,no,cooking to 63C or freezing -20C 7 days,Parasitic roundworm.,FDA-BBB-2012
+tuna raw,fish,Scombrotoxin histamine,<1%,0,yes,cold chain from catch,Histidine conversion. Not destroyed by cooking.,FDA-BBB-2012
+tuna raw,fish,Salmonella spp.,<1%,378,no,cold chain; prevent cross-contamination,Cross-contamination concern.,CDC-2011-T3
+milk raw unpasteurized,dairy,Listeria monocytogenes,15-30%,255,yes,pasteurization,High case fatality. <1000 cells may cause illness.,CDC-2011-T3
+milk raw unpasteurized,dairy,Salmonella spp.,<1%,378,yes,pasteurization,Common in raw milk.,CDC-2011-T3
+milk raw unpasteurized,dairy,Campylobacter jejuni,<1%,76,yes,pasteurization,Common in raw milk.,CDC-2011-T3
+milk raw unpasteurized,dairy,Escherichia coli O157:H7,3-5% HUS,20,yes,pasteurization,Outbreak source.,CDC-2011-T3
+cheese soft unpasteurized,dairy,Listeria monocytogenes,15-30%,255,yes,pasteurization; aging >60 days,Major outbreak source. Can grow during aging.,CDC-2011-T3
+cheese soft unpasteurized,dairy,Salmonella spp.,<1%,378,no,pasteurization; proper aging,Cross-contamination concern.,CDC-2011-T3
+eggs raw,eggs,Salmonella Enteritidis,<1%,378,yes,cooking to 71C; pasteurization,Vertical transmission in eggs. 3.6% CFR in nursing home outbreaks.,CDC-2011-T3
+eggs raw,eggs,Listeria monocytogenes,15-30%,255,no,cooking; cold chain,Less common but high case fatality.,CDC-2011-T3
+infant formula powdered,dairy,Cronobacter sakazakii,40-80% neonates,unknown,yes,reconstitution temp >70C; hygiene,Extremely dangerous to infants <12 months.,FDA-BBB-2012
+lettuce raw,vegetable,Escherichia coli O157:H7,3-5% HUS,20,yes,washing; GAP; irradiation,Multiple outbreak source.,CDC-2011-T3
+lettuce raw,vegetable,Salmonella spp.,<1%,378,yes,washing; GAP,Common produce pathogen.,CDC-2011-T3
+lettuce raw,vegetable,Listeria monocytogenes,15-30%,255,no,washing; cold chain,Can grow on cut produce at refrigeration.,CDC-2011-T3
+spinach raw,vegetable,Escherichia coli O157:H7,3-5% HUS,20,yes,washing; GAP,2006 major outbreak source.,CDC-2011-T3
+spinach raw,vegetable,Salmonella spp.,<1%,378,yes,washing; GAP,Common produce pathogen.,CDC-2011-T3
+sprouts raw,vegetable,Salmonella spp.,<1%,378,yes,seed treatment; cooking,Germination conditions favor bacteria.,CDC-2011-T3
+sprouts raw,vegetable,Escherichia coli O157:H7,3-5% HUS,20,yes,seed treatment; cooking,Multiple outbreak source.,CDC-2011-T3
+cantaloupe,fruit,Salmonella spp.,<1%,378,yes,washing; cold chain; cut fruit refrigeration,Netted rind harbors bacteria.,CDC-2011-T3
+cantaloupe,fruit,Listeria monocytogenes,15-30%,255,yes,washing; cold chain; cut fruit refrigeration,2011 outbreak caused 33 deaths.,CDC-2011-T3
+tomatoes,vegetable,Salmonella spp.,<1%,378,yes,washing; GAP; prevent bruising,Multiple outbreak source.,CDC-2011-T3
+rice cooked,grain,Bacillus cereus,rare,0,yes,proper cooling <4hr; reheating >74C,Emetic toxin from spore germination after cooking.,CDC-2011-T3
+rice cooked,grain,Clostridium perfringens,<1%,26,no,proper cooling <4hr; reheating >74C,Spore germination after cooking.,CDC-2011-T3
+deli meats RTE,meat,Listeria monocytogenes,15-30%,255,yes,cold chain <4C; use-by dates; reheating,Major outbreak source. Post-processing contamination.,CDC-2011-T3
+deli meats RTE,meat,Salmonella spp.,<1%,378,no,cold chain; prevent cross-contamination,Less common in RTE products.,CDC-2011-T3
+hot dogs,meat,Listeria monocytogenes,15-30%,255,yes,reheating until steaming; cold chain,1998-99 outbreak source.,CDC-2011-T3
+smoked salmon,fish,Listeria monocytogenes,15-30%,255,yes,cold chain <4C; use-by dates,Cold smoking does not reach listericidal temperature.,CDC-2011-T3
+smoked salmon,fish,Clostridium botulinum type E,5-10%,9,yes,proper aw/salt; refrigeration <3C,Anaerobic vacuum-packed product.,CDC-2011-T3
+honey,sweetener,Clostridium botulinum,NA infant botulism,0,yes,no honey for infants <12 months,Spores cause infant botulism. Not adult foodborne concern.,FDA-BBB-2012
+canned foods low acid,preserved,Clostridium botulinum,5-10%,9,yes,proper thermal processing; acidification,Spores survive inadequate processing.,CDC-2011-T3

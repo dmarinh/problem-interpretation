@@ -143,7 +143,7 @@ https://doi.org/10.3201/eid1701.P11101
 | **Commissioned by** | U.S. Food and Drug Administration (FDA) |
 | **Contract** | IFT/FDA Contract No. 223-98-2333, Task Order No. 4 |
 | **URL** | https://www.fda.gov/files/food/published/Evaluation-and-Definition-of-Potentially-Hazardous-Foods.pdf |
-| **Local File** | `data/sources/Evaluation-and-Definition-of-Potentially-Hazardous-Foods.pdf` |
+| **Local File** | `data/sources/IFT-2003-T33_Evaluation-and-Definition-of-Potentially-Hazardous-Foods.pdf` |
 | **Access Date** | 2026-03-11 |
 | **Format** | PDF (108 pages) |
 | **Status** | Authoritative - FDA-commissioned peer-reviewed scientific report |
