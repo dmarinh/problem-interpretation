@@ -6,6 +6,23 @@
 
 ## Sessions
 
+### 2026-05-01 — Polynomial boundary extrapolation and the value of output-layer caps
+
+**What went well:**
+Phase 1 diagnosis was clean: hand-computing the polynomial at the exact Q08 inputs confirmed the reported values precisely (ln_mu=7.566, mu=-1931, log_increase=-321.9) before touching any code. Hypothesis ordering (boundary extrapolation first, then unit mismatch) correctly identified the primary cause: the Salmonella thermal inactivation polynomial has only a T×pH interaction as its temperature-dependent term (b[7]=0), so the rate doubles every ~1.24°C and spans 350× over the model's 10.5°C valid range.
+
+**Surfaced pattern — empirical polynomial sensitivity at boundary:**
+ComBase secondary models are polynomial fits over a narrow experimental temperature range. When evaluated AT the declared TempMax, the exponential of a steeply-fitted polynomial can produce physically implausible values even when the input is technically "in range." The declared `valid_ranges` are necessary but not sufficient to guarantee physical plausibility — a prediction-layer cap is required as independent defense.
+
+**Fix chosen — (a2) output cap, not (a1) input clamping:**
+Clamping inputs to slightly inside the boundary (a1) would mask the problem rather than flag it. Capping the output (a2) and emitting a warning preserves audit honesty: the coefficients, the inputs, and the polynomial evaluation are all faithfully reported; only the final log_change is bounded with an explicit warning. This is consistent with how range_clamps work upstream (clamp with event, not suppress).
+
+**What to do differently:**
+- When a new model type (THERMAL_INACTIVATION, NON_THERMAL_SURVIVAL) goes live, run a full temperature sweep at min and max of the valid range before declaring it "working." The pathology at T=65°C was invisible in routine testing because only mid-range temperatures were checked.
+- Dead accumulators (like the unreferenced `total_generations` variable removed here) accumulate silently. Run `ruff check` on every implementation session, not just at session end.
+
+---
+
 ### 2026-04-21 - Ensure models used in type hints are imported
 
 **Context:** `app/core/orchestrator.py` used `"GroundedValues"` in a type hint but did not import it. This caused a "Could not find name" error in static analysis/IDEs, even though it was a quoted forward reference.
@@ -167,6 +184,36 @@ When mocking `get_hazards_for_food()`, the mock must return results in already-s
 
 ---
 
+### 2026-05-01 — §2.4 pathogen inference silent failure on rice
+
+**Context:** §2.4 (worst-pathogen RAG inference) was not firing for "cooked rice" queries, defaulting to Salmonella rather than C. perfringens (41 deaths) or B. cereus. Q04 chicken fired correctly; Q06 rice silently fell through to conservative_default.
+
+**What went well**
+
+- **Audit misread caught early.** The live response showed `organism.retrieval = null` for Q06. The initial interpretation was "Stage 1 didn't even attempt retrieval." The real meaning is different: `retrieval` is only rendered in `field_audit` when `prov.source` is RAG_RETRIEVAL or RAG_RETRIEVAL_FALLBACK (translation.py:120). For CONSERVATIVE_DEFAULT, `is_rag_source = False`, so the retrieval block is always null regardless of whether a retrieval was attempted. Always verify audit field rendering logic before interpreting null as "not attempted."
+
+- **Code trace settled the hypothesis quickly.** Three plausible hypotheses before reading the code: parser gate, architecture gate, threshold/vocabulary issue. Reading `ground_scenario()` in grounding_service.py eliminated the first two in one pass (the gate at line 365 is a simple `not grounded.has("organism") and scenario.food_description` — no phrasing or confidence check). The threshold/vocabulary issue was confirmed by comparing the ingested document templates for chicken vs rice.
+
+**Root cause**
+
+The query in `query_pathogen_hazards()` was:
+```
+f"{food_description} pathogen bacteria hazard contamination"
+```
+"Hazard" is in every ingested food_pathogen_hazard document (the ingestion template starts "Hazard for {food}: {pathogen}..."). "Pathogen", "bacteria", and "contamination" are only in some documents — specifically those whose CDC notes happen to include that vocabulary (chicken docs: "Most common pathogen in poultry", "cross-contamination"). Rice docs ("emetic toxin", "spore germination") don't contain those terms, so they scored below the 0.75 threshold. The fix was to change the appended terms to "food hazard" — universally present across all food types.
+
+**Failure mode: vocabulary asymmetry in query appends**
+
+When a retrieval query appends terms beyond the food name, those terms create vocabulary requirements that only documents with the right notes satisfy. If the extra terms don't appear in all candidate documents, retrieval becomes food-type-dependent in a way that is invisible at threshold-calibration time (the calibration may have used only foods whose documents happen to contain the right vocabulary). Check: do all ingested documents for this doc_type naturally contain the appended terms? If not, the terms introduce asymmetry.
+
+**Secondary finding: uncalibrated threshold**
+
+`pathogen_hazards_confidence = 0.75` was the default — no calibration experiment, no known-good/known-bad pairs, no documented margin. Compare with `food_properties_fallback_confidence = 0.62`, which was calibrated against 13 known-good and 8 known-bad cases with the margin documented in settings.py. Thresholds that gate safety-relevant inferences should be calibrated with the same rigor as thresholds that gate property retrieval. (Calibration experiment for pathogen_hazards is a follow-up task.)
+
+**Deferred: audit honesty gap for failed retrievals**
+
+When `_ground_pathogen_from_rag` fails threshold, it adds a `retrieval_meta` to `grounded.retrievals` with `fallback_used=True`, but this is never shown in `field_audit` for defaulted fields because `is_rag_source = False`. A consumer cannot distinguish "system tried and failed" from "system never tried." This should eventually surface in the audit — e.g., as a `attempted_retrieval` block on CONSERVATIVE_DEFAULT organism entries — but it was deferred to keep this change small.
+
 ### 2026-04-30 — Two-tier RAG fallback for food properties (pH / water activity)
 
 **Context:** Food-property RAG retrieval used a single combined query that took the top document and extracted both pH and water activity from it. CSV data is structured with separate rows for specific-food pH and category-level water activity, so a single retrieval could not populate both fields when the best match was a "partial" row.
@@ -214,3 +261,74 @@ When mocking `get_hazards_for_food()`, the mock must return results in already-s
 
 - Add a startup warmup call (`get_retrieval_service()` in the FastAPI lifespan) any time a new singleton is wired. Lazy singletons that load large models (cross-encoder ~100 MB) should be warmed before the first request, not during it.
 - After any "component exists but may not be wired" investigation, grep for all singleton factories (`get_*_service`, `get_*_engine`) in `app/rag/`, `app/services/`, `app/core/` and verify each one assembles its full dependency chain.
+
+---
+
+## Session 2026-05-01 — Reranker/threshold audit mismatch (reranker_top / attempted_top)
+
+**Context:** Audit investigation of Q04 pH capture. Symptom: `source=rag_retrieval`, Tier 1 query, `top_match=doc_26` (no pH), but `final_value=6.4` came from `doc_24` (described as "runner-up"). Looked like a fall-through to runners_up; wasn't.
+
+**What went well**
+
+- **Phase-gated investigation surfaced the true root cause.** The symptom described a "runner-up fall-through loop." Investigating before designing revealed the actual mechanism: the `query()` method walks the reranked list for the first result clearing the embedding threshold (`next(r for r in results if r.confidence >= threshold)`), while `_build_retrieval_metadata` still read `results[0]` — the reranker's top pick, which may have failed the gate. Two different references to "the top doc", producing an audit mismatch, not a runner-up loop.
+
+- **Object-identity deduplication caught by code review.** Initial runners_up deduplication used doc_id value equality. Reviewer correctly pointed out that multiple docs with `doc_id=None` would all pass the filter and appear as duplicates. Object identity (`id(r)`) is the right primitive when the unique key can be null.
+
+- **Hollow test caught by code review.** First version of `test_attempted_top_surfaces_when_all_failed` used `source=CONSERVATIVE_DEFAULT`, so the retrieval block was never rendered and the test only asserted a 200 response. Reviewer caught this; fix was to use `source=RAG_RETRIEVAL` (forcing the retrieval block) and assert on the `attempted_top` content. The mapping code in `translation.py` was only exercised after that fix.
+
+- **`top_match` null handling needed a route-layer fix.** `translation.py` was constructing `RetrievalTopMatchInfo` whenever `r` was non-null, regardless of whether `r.chunk_id` was None. When all docs fail threshold, `chunk_id=None` but the object was still emitted with all-None fields. Fix: `if (r and r.chunk_id is not None)`. This was surfaced only because the test actually asserted on `top_match is None`.
+
+**Failure modes worth naming**
+
+- **Two places read "the top doc"; they diverged silently.** `_build_retrieval_metadata` read `results[0]`; extraction read `top_result`. Both referred to "the top doc" but used different references. The audit showed what `results[0]` had; the value came from `top_result`. The invariant is: `top_match` in the audit and `retrieval_source` in `ValueProvenance` must point to the same document. Enforce this by ensuring both come from the same object (`top_result`), not independently resolved references.
+
+- **`has_confident_result` and `top_result` are a co-invariant.** `top_result is not None iff has_confident_result is True` (set by the same line in `retrieval.py`). Using the flag as a guard (`top_result = response.top_result if response.has_confident_result else None`) is safe and also protects test mocks that set `has_confident_result=False` but leave `top_result` as a truthy MagicMock. Document co-invariants in a one-line comment rather than dual-purpose code comments that mention test implementation details.
+
+**What to do differently next time**
+
+- When adding a new "select the best item" primitive (e.g. `next(...)` replacing `[0]`), immediately audit all downstream reads of `results[0]` or `top_result` to ensure they all refer to the same object. A grep for both references is a 5-second check.
+- Route-layer null guards (`if r and r.chunk_id is not None`) belong in the same PR as the model change that introduces the nullability. Don't assume `top_match` will be null just because `chunk_id` is null — the serialization layer needs to be taught the null condition explicitly.
+
+---
+
+### 2026-05-01 — Audit retrieval block showed pH doc for organism field after query-string change
+
+**Context:** After the §2.4 query-string fix (changed `"food hazard pathogen bacteria contamination"` → `"food hazard"`), the organism field's `retrieval` block in the verbose audit started showing the pH retrieval (`query="cooked rice pH water activity properties"`, `top_match=food_properties_220`) instead of the pathogen retrieval. The `extraction.method` field correctly showed `ranked_by_annual_deaths`, making the audit self-contradictory: a pH doc appearing to drive pathogen selection.
+
+**Root cause**
+
+The audit-routing code in `translation.py` uses a two-priority fallback to select which retrieval metadata to display for a field:
+
+1. Priority 1: `attributed_field == field_name` — exact match, collision-safe.
+2. Priority 2: keyword heuristic — for the organism field, finds the first retrieval whose `query` contains `"pathogen"`.
+
+The old query `"raw chicken pathogen bacteria hazard contamination"` contained "pathogen", so Priority 2 resolved correctly. The new query `"cooked rice food hazard"` does not, so Priority 2 fell back to `rag_retrievals[0]` — the pH retrieval.
+
+**Fix**
+
+One line in `_ground_pathogen_from_rag` (`grounding_service.py:823`):
+```python
+retrieval_meta.attributed_field = "organism"
+```
+This uses Priority 1, which is independent of query string content. The pattern is identical to how food-property fallback retrievals are tagged at lines 527-528.
+
+**Failure mode pattern: query-string changes silently break keyword-heuristic routing**
+
+The Priority 2 heuristic is a fragile fallback: it hardcodes vocabulary assumptions about query strings that are expected to evolve. Any time a retrieval query string is changed, Priority 2 rules that match on that string's content can silently break. The fix is always the same: tag the retrieval at creation time with `attributed_field`, making it independent of string content.
+
+**What to do differently**
+
+- When changing a retrieval query string (`query_pathogen_hazards`, `query_food_ph`, etc.), immediately check if Priority 2 heuristics in `_build_field_audit` (`translation.py:128–140`) depend on the old string's vocabulary. If so, add `attributed_field` tagging to the source instead of patching the heuristic.
+- The Priority 2 heuristic should be treated as a last-resort legacy path. New retrieval calls should always set `attributed_field` at creation. The heuristic only exists for the untagged primary food-properties query, which covers multiple fields by design.
+
+---
+
+### 2026-05-01 — User-supplied ranges: symmetric paths to the same destination
+
+**Context:** pH and aw user-supplied ranges (e.g., "pH 5.5–6.0") were silently flattened to one bound with no audit trail. RAG-retrieved ranges had full `range_bound_selection` traceability; user-supplied ranges produced `final_value: 5.5`, `parsed_range: null`, `standardization: null`.
+
+**Lesson:** The gap was structural, not incidental. `ExtractedEnvironmentalConditions` (user input schema) had only `ph_value: float | None` — no range fields — while `ExtractedFoodProperties` (RAG schema) had `ph_min`/`ph_max`. The LLM had nowhere to put both bounds. The grounding path never set `range_pending=True`, so standardization never applied `range_bound_selection`. Three layers, three independent gaps, all caused by the same asymmetry.
+
+**Action:** When a new value source is added (user input, RAG fallback, clarification response), check it against the existing schema models for every range-capable field. If the new source's schema lacks range fields that an existing source has, the new path will silently flatten ranges — and the audit will show a single value as if the user never provided a range. The pattern: every source path should produce a structurally identical audit for the same kind of input. Divergence in audit shape signals divergence in code paths.
+
+**Reference:** `app/models/extraction.py` (`ExtractedEnvironmentalConditions`), `app/services/grounding/grounding_service.py` (`_ground_environmental_conditions`), `app/services/extraction/semantic_parser.py` (`SCENARIO_EXTRACTION_PROMPT` line 72).

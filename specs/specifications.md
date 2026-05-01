@@ -148,7 +148,7 @@ Higher-priority sources are never overwritten by lower-priority sources.
 - Missing pH: `"{food} pH acidity"` via `query_food_ph()`
 - Missing aw: `"{food} water activity aw moisture"` via `query_food_water_activity()`
 
-Tier 2 can match category-level docs (e.g., `"fresh poultry water activity 0.99–1.0"`) that Tier 1 may miss or not extract from. Source tier: `RAG_RETRIEVAL_FALLBACK`. The `RetrievalResult` for a Tier 2 retrieval has `attributed_field` set to the specific field name (`"ph"` or `"water_activity"`); primary retrievals have `attributed_field=None`.
+Tier 2 can match category-level docs (e.g., `"fresh poultry water activity 0.99–1.0"`) that Tier 1 may miss or not extract from. Source tier: `RAG_RETRIEVAL_FALLBACK`. The `RetrievalResult` for a Tier 2 retrieval has `attributed_field` set to the specific field name (`"ph"` or `"water_activity"`); the Tier 1 food-properties retrieval has `attributed_field=None` (it may populate both fields from a single doc). The pathogen retrieval (`_ground_pathogen_from_rag`) sets `attributed_field="organism"` so the audit routing selects it unambiguously regardless of the query string's vocabulary.
 
 `CONSERVATIVE_DEFAULT` fires only when both tiers produce no hit above their respective thresholds.
 
@@ -300,7 +300,9 @@ where:
 
 **Doubling time:** `ln(2) / μ_max` — computed only for GROWTH models with positive μ_max; `None` for inactivation/survival.
 
-**Log increase per step:** `μ_max × duration_hours / ln(10)` — negative for inactivation.
+**Log increase per step:** `μ_max × duration_hours / ln(10)` — negative for inactivation. For inactivation/survival models (`μ_max ≤ 0`), the formula is `μ_max × duration_hours` (no ln(10) division — the polynomial outputs a log₁₀ rate for these models). See `calculator.py:calculate_log_increase`.
+
+**Physical plausibility cap:** After computing the per-step log change, the engine (`engine.py`) enforces a `_PHYSICAL_LOG_LIMIT = 15.0` threshold. If `|log_increase| > 15.0`, the value is clamped to `±15.0` and a warning is appended to `ComBaseExecutionResult.warnings` with the raw uncapped value. The warning propagates to `state.metadata.warnings` and surfaces in the API response `warnings` array. The cap does not alter any other audit field (provenance, range_clamps, defaults_imputed, or coefficients). The capped value is what appears in `step_predictions[*].log_increase` and `total_log_increase`.
 
 **Multi-step execution:** Iterates `payload.time_temperature_profile.steps` in order. pH and aw are shared across all steps (from `payload.parameters`). Per-step temperature and duration come from each `TimeTemperatureStep`. `total_log_increase` is the sum across all steps. The `model_result` (scalar summary) uses the first step's calculation for `mu_max` and `doubling_time_hours` (back-compat for single-step consumers).
 
@@ -454,7 +456,7 @@ The API response's `field_audit` (under `audit` when `verbose=true`) is a `dict[
 `FieldAuditEntry` fields:
 - `final_value: float | str | None` — post-standardization value (priority: clamped > range-bound-selected > organism display name > grounded value)
 - `source: str` — ValueSource enum value string
-- `retrieval: RetrievalAuditInfo | None` — RAG call details (query, top_match with doc_id/embedding_score/rerank_score/source_ids/citations, runners_up)
+- `retrieval: RetrievalAuditInfo | None` — RAG call details: query, `top_match` (the doc that supplied the value — null when no doc passed threshold), `runners_up`, and two optional diagnostic fields: `reranker_top` (present when the cross-encoder's top-ranked doc failed the embedding threshold gate and a lower-ranked doc was used instead) and `attempted_top` (present when all docs failed threshold; `top_match` is null in this case). Both carry `doc_id`, `content_preview`, `embedding_score`, `rerank_score`, and `skip_reason` (e.g. `"failed_embedding_threshold:0.70"`)
 - `extraction: ExtractionAuditInfo | None` — how the value was extracted (method, raw_match, matched_pattern, conservative, notes, similarity, canonical_phrase)
 - `standardization: StandardizationAuditInfo | None` — structured event (rule, direction, before_value, after_value, reason)
 
@@ -596,7 +598,7 @@ Queries:
 - `query_food_properties(food_description)`: `"{food} pH water activity properties"`, threshold 0.70 — Tier 1 primary
 - `query_food_ph(food_description)`: `"{food} pH acidity"`, threshold 0.62 — Tier 2 per-field fallback for pH
 - `query_food_water_activity(food_description)`: `"{food} water activity aw moisture"`, threshold 0.62 — Tier 2 per-field fallback for aw
-- `query_pathogen_hazards(food_description)`: `"{food} pathogen bacteria hazard contamination"`, threshold 0.75 — Stage 1 food-name resolver in `_ground_pathogen_from_rag`
+- `query_pathogen_hazards(food_description)`: `"{food} food hazard"`, `where={"data_type": "food_pathogen_hazard"}`, threshold 0.75 — Stage 1 food-name resolver in `_ground_pathogen_from_rag`. Query restricted to `food_pathogen_hazard` subtype so Stage 1 only returns documents that carry `food_name` metadata (required for Stage 2). "food hazard" appears universally in the ingestion template ("Hazard for {food}: {pathogen}..."); earlier terms "pathogen bacteria contamination" were removed because they are only present in some foods' CDC notes, creating vocabulary asymmetry that suppressed retrieval for foods like rice.
 - `get_hazards_for_food(food_name)`: metadata filter `{"food_name": food_name, "type": "pathogen_hazards"}` via `VectorStore.get_documents()`, sorted by `annual_deaths_us` descending — no embedding ranking involved
 
 `_build_retrieval_metadata()` (`grounding_service.py`) converts `RetrievalResponse` to `RetrievalResult`, computing `embedding_score = 1.0 - distance` and capturing up to 3 runners-up with previews.

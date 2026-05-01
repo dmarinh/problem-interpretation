@@ -59,6 +59,25 @@ Pipeline: User Query → SemanticParser (LLM) → GroundingService (RAG + rules)
 - Settings: reranker_enabled (default True) and reranker_model — NOT yet in .env.example
 - The async-sync concern: get_retrieval_service() is called from GroundingService.__init__(), which runs synchronously. CrossEncoderReranker.__init__() loads the model synchronously (sentence_transformers). First call blocks the thread but NOT the event loop (init happens before async ground_scenario() is awaited). Not a correctness risk but a latency concern on cold start.
 
+## Reranker Audit Restructuring (2026-04-30)
+- `has_confident_result` in retrieval.py is ALWAYS set to `top_result is not None` (line 181) — the two are structurally co-invariant. `has_confident_result=True` with `top_result=None` is impossible from the production path. Tests using MagicMock can violate this (MagicMock defaults return truthy objects for all attrs), which is why _build_retrieval_metadata guards `top_result = response.top_result if response.has_confident_result else None`.
+- `SkippedDocInfo.skip_reason` uses format f"failed_embedding_threshold:{threshold:.2f}" — the format is the machine-readable contract for callers.
+- `runners_up` deduplication excludes both `top_id` AND `first_id` from the set. When `doc_id` is `None` on multiple results, `None` is excluded from the set (`if id_ is not None`), so all None-id docs flow into runners_up. This is a latent issue if the vector store ever returns results with null doc_ids.
+- `attempted_top` test (`test_attempted_top_surfaces_when_all_failed`) only verifies that the response is HTTP 200 and `audit` is non-null — it does NOT verify that `attempted_top` is non-null in the field audit because pH source is CONSERVATIVE_DEFAULT and no retrieval block is rendered for it. The `attempted_top` path is tested at the unit layer (TestBuildRetrievalMetadata) but NOT at the API layer for end-to-end correctness.
+- `_make_result_with_attempted_top` builder sets `meta.add_provenance("ph", ValueProvenance(source=ValueSource.CONSERVATIVE_DEFAULT))` — CONSERVATIVE_DEFAULT has no retrieval block, so the `attempted_top` data in meta.retrievals[0] is never surfaced to the API response body. The API test can't reach the mapping code paths for attempted_top via this mock.
+- Naming convention: `RetrievalResult` exists in BOTH `app/rag/retrieval.py` (rag-layer single result) and `app/models/metadata.py` (audit record). The grounding_service import disambiguates with `from app.models.metadata import ... RetrievalResult` and `from app.rag.retrieval import RetrievalService, get_retrieval_service, RetrievalResponse`. The rag-layer `RetrievalResult` is accessed via the response object; the metadata `RetrievalResult` is written to `grounded.retrievals`. A name collision risk for future readers.
+- `SkippedDocInfo` and `RunnerUpResult` share 4 identical fields (doc_id, content_preview, embedding_score, rerank_score); `SkippedDocInfo` adds `skip_reason`. They are kept separate models intentionally (different semantic roles in audit output).
+
+## Physical Log Cap (engine.py, 2026-05-01)
+- `_PHYSICAL_LOG_LIMIT = 15.0` module-level constant caps `|log_increase|` per step after `calculate_log_increase`.
+- Uses `math.copysign(_PHYSICAL_LOG_LIMIT, log_increase)` — correct for both growth (positive) and inactivation (negative).
+- Motivation: Salmonella thermal inactivation polynomial (model_id=2) at T=65°C (valid_ranges max) produces raw −321.9 log CFU for 10 min — unphysical. Measurability ceiling is ~12 log; 15.0 is the headroom choice.
+- Cap fires per-step; `total_log_increase` accumulates already-capped values — multi-step accumulation is correct.
+- Warning propagation: engine.warnings → ComBaseExecutionResult.warnings → orchestrator._execute_model (line 317: `state.metadata.warnings.extend(state.execution_result.warnings)`) → API response top-level `warnings` array via `_build_warnings_list()`.
+- Test gap: `test_cap_fires_at_boundary_temperature` does NOT assert `step_predictions[0].log_increase == -15.0` (only asserts `total_log_increase`). Deferred to LOW — both values are identical for single-step; the GrowthPrediction.log_increase stores the capped value.
+- `total_generations` variable initialized at engine.py line 107 but never assigned to or used — dead variable, pre-existing, not introduced by this change.
+- `calculate_log_increase` for inactivation: `mu_max <= 0` branch returns `mu_max * duration_hours` (no /ln10 conversion). This is intentional — inactivation mu is already in log10/h units. For growth, the /ln10 conversion converts natural-log-scale mu to log10.
+
 ## Benchmark Suite (exp_3_3_model_comparison.py)
 - Monkey-patches `litellm.acompletion` globally for token/cost tracking — not thread-safe
 - Scores only first valid run against ground truth (valid[0]) — ignores consistency of accuracy across runs
