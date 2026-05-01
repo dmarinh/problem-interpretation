@@ -5,6 +5,7 @@ Local implementation of ComBase broth models.
 Executes predictions using loaded model coefficients.
 """
 
+import math
 from pathlib import Path
 
 from app.engines.base import BaseEngine
@@ -17,6 +18,9 @@ from app.models.execution.combase import (
     ComBaseExecutionResult,
     ComBaseModelResult,
 )
+
+
+_PHYSICAL_LOG_LIMIT = 15.0
 
 
 class ComBaseEngine(BaseEngine):
@@ -100,7 +104,6 @@ class ComBaseEngine(BaseEngine):
         # Calculate for each time-temperature step
         step_predictions = []
         total_log_increase = 0.0
-        total_generations = 0.0
         
         # Use first step's calculation for model result
         first_calc_result: CalculationResult | None = None
@@ -128,7 +131,17 @@ class ComBaseEngine(BaseEngine):
                 mu_max=calc_result.mu_max,
                 duration_hours=duration_hours,
             )
-                      
+
+            if abs(log_increase) > _PHYSICAL_LOG_LIMIT:
+                raw = log_increase
+                log_increase = math.copysign(_PHYSICAL_LOG_LIMIT, log_increase)
+                warnings.append(
+                    f"Prediction physically capped: raw log change {raw:.1f} log CFU at "
+                    f"T={step.temperature_celsius}°C exceeds plausibility limit "
+                    f"±{_PHYSICAL_LOG_LIMIT} log CFU. Polynomial sensitivity at this "
+                    f"boundary produces an unphysical result. Capped to {log_increase:.1f} log CFU."
+                )
+
             step_predictions.append(GrowthPrediction(
                 step_order=step.step_order,
                 duration_minutes=step.duration_minutes,

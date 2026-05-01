@@ -217,6 +217,99 @@ class TestComBaseEngine:
         assert health["healthy"] is False
 
 
+class TestPhysicalLogCap:
+    """Regression tests for the physical plausibility cap on log predictions."""
+
+    @pytest.mark.asyncio
+    async def test_cap_fires_at_boundary_temperature(self, engine):
+        """T=65°C for 10 min produces raw -321.9; must be capped at ±15 with a warning."""
+        if not engine.is_available:
+            pytest.skip("combase_models.csv not found")
+
+        payload = ComBaseExecutionPayload(
+            model_selection=ComBaseModelSelection(
+                organism=ComBaseOrganism.SALMONELLA,
+                model_type=ModelType.THERMAL_INACTIVATION,
+                factor4_type=Factor4Type.NONE,
+            ),
+            parameters=ComBaseParameters(
+                temperature_celsius=65.0,
+                ph=6.2,
+                water_activity=0.997,
+            ),
+            time_temperature_profile=TimeTemperatureProfile(
+                is_multi_step=False,
+                steps=[
+                    TimeTemperatureStep(
+                        temperature_celsius=65.0,
+                        duration_minutes=10.0,
+                        step_order=1,
+                    )
+                ],
+                total_duration_minutes=10.0,
+            ),
+        )
+
+        result = await engine.execute(payload)
+
+        assert result.total_log_increase == pytest.approx(-15.0)
+        assert result.step_predictions[0].log_increase == pytest.approx(-15.0), (
+            f"step_predictions[0].log_increase should also be capped; got {result.step_predictions[0].log_increase}"
+        )
+        assert any("capped" in w.lower() for w in result.warnings), (
+            f"Expected a cap warning but got: {result.warnings}"
+        )
+        assert any("-321" in w for w in result.warnings), (
+            "Warning should include the raw uncapped value (-321...)"
+        )
+
+    @pytest.mark.asyncio
+    async def test_no_cap_for_in_range_queries(self, engine):
+        """Demo verification queries (60°C/5 min and 58°C/12 min) must not trigger the cap."""
+        if not engine.is_available:
+            pytest.skip("combase_models.csv not found")
+
+        cases = [
+            (60.0, 5.0, 6.2, 0.997),   # chicken at 60°C for 5 min
+            (58.0, 12.0, 5.6, 0.950),  # beef at 58°C for 12 min
+        ]
+
+        for temp, dur, ph, aw in cases:
+            payload = ComBaseExecutionPayload(
+                model_selection=ComBaseModelSelection(
+                    organism=ComBaseOrganism.SALMONELLA,
+                    model_type=ModelType.THERMAL_INACTIVATION,
+                    factor4_type=Factor4Type.NONE,
+                ),
+                parameters=ComBaseParameters(
+                    temperature_celsius=temp,
+                    ph=ph,
+                    water_activity=aw,
+                ),
+                time_temperature_profile=TimeTemperatureProfile(
+                    is_multi_step=False,
+                    steps=[
+                        TimeTemperatureStep(
+                            temperature_celsius=temp,
+                            duration_minutes=dur,
+                            step_order=1,
+                        )
+                    ],
+                    total_duration_minutes=dur,
+                ),
+            )
+
+            result = await engine.execute(payload)
+
+            cap_warnings = [w for w in result.warnings if "capped" in w.lower()]
+            assert not cap_warnings, (
+                f"T={temp}°C/{dur}min should not trigger cap but got: {cap_warnings}"
+            )
+            assert result.total_log_increase > -15.0, (
+                f"T={temp}°C/{dur}min gave {result.total_log_increase}, expected > -15"
+            )
+
+
 class TestComBaseEngineSingleton:
     """Tests for singleton management."""
     
