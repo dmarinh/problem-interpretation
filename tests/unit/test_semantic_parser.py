@@ -141,6 +141,46 @@ class TestSemanticParser:
         assert result.selected_option == "2-4 hours"
 
 
+class TestScenarioExtractionPromptRanges:
+    """Verify SCENARIO_EXTRACTION_PROMPT instructs pH and aw range extraction."""
+
+    def test_prompt_instructs_ph_range_extraction(self):
+        """Prompt must direct the LLM to use ph_min/ph_max for pH range inputs."""
+        from app.services.extraction.semantic_parser import SCENARIO_EXTRACTION_PROMPT
+        assert "ph_min" in SCENARIO_EXTRACTION_PROMPT
+        assert "ph_max" in SCENARIO_EXTRACTION_PROMPT
+
+    def test_prompt_instructs_aw_range_extraction(self):
+        """Prompt must direct the LLM to use water_activity_min/max for aw range inputs."""
+        from app.services.extraction.semantic_parser import SCENARIO_EXTRACTION_PROMPT
+        assert "water_activity_min" in SCENARIO_EXTRACTION_PROMPT
+        assert "water_activity_max" in SCENARIO_EXTRACTION_PROMPT
+
+    @pytest.mark.asyncio
+    async def test_parser_passes_through_ph_range(self):
+        """Parser passes an LLM-returned ph_min/ph_max through to ExtractedScenario."""
+        from app.services.extraction.semantic_parser import SemanticParser
+        from app.models.extraction import ExtractedEnvironmentalConditions
+
+        mock_client = MagicMock()
+        mock_client.extract = AsyncMock(return_value=ExtractedScenario(
+            food_description="white bread",
+            environmental_conditions=ExtractedEnvironmentalConditions(
+                ph_min=5.5,
+                ph_max=6.0,
+            ),
+        ))
+        parser = SemanticParser(llm_client=mock_client)
+
+        result = await parser.extract_scenario(
+            "Predict B. cereus growth on white bread at pH 5.5-6.0, 25°C, for 4 hours."
+        )
+
+        assert result.environmental_conditions.ph_min == 5.5
+        assert result.environmental_conditions.ph_max == 6.0
+        assert result.environmental_conditions.ph_value is None
+
+
 class TestSemanticParserSingleton:
     """Tests for singleton management."""
     

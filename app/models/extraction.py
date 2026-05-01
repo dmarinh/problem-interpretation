@@ -156,7 +156,15 @@ class ExtractedEnvironmentalConditions(BaseModel):
     """
     ph_value: float | None = Field(
         default=None,
-        description="pH value if explicitly mentioned"
+        description="Single pH value if explicitly mentioned (e.g., 'pH 6.0')"
+    )
+    ph_min: float | None = Field(
+        default=None,
+        description="Minimum pH if a range is given (e.g., 'pH 5.5-6.0' → 5.5)"
+    )
+    ph_max: float | None = Field(
+        default=None,
+        description="Maximum pH if a range is given (e.g., 'pH 5.5-6.0' → 6.0)"
     )
     ph_description: str | None = Field(
         default=None,
@@ -164,7 +172,15 @@ class ExtractedEnvironmentalConditions(BaseModel):
     )
     water_activity: float | None = Field(
         default=None,
-        description="Water activity (aw) if explicitly mentioned"
+        description="Single water activity value if explicitly mentioned (e.g., 'aw 0.95')"
+    )
+    water_activity_min: float | None = Field(
+        default=None,
+        description="Minimum water activity if a range is given (e.g., 'aw 0.92-0.95' → 0.92)"
+    )
+    water_activity_max: float | None = Field(
+        default=None,
+        description="Maximum water activity if a range is given (e.g., 'aw 0.92-0.95' → 0.95)"
     )
     salt_percent: float | None = Field(
         default=None,

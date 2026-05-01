@@ -69,7 +69,7 @@ Examples of scenario type inference:
 Important guidelines:
 - Only extract what is explicitly stated or clearly implied
 - Do not invent or assume values not mentioned
-- If a range is given (e.g., "20-25C"), capture it as a range
+- If a range is given (e.g., "20-25C"), capture it as a range; this also applies to pH (e.g., "pH 5.5-6.0" → ph_min=5.5, ph_max=6.0) and water activity (e.g., "aw 0.92-0.95" → water_activity_min=0.92, water_activity_max=0.95)
 - If time/temperature is ambiguous (e.g., "a while"), mark it as ambiguous
 - Convert all temperatures to Celsius
 - Convert all durations to minutes
