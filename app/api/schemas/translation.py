@@ -153,11 +153,22 @@ class RetrievalTopMatchInfo(BaseModel):
     full_citations: dict[str, str]
 
 
+class RerankerSkippedDocInfo(BaseModel):
+    """A doc ranked first by the reranker but skipped because it failed the embedding threshold gate."""
+    doc_id: str | None
+    content_preview: str | None
+    embedding_score: float | None
+    rerank_score: float | None
+    skip_reason: str
+
+
 class RetrievalAuditInfo(BaseModel):
     """Retrieval details for one RAG call."""
     query: str
     top_match: RetrievalTopMatchInfo | None
     runners_up: list[RunnerUpInfo]
+    reranker_top: RerankerSkippedDocInfo | None = None
+    attempted_top: RerankerSkippedDocInfo | None = None
 
 
 class ExtractionAuditInfo(BaseModel):

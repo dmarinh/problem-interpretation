@@ -171,14 +171,17 @@ class VectorStore:
         """
         self._ensure_initialized()
         
-        # Build filter
+        # Build filter — mirror get_documents(): ChromaDB 1.x requires $and for
+        # multi-key filters; a plain dict with more than one key raises
+        # "Expected where to have exactly one operator".
         query_filter = None
         if doc_type or where:
-            query_filter = {}
+            combined: dict = {}
             if doc_type:
-                query_filter["type"] = doc_type
+                combined["type"] = doc_type
             if where:
-                query_filter.update(where)
+                combined.update(where)
+            query_filter = {"$and": [{k: v} for k, v in combined.items()]} if len(combined) > 1 else combined
         
         results = self._collection.query(
             query_texts=[query_text],

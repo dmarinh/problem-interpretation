@@ -694,6 +694,291 @@ class TestVerboseAudit:
         assert data["audit"]["audit"] is not None
         assert data["audit"]["system"] is not None
 
+    def _make_result_with_reranker_top(self):
+        """
+        Primary Tier 1 query where the reranker promoted doc_26 to first place but
+        doc_26 failed the embedding threshold; doc_24 (next in reranked list) passed
+        and supplied pH 6.4.  This mirrors the Q04 chicken observation.
+        """
+        from app.models.execution.combase import (
+            ComBaseExecutionResult, ComBaseModelResult,
+            ComBaseExecutionPayload, ComBaseModelSelection, ComBaseParameters,
+        )
+        from app.models.execution.base import TimeTemperatureStep, TimeTemperatureProfile
+        from app.core.orchestrator import TranslationResult
+        from app.models.metadata import (
+            ValueProvenance, ValueSource, RetrievalResult, SkippedDocInfo,
+            DefaultImputed, ComBaseModelAudit, SystemAudit,
+        )
+
+        state = SessionState(user_input="raw chicken at room temperature")
+        state.status = SessionStatus.COMPLETED
+        state.grounded_values = {"ph": 6.4, "water_activity": 0.98}
+
+        meta = InterpretationMetadata(
+            session_id=state.session_id,
+            original_input=state.user_input,
+            status=state.status,
+        )
+        meta.add_provenance(
+            "ph",
+            ValueProvenance(
+                source=ValueSource.RAG_RETRIEVAL,
+                retrieval_source="food_properties_24",
+                original_text="Chicken (raw): pH 6.2–6.6",
+                extraction_method="regex",
+                raw_match="6.2–6.6",
+                parsed_range=[6.2, 6.6],
+            ),
+        )
+        meta.add_retrieval(
+            RetrievalResult(
+                query="raw chicken pH water activity properties",
+                source_document="food_properties",
+                chunk_id="food_properties_24",
+                retrieved_text="Chicken (raw): pH 6.2–6.6 [FDA-PH-2007]",
+                embedding_score=0.75,
+                rerank_score=0.80,
+                source_ids=["FDA-PH-2007"],
+                full_citations={"FDA-PH-2007": "FDA/CFSAN (2007). Approximate pH of Foods."},
+                reranker_top=SkippedDocInfo(
+                    doc_id="food_properties_26",
+                    content_preview="Chicken anatomy document (no pH data)",
+                    embedding_score=0.58,
+                    rerank_score=0.95,
+                    skip_reason="failed_embedding_threshold:0.70",
+                ),
+            )
+        )
+        meta.add_default_imputed(
+            DefaultImputed(
+                field_name="temperature_celsius",
+                imputed_value=25.0,
+                reason="No temperature specified.",
+            )
+        )
+        meta.combase_model = ComBaseModelAudit(
+            organism="SALMONELLA", model_type="growth", model_id=1,
+            coefficients_str="0.1;0.2;0.3",
+            valid_ranges={"temperature_celsius": (5.0, 45.0)},
+            selection_reason="default",
+        )
+        meta.system = SystemAudit(
+            rag_store_hash="abc123", rag_ingested_at="2026-05-01T00:00:00+00:00",
+            source_csv_audit_date="2026-04-17T00:00:00+00:00",
+            ptm_version="a1b2c3d", combase_model_table_hash="deadbeef",
+        )
+        state.metadata = meta
+
+        model_result = ComBaseModelResult(
+            mu_max=0.926, doubling_time_hours=0.75,
+            model_type=ModelType.GROWTH, organism=ComBaseOrganism.SALMONELLA,
+            temperature_used=25.0, ph_used=6.4, aw_used=0.98,
+            engine_type=EngineType.COMBASE_LOCAL,
+        )
+        state.execution_payload = ComBaseExecutionPayload(
+            model_selection=ComBaseModelSelection(
+                organism=ComBaseOrganism.SALMONELLA, model_type=ModelType.GROWTH,
+            ),
+            parameters=ComBaseParameters(temperature_celsius=25.0, ph=6.4, water_activity=0.98),
+            time_temperature_profile=TimeTemperatureProfile(
+                is_multi_step=False,
+                steps=[TimeTemperatureStep(temperature_celsius=25.0, duration_minutes=180.0, step_order=1)],
+                total_duration_minutes=180.0,
+            ),
+        )
+        state.execution_result = ComBaseExecutionResult(
+            model_result=model_result, step_predictions=[],
+            total_log_increase=1.2, engine_type=EngineType.COMBASE_LOCAL, warnings=[],
+        )
+        mock_result = MagicMock(spec=TranslationResult)
+        mock_result.success = True
+        mock_result.error = None
+        mock_result.state = state
+        mock_result.execution_result = state.execution_result
+        mock_result.metadata = meta
+        return mock_result
+
+    def _make_result_with_attempted_top(self):
+        """
+        Primary Tier 1 query where all docs failed the embedding threshold.
+        pH is sourced as RAG_RETRIEVAL (forcing the audit retrieval block to be
+        built) but top_match is null — only attempted_top is populated, showing
+        what the system almost used.  This exercises the attempted_top → JSON
+        mapping path in translation.py.
+        """
+        from app.models.execution.combase import (
+            ComBaseExecutionResult, ComBaseModelResult,
+            ComBaseExecutionPayload, ComBaseModelSelection, ComBaseParameters,
+        )
+        from app.models.execution.base import TimeTemperatureStep, TimeTemperatureProfile
+        from app.core.orchestrator import TranslationResult
+        from app.models.metadata import (
+            ValueProvenance, ValueSource, RetrievalResult, SkippedDocInfo,
+            DefaultImputed, ComBaseModelAudit, SystemAudit,
+        )
+
+        state = SessionState(user_input="exotic fermented food")
+        state.status = SessionStatus.COMPLETED
+        state.grounded_values = {"ph": 7.0, "water_activity": 0.99}
+
+        meta = InterpretationMetadata(
+            session_id=state.session_id,
+            original_input=state.user_input,
+            status=state.status,
+        )
+        # RAG_RETRIEVAL source so _build_field_audit enters the retrieval block;
+        # retrieval_source=None reflects that no doc passed the threshold.
+        meta.add_provenance(
+            "ph",
+            ValueProvenance(
+                source=ValueSource.RAG_RETRIEVAL,
+                retrieval_source=None,
+                extraction_method="regex",
+            ),
+        )
+        # Retrieval record where all docs failed threshold: chunk_id=None,
+        # top_match will be null, attempted_top carries the near-miss doc.
+        meta.add_retrieval(
+            RetrievalResult(
+                query="exotic fermented food pH water activity properties",
+                source_document=None,
+                chunk_id=None,
+                retrieved_text=None,
+                embedding_score=None,
+                rerank_score=None,
+                source_ids=[],
+                full_citations={},
+                fallback_used=True,
+                attempted_top=SkippedDocInfo(
+                    doc_id="food_properties_99",
+                    content_preview="Generic fermented food profile",
+                    embedding_score=0.52,
+                    rerank_score=0.88,
+                    skip_reason="failed_embedding_threshold:0.70",
+                ),
+            )
+        )
+        meta.add_default_imputed(
+            DefaultImputed(field_name="temperature_celsius", imputed_value=25.0, reason="No temperature."),
+        )
+        meta.combase_model = ComBaseModelAudit(
+            organism="SALMONELLA", model_type="growth", model_id=1,
+            coefficients_str="0.1;0.2;0.3",
+            valid_ranges={"temperature_celsius": (5.0, 45.0)},
+            selection_reason="default",
+        )
+        meta.system = SystemAudit(
+            rag_store_hash="abc123", rag_ingested_at="2026-05-01T00:00:00+00:00",
+            source_csv_audit_date="2026-04-17T00:00:00+00:00",
+            ptm_version="a1b2c3d", combase_model_table_hash="deadbeef",
+        )
+        state.metadata = meta
+
+        model_result = ComBaseModelResult(
+            mu_max=0.5, doubling_time_hours=1.4,
+            model_type=ModelType.GROWTH, organism=ComBaseOrganism.SALMONELLA,
+            temperature_used=25.0, ph_used=7.0, aw_used=0.99,
+            engine_type=EngineType.COMBASE_LOCAL,
+        )
+        state.execution_payload = ComBaseExecutionPayload(
+            model_selection=ComBaseModelSelection(
+                organism=ComBaseOrganism.SALMONELLA, model_type=ModelType.GROWTH,
+            ),
+            parameters=ComBaseParameters(temperature_celsius=25.0, ph=7.0, water_activity=0.99),
+            time_temperature_profile=TimeTemperatureProfile(
+                is_multi_step=False,
+                steps=[TimeTemperatureStep(temperature_celsius=25.0, duration_minutes=60.0, step_order=1)],
+                total_duration_minutes=60.0,
+            ),
+        )
+        state.execution_result = ComBaseExecutionResult(
+            model_result=model_result, step_predictions=[],
+            total_log_increase=0.5, engine_type=EngineType.COMBASE_LOCAL, warnings=[],
+        )
+        mock_result = MagicMock(spec=TranslationResult)
+        mock_result.success = True
+        mock_result.error = None
+        mock_result.state = state
+        mock_result.execution_result = state.execution_result
+        mock_result.metadata = meta
+        return mock_result
+
+    def test_reranker_top_surfaces_in_retrieval_audit(self, client):
+        """
+        When the reranker promoted a below-threshold doc (Q04 scenario), the audit
+        must show reranker_top with the skipped doc's id and skip_reason, while
+        top_match holds the threshold-passing doc that supplied final_value.
+        """
+        with patch("app.api.routes.translation.get_orchestrator") as mock_get:
+            mock_orch = MagicMock()
+            mock_orch.translate = AsyncMock(return_value=self._make_result_with_reranker_top())
+            mock_get.return_value = mock_orch
+
+            response = client.post(
+                "/api/v1/translate?verbose=true",
+                json={"query": "raw chicken at room temperature"},
+            )
+
+        assert response.status_code == 200
+        ph = response.json()["audit"]["field_audit"]["ph"]
+        retrieval = ph["retrieval"]
+
+        assert retrieval["top_match"]["doc_id"] == "food_properties_24"
+        assert retrieval["reranker_top"] is not None
+        assert retrieval["reranker_top"]["doc_id"] == "food_properties_26"
+        assert retrieval["reranker_top"]["skip_reason"] == "failed_embedding_threshold:0.70"
+        assert retrieval["reranker_top"]["embedding_score"] == 0.58
+        assert retrieval["attempted_top"] is None
+
+    def test_attempted_top_surfaces_when_all_failed(self, client):
+        """
+        When no result passed the threshold, top_match must be null and attempted_top
+        must show the reranker's top pick with a skip_reason.  pH is sourced as
+        RAG_RETRIEVAL so the retrieval block is rendered; chunk_id=None means top_match
+        is null; attempted_top carries the near-miss doc.
+        """
+        with patch("app.api.routes.translation.get_orchestrator") as mock_get:
+            mock_orch = MagicMock()
+            mock_orch.translate = AsyncMock(return_value=self._make_result_with_attempted_top())
+            mock_get.return_value = mock_orch
+
+            response = client.post(
+                "/api/v1/translate?verbose=true",
+                json={"query": "exotic fermented food"},
+            )
+
+        assert response.status_code == 200
+        ph = response.json()["audit"]["field_audit"]["ph"]
+        retrieval = ph["retrieval"]
+
+        assert retrieval["top_match"] is None
+        assert retrieval["reranker_top"] is None
+        assert retrieval["attempted_top"] is not None
+        assert retrieval["attempted_top"]["doc_id"] == "food_properties_99"
+        assert retrieval["attempted_top"]["skip_reason"] == "failed_embedding_threshold:0.70"
+        assert retrieval["attempted_top"]["embedding_score"] == 0.52
+
+    def test_no_reranker_divergence_reranker_top_absent(self, client):
+        """
+        When the reranker's top pick also passes the gate (common case), both
+        reranker_top and attempted_top must be absent (null) in the audit.
+        """
+        with patch("app.api.routes.translation.get_orchestrator") as mock_get:
+            mock_orch = MagicMock()
+            mock_orch.translate = AsyncMock(return_value=self._make_verbose_result())
+            mock_get.return_value = mock_orch
+
+            response = client.post(
+                "/api/v1/translate?verbose=true",
+                json={"query": "slice of white bread left out"},
+            )
+
+        assert response.status_code == 200
+        ph = response.json()["audit"]["field_audit"]["ph"]
+        assert ph["retrieval"]["reranker_top"] is None
+        assert ph["retrieval"]["attempted_top"] is None
+
 
 class TestAuditPostStandardization:
     """
@@ -1005,6 +1290,289 @@ class TestAuditPostStandardization:
         cb = audit["combase_model"]
         assert cb["organism_id"] == "bc"
         assert cb["organism_display_name"] == "Bacillus cereus"
+
+
+class TestDefaultedWithRetrieval:
+    """
+    Tests that defaulted fields carry retrieval metadata when RAG was attempted
+    before the default was applied (Q15 / fictional-food scenario).
+
+    The fix: when a field appears in defaults_imputed AND a retrieval record
+    exists with attributed_field == field_name, the audit entry must populate
+    the retrieval block (with top_match=null and attempted_top showing the
+    best-rejected doc), rather than leaving retrieval=null.
+    """
+
+    def _make_fictional_food_result(self):
+        """
+        Mock result for "zarblax burger" — a fictional food with no KB entry.
+
+        Both pH and water_activity are attempted via Tier 2 per-field RAG
+        (attributed_field tagged), both fail threshold, both default.
+        The retrieval records carry attempted_top with the best-rejected doc.
+        """
+        from app.models.execution.combase import (
+            ComBaseExecutionResult, ComBaseModelResult,
+            ComBaseExecutionPayload, ComBaseModelSelection, ComBaseParameters,
+        )
+        from app.models.execution.base import TimeTemperatureStep, TimeTemperatureProfile
+        from app.core.orchestrator import TranslationResult
+        from app.models.metadata import (
+            ValueProvenance, ValueSource, RetrievalResult, SkippedDocInfo,
+            DefaultImputed, ComBaseModelAudit, SystemAudit,
+        )
+
+        state = SessionState(user_input="zarblax burger at 25C for 4 hours")
+        state.status = SessionStatus.COMPLETED
+        state.grounded_values = {}
+
+        meta = InterpretationMetadata(
+            session_id=state.session_id,
+            original_input=state.user_input,
+            status=state.status,
+        )
+
+        # pH and water_activity: never grounded — defaulted to conservative values.
+        meta.add_default_imputed(DefaultImputed(
+            field_name="ph",
+            imputed_value=7.0,
+            reason="No pH data found for 'zarblax burger'. Using conservative neutral default.",
+        ))
+        meta.add_default_imputed(DefaultImputed(
+            field_name="water_activity",
+            imputed_value=0.99,
+            reason="No water activity data found for 'zarblax burger'. Using conservative high default.",
+        ))
+
+        # Primary Tier 1 retrieval (untagged) — failed threshold.
+        meta.add_retrieval(RetrievalResult(
+            query="zarblax burger pH water activity food properties",
+            source_document=None,
+            chunk_id=None,
+            retrieved_text=None,
+            embedding_score=None,
+            rerank_score=None,
+            source_ids=[],
+            full_citations={},
+            fallback_used=True,
+            attempted_top=SkippedDocInfo(
+                doc_id="food_properties_42",
+                content_preview="Hamburger patty: pH 5.5–6.0, water activity 0.97",
+                embedding_score=0.41,
+                rerank_score=0.55,
+                skip_reason="failed_embedding_threshold:0.70",
+            ),
+        ))
+        # Tier 2 fallback for pH (tagged) — failed threshold.
+        meta.add_retrieval(RetrievalResult(
+            query="zarblax burger pH acidity",
+            source_document=None,
+            chunk_id=None,
+            retrieved_text=None,
+            embedding_score=None,
+            rerank_score=None,
+            source_ids=[],
+            full_citations={},
+            fallback_used=True,
+            attributed_field="ph",
+            attempted_top=SkippedDocInfo(
+                doc_id="food_properties_07",
+                content_preview="Generic burger: pH 5.4–6.1",
+                embedding_score=0.38,
+                rerank_score=0.50,
+                skip_reason="failed_embedding_threshold:0.62",
+            ),
+        ))
+        # Tier 2 fallback for water_activity (tagged) — failed threshold.
+        meta.add_retrieval(RetrievalResult(
+            query="zarblax burger water activity moisture",
+            source_document=None,
+            chunk_id=None,
+            retrieved_text=None,
+            embedding_score=None,
+            rerank_score=None,
+            source_ids=[],
+            full_citations={},
+            fallback_used=True,
+            attributed_field="water_activity",
+            attempted_top=SkippedDocInfo(
+                doc_id="food_properties_11",
+                content_preview="Ground beef patty: water activity 0.96–0.98",
+                embedding_score=0.35,
+                rerank_score=0.47,
+                skip_reason="failed_embedding_threshold:0.62",
+            ),
+        ))
+
+        meta.combase_model = ComBaseModelAudit(
+            organism="BACILLUS_CEREUS",
+            model_type="growth",
+            model_id=1,
+            coefficients_str="0.1;0.2;0.3",
+            valid_ranges={"temperature_celsius": (5.0, 45.0)},
+            selection_reason="default",
+        )
+        meta.system = SystemAudit(
+            rag_store_hash="abc123",
+            rag_ingested_at="2026-05-01T00:00:00+00:00",
+            source_csv_audit_date="2026-04-17T00:00:00+00:00",
+            ptm_version="a1b2c3d",
+            combase_model_table_hash="deadbeef",
+        )
+        state.metadata = meta
+
+        model_result = ComBaseModelResult(
+            mu_max=0.5,
+            doubling_time_hours=1.4,
+            model_type=ModelType.GROWTH,
+            organism=ComBaseOrganism.SALMONELLA,
+            temperature_used=25.0,
+            ph_used=7.0,
+            aw_used=0.99,
+            engine_type=EngineType.COMBASE_LOCAL,
+        )
+        state.execution_payload = ComBaseExecutionPayload(
+            model_selection=ComBaseModelSelection(
+                organism=ComBaseOrganism.SALMONELLA,
+                model_type=ModelType.GROWTH,
+            ),
+            parameters=ComBaseParameters(temperature_celsius=25.0, ph=7.0, water_activity=0.99),
+            time_temperature_profile=TimeTemperatureProfile(
+                is_multi_step=False,
+                steps=[TimeTemperatureStep(temperature_celsius=25.0, duration_minutes=240.0, step_order=1)],
+                total_duration_minutes=240.0,
+            ),
+        )
+        state.execution_result = ComBaseExecutionResult(
+            model_result=model_result,
+            step_predictions=[],
+            total_log_increase=1.8,
+            engine_type=EngineType.COMBASE_LOCAL,
+            warnings=[],
+        )
+
+        mock_result = MagicMock(spec=TranslationResult)
+        mock_result.success = True
+        mock_result.error = None
+        mock_result.state = state
+        mock_result.execution_result = state.execution_result
+        mock_result.metadata = meta
+        return mock_result
+
+    def _get_field_audit(self, client, mock_result):
+        with patch("app.api.routes.translation.get_orchestrator") as mock_get:
+            mock_orch = MagicMock()
+            mock_orch.translate = AsyncMock(return_value=mock_result)
+            mock_get.return_value = mock_orch
+            response = client.post(
+                "/api/v1/translate?verbose=true",
+                json={"query": "zarblax burger at 25C for 4 hours"},
+            )
+        assert response.status_code == 200
+        return response.json()["audit"]["field_audit"]
+
+    def test_defaulted_field_source_remains_conservative_default(self, client):
+        """source must stay conservative_default even when retrieval block is now attached."""
+        fa = self._get_field_audit(client, self._make_fictional_food_result())
+        assert fa["ph"]["source"] == "conservative_default"
+        assert fa["water_activity"]["source"] == "conservative_default"
+
+    def test_defaulted_field_carries_retrieval_block(self, client):
+        """pH defaulted after failed RAG must have a non-null retrieval block."""
+        fa = self._get_field_audit(client, self._make_fictional_food_result())
+        assert fa["ph"]["retrieval"] is not None
+        assert fa["water_activity"]["retrieval"] is not None
+
+    def test_defaulted_field_retrieval_top_match_is_null(self, client):
+        """top_match must be null when no doc passed threshold."""
+        fa = self._get_field_audit(client, self._make_fictional_food_result())
+        assert fa["ph"]["retrieval"]["top_match"] is None
+        assert fa["water_activity"]["retrieval"]["top_match"] is None
+
+    def test_defaulted_field_retrieval_attempted_top_populated(self, client):
+        """attempted_top must show the best-rejected doc with skip_reason."""
+        fa = self._get_field_audit(client, self._make_fictional_food_result())
+        ph_at = fa["ph"]["retrieval"]["attempted_top"]
+        assert ph_at is not None
+        assert ph_at["doc_id"] == "food_properties_07"
+        assert ph_at["skip_reason"] == "failed_embedding_threshold:0.62"
+        assert ph_at["embedding_score"] == pytest.approx(0.38)
+
+        aw_at = fa["water_activity"]["retrieval"]["attempted_top"]
+        assert aw_at is not None
+        assert aw_at["doc_id"] == "food_properties_11"
+        assert aw_at["skip_reason"] == "failed_embedding_threshold:0.62"
+
+    def test_defaulted_field_retrieval_query_is_field_specific(self, client):
+        """retrieval query must be the per-field fallback query, not the primary combined query."""
+        fa = self._get_field_audit(client, self._make_fictional_food_result())
+        ph_query = fa["ph"]["retrieval"]["query"]
+        assert "ph" in ph_query.lower() or "acid" in ph_query.lower()
+        assert "water activity" not in ph_query.lower()
+
+        aw_query = fa["water_activity"]["retrieval"]["query"]
+        assert "water activity" in aw_query.lower() or "moisture" in aw_query.lower()
+
+    def test_defaulted_without_rag_attempt_still_has_null_retrieval(self, client):
+        """Regression: a defaulted field with no attributed retrieval must keep retrieval=null."""
+        from app.core.orchestrator import TranslationResult
+        from app.models.metadata import DefaultImputed, ComBaseModelAudit, SystemAudit
+
+        state = SessionState(user_input="something")
+        state.status = SessionStatus.COMPLETED
+        state.grounded_values = {}
+        meta = InterpretationMetadata(
+            session_id=state.session_id,
+            original_input=state.user_input,
+            status=state.status,
+        )
+        meta.add_default_imputed(DefaultImputed(
+            field_name="temperature_celsius",
+            imputed_value=25.0,
+            reason="No temperature specified.",
+        ))
+        meta.combase_model = ComBaseModelAudit(
+            organism="SALMONELLA", model_type="growth", model_id=1,
+            coefficients_str="0.1", valid_ranges=None, selection_reason="default",
+        )
+        meta.system = SystemAudit(ptm_version="test")
+        state.metadata = meta
+
+        from app.models.execution.combase import (
+            ComBaseExecutionResult, ComBaseModelResult,
+            ComBaseExecutionPayload, ComBaseModelSelection, ComBaseParameters,
+        )
+        from app.models.execution.base import TimeTemperatureStep, TimeTemperatureProfile
+
+        state.execution_payload = ComBaseExecutionPayload(
+            model_selection=ComBaseModelSelection(
+                organism=ComBaseOrganism.SALMONELLA, model_type=ModelType.GROWTH,
+            ),
+            parameters=ComBaseParameters(temperature_celsius=25.0, ph=7.0, water_activity=0.99),
+            time_temperature_profile=TimeTemperatureProfile(
+                is_multi_step=False,
+                steps=[TimeTemperatureStep(temperature_celsius=25.0, duration_minutes=60.0, step_order=1)],
+                total_duration_minutes=60.0,
+            ),
+        )
+        state.execution_result = ComBaseExecutionResult(
+            model_result=ComBaseModelResult(
+                mu_max=0.5, doubling_time_hours=1.4, model_type=ModelType.GROWTH,
+                organism=ComBaseOrganism.SALMONELLA, temperature_used=25.0,
+                ph_used=7.0, aw_used=0.99, engine_type=EngineType.COMBASE_LOCAL,
+            ),
+            step_predictions=[], total_log_increase=0.5,
+            engine_type=EngineType.COMBASE_LOCAL, warnings=[],
+        )
+        mock_result = MagicMock(spec=TranslationResult)
+        mock_result.success = True
+        mock_result.error = None
+        mock_result.state = state
+        mock_result.execution_result = state.execution_result
+        mock_result.metadata = meta
+
+        fa = self._get_field_audit(client, mock_result)
+        assert fa["temperature_celsius"]["retrieval"] is None
 
 
 class TestGrowthDescription:

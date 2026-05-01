@@ -17,6 +17,7 @@ from app.api.schemas.translation import (
     ExtractionAuditInfo,
     FieldAuditEntry,
     RangeClampInfo,
+    RerankerSkippedDocInfo,
     RetrievalAuditInfo,
     RetrievalTopMatchInfo,
     RunnerUpInfo,
@@ -144,7 +145,7 @@ def _build_field_audit(result: TranslationResult) -> dict[str, FieldAuditEntry]:
                 retrieved_text=r.retrieved_text,
                 source_ids=r.source_ids,
                 full_citations=r.full_citations,
-            ) if r else None
+            ) if (r and r.chunk_id is not None) else None
             runners_up = [
                 RunnerUpInfo(
                     doc_id=ru.doc_id,
@@ -154,10 +155,26 @@ def _build_field_audit(result: TranslationResult) -> dict[str, FieldAuditEntry]:
                 )
                 for ru in (r.runners_up if r else [])
             ]
+            reranker_top = RerankerSkippedDocInfo(
+                doc_id=r.reranker_top.doc_id,
+                content_preview=r.reranker_top.content_preview,
+                embedding_score=r.reranker_top.embedding_score,
+                rerank_score=r.reranker_top.rerank_score,
+                skip_reason=r.reranker_top.skip_reason,
+            ) if (r and r.reranker_top) else None
+            attempted_top = RerankerSkippedDocInfo(
+                doc_id=r.attempted_top.doc_id,
+                content_preview=r.attempted_top.content_preview,
+                embedding_score=r.attempted_top.embedding_score,
+                rerank_score=r.attempted_top.rerank_score,
+                skip_reason=r.attempted_top.skip_reason,
+            ) if (r and r.attempted_top) else None
             retrieval_info = RetrievalAuditInfo(
                 query=r.query if r else "",
                 top_match=top_match,
                 runners_up=runners_up,
+                reranker_top=reranker_top,
+                attempted_top=attempted_top,
             )
 
         # ── Extraction block ──────────────────────────────────────────────────
@@ -215,10 +232,57 @@ def _build_field_audit(result: TranslationResult) -> dict[str, FieldAuditEntry]:
     # from conservative defaults.
     for d in (metadata.defaults_imputed or []):
         if d.field_name not in field_audit:
+            # Attach retrieval metadata when RAG was attempted for this field
+            # before defaulting — distinguished from "retrieval not needed" by
+            # the attributed_field tag set on Tier 2 fallback retrievals.
+            retrieval_info = None
+            r = next(
+                (v for v in rag_retrievals if v.attributed_field == d.field_name),
+                None,
+            )
+            if r is not None:
+                top_match = RetrievalTopMatchInfo(
+                    doc_id=r.chunk_id,
+                    embedding_score=r.embedding_score,
+                    rerank_score=r.rerank_score,
+                    retrieved_text=r.retrieved_text,
+                    source_ids=r.source_ids,
+                    full_citations=r.full_citations,
+                ) if r.chunk_id is not None else None
+                runners_up = [
+                    RunnerUpInfo(
+                        doc_id=ru.doc_id,
+                        content_preview=ru.content_preview,
+                        embedding_score=ru.embedding_score,
+                        rerank_score=ru.rerank_score,
+                    )
+                    for ru in r.runners_up
+                ]
+                reranker_top = RerankerSkippedDocInfo(
+                    doc_id=r.reranker_top.doc_id,
+                    content_preview=r.reranker_top.content_preview,
+                    embedding_score=r.reranker_top.embedding_score,
+                    rerank_score=r.reranker_top.rerank_score,
+                    skip_reason=r.reranker_top.skip_reason,
+                ) if r.reranker_top else None
+                attempted_top = RerankerSkippedDocInfo(
+                    doc_id=r.attempted_top.doc_id,
+                    content_preview=r.attempted_top.content_preview,
+                    embedding_score=r.attempted_top.embedding_score,
+                    rerank_score=r.attempted_top.rerank_score,
+                    skip_reason=r.attempted_top.skip_reason,
+                ) if r.attempted_top else None
+                retrieval_info = RetrievalAuditInfo(
+                    query=r.query,
+                    top_match=top_match,
+                    runners_up=runners_up,
+                    reranker_top=reranker_top,
+                    attempted_top=attempted_top,
+                )
             field_audit[d.field_name] = FieldAuditEntry(
                 final_value=d.imputed_value,
                 source=ValueSource.CONSERVATIVE_DEFAULT.value,
-                retrieval=None,
+                retrieval=retrieval_info,
                 extraction=None,
                 standardization=StandardizationAuditInfo(
                     rule="default_imputed",

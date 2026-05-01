@@ -40,7 +40,7 @@ from app.models.extraction import (
     ExtractedTemperature,
     ExtractedDuration,
 )
-from app.models.metadata import ValueProvenance, ValueSource, RetrievalResult, RunnerUpResult
+from app.models.metadata import ValueProvenance, ValueSource, RetrievalResult, RunnerUpResult, SkippedDocInfo
 from app.rag.retrieval import RetrievalService, get_retrieval_service, RetrievalResponse
 from app.services.audit.citations import get_full_citations
 from app.services.llm.client import LLMClient, get_llm_client
@@ -75,12 +75,26 @@ class ExtractedNumericValue:
 
 def _to_runner_up(r) -> RunnerUpResult:
     """Convert a rag-layer RetrievalResult to a metadata RunnerUpResult."""
-    emb = (1.0 - r.distance) if r.distance is not None else None
+    emb = (1.0 - r.distance) if isinstance(r.distance, (int, float)) else None
+    rr = r.rerank_score if isinstance(r.rerank_score, (int, float)) else None
     return RunnerUpResult(
         doc_id=r.doc_id,
         content_preview=r.content[:120] if r.content else None,
         embedding_score=round(emb, 4) if emb is not None else None,
-        rerank_score=round(r.rerank_score, 4) if r.rerank_score is not None else None,
+        rerank_score=round(rr, 4) if rr is not None else None,
+    )
+
+
+def _to_skipped_doc(r, threshold: float) -> SkippedDocInfo:
+    """Build a SkippedDocInfo for a doc that the reranker ranked first but that failed the embedding threshold gate."""
+    emb = (1.0 - r.distance) if isinstance(r.distance, (int, float)) else None
+    rr = r.rerank_score if isinstance(r.rerank_score, (int, float)) else None
+    return SkippedDocInfo(
+        doc_id=r.doc_id,
+        content_preview=r.content[:120] if r.content else None,
+        embedding_score=round(emb, 4) if emb is not None else None,
+        rerank_score=round(rr, 4) if rr is not None else None,
+        skip_reason=f"failed_embedding_threshold:{threshold:.2f}",
     )
 
 
@@ -88,43 +102,75 @@ def _build_retrieval_metadata(response: RetrievalResponse) -> RetrievalResult:
     """
     Build a metadata RetrievalResult from a rag-layer RetrievalResponse.
 
-    Captures embedding/rerank scores, source_ids, full citations, and
-    runners-up from the full result list rather than only the top hit.
+    top_match (chunk_id / retrieved_text) reflects response.top_result — the
+    first reranked result that cleared the embedding confidence threshold, and
+    therefore the doc whose content was used for value extraction.
 
-    All attribute reads are guarded with isinstance checks because tests
+    When the reranker's top-ranked result (results[0]) differs from top_result
+    because it failed the threshold gate, that doc is surfaced as reranker_top
+    with a skip_reason.  When no result passed the threshold at all (top_result
+    is None), results[0] is surfaced as attempted_top instead.
+
+    runners_up are populated from results that appear in neither top_match nor
+    reranker_top / attempted_top, capped at 3.
+
+    All numeric attribute reads are guarded with isinstance checks because tests
     supply MagicMock objects that satisfy the duck-type interface but carry
     non-numeric values for optional fields.
     """
-    top = response.results[0] if response.results else None
+    # Structural invariant: top_result is None iff has_confident_result is False.
+    top_result = response.top_result if response.has_confident_result else None
+    first_result = response.results[0] if response.results else None  # reranker's top pick
 
+    # ── Metadata from the value-supplying doc ─────────────────────────────────
     embedding_score: float | None = None
     rerank_score: float | None = None
     source_ids: list[str] = []
     full_citations: dict[str, str] = {}
-    runners_up: list[RunnerUpResult] = []
 
-    if top:
-        dist = top.distance
+    if top_result:
+        dist = top_result.distance
         if isinstance(dist, (int, float)):
             embedding_score = round(1.0 - dist, 4)
-        rr = top.rerank_score
+        rr = top_result.rerank_score
         if isinstance(rr, (int, float)):
             rerank_score = round(rr, 4)
-        meta = top.metadata
+        meta = top_result.metadata
         raw_sid = meta.get("source_id", "") if isinstance(meta, dict) else ""
         raw_sid = raw_sid or ""
         source_ids = [s.strip() for s in raw_sid.split(",") if s.strip()]
         full_citations = get_full_citations(source_ids)
-        runners_up = [_to_runner_up(r) for r in response.results[1:4]]
+
+    # ── Reranker-skipped doc ───────────────────────────────────────────────────
+    reranker_top: SkippedDocInfo | None = None
+    attempted_top: SkippedDocInfo | None = None
+
+    if first_result is not None:
+        top_id = top_result.doc_id if top_result else None
+        if top_result is None:
+            # No doc passed threshold — show the would-be pick under attempted_top.
+            attempted_top = _to_skipped_doc(first_result, response.threshold)
+        elif first_result.doc_id != top_id:
+            # Reranker promoted a below-threshold doc; a different doc supplied the value.
+            reranker_top = _to_skipped_doc(first_result, response.threshold)
+
+    # ── Runners-up: all results not already surfaced above, capped at 3 ───────
+    # Use object identity so that None doc_ids don't accidentally match each other.
+    surfaced: set[int] = set()
+    if top_result is not None:
+        surfaced.add(id(top_result))
+    if first_result is not None:
+        surfaced.add(id(first_result))
+    runners_up = [_to_runner_up(r) for r in response.results if id(r) not in surfaced][:3]
 
     query = response.query if isinstance(response.query, str) else ""
     reranker_used = response.reranker_used if isinstance(response.reranker_used, str) else None
 
     return RetrievalResult(
         query=query,
-        source_document=top.source if top else None,
-        chunk_id=top.doc_id if top else None,
-        retrieved_text=top.content if top else None,
+        source_document=top_result.source if top_result else None,
+        chunk_id=top_result.doc_id if top_result else None,
+        retrieved_text=top_result.content if top_result else None,
         fallback_used=not response.has_confident_result,
         embedding_score=embedding_score,
         rerank_score=rerank_score,
@@ -132,6 +178,8 @@ def _build_retrieval_metadata(response: RetrievalResponse) -> RetrievalResult:
         source_ids=source_ids,
         full_citations=full_citations,
         runners_up=runners_up,
+        reranker_top=reranker_top,
+        attempted_top=attempted_top,
     )
 
 
@@ -351,8 +399,24 @@ class GroundingService:
         These are values the user directly stated (e.g., "pH 6.5").
         They have the highest priority.
         """
-        # pH
-        if conditions.ph_value is not None:
+        # pH — range takes priority over single value
+        if conditions.ph_min is not None and conditions.ph_max is not None:
+            if 0.0 <= conditions.ph_min <= 14.0 and 0.0 <= conditions.ph_max <= 14.0:
+                grounded.set(
+                    "ph",
+                    conditions.ph_min,
+                    source=ValueSource.USER_EXPLICIT,
+                    extraction_method="direct",
+                    raw_match=f"{conditions.ph_min}–{conditions.ph_max}",
+                    parsed_range=[conditions.ph_min, conditions.ph_max],
+                    range_pending=True,
+                )
+            else:
+                grounded.warnings.append(
+                    f"Ignoring extracted ph_range=[{conditions.ph_min}, {conditions.ph_max}] "
+                    f"(must be 0–14; likely LLM field confusion)"
+                )
+        elif conditions.ph_value is not None:
             if 0.0 <= conditions.ph_value <= 14.0:
                 grounded.set(
                     "ph",
@@ -366,8 +430,24 @@ class GroundingService:
                     f"(must be 0–14; likely LLM field confusion)"
                 )
 
-        # Water activity
-        if conditions.water_activity is not None:
+        # Water activity — range takes priority over single value
+        if conditions.water_activity_min is not None and conditions.water_activity_max is not None:
+            if 0.0 <= conditions.water_activity_min <= 1.0 and 0.0 <= conditions.water_activity_max <= 1.0:
+                grounded.set(
+                    "water_activity",
+                    conditions.water_activity_min,
+                    source=ValueSource.USER_EXPLICIT,
+                    extraction_method="direct",
+                    raw_match=f"{conditions.water_activity_min}–{conditions.water_activity_max}",
+                    parsed_range=[conditions.water_activity_min, conditions.water_activity_max],
+                    range_pending=True,
+                )
+            else:
+                grounded.warnings.append(
+                    f"Ignoring extracted water_activity_range=[{conditions.water_activity_min}, {conditions.water_activity_max}] "
+                    f"(must be 0–1; likely LLM field confusion)"
+                )
+        elif conditions.water_activity is not None:
             if 0.0 <= conditions.water_activity <= 1.0:
                 grounded.set(
                     "water_activity",
@@ -772,6 +852,7 @@ class GroundingService:
         )
 
         retrieval_meta = _build_retrieval_metadata(response)
+        retrieval_meta.attributed_field = "organism"
         grounded.retrievals.append(retrieval_meta)
 
         if not response.has_confident_result:

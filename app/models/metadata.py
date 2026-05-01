@@ -217,6 +217,26 @@ class RunnerUpResult(BaseModel):
     )
 
 
+class SkippedDocInfo(BaseModel):
+    """A doc ranked first by the reranker but not used because it failed the embedding threshold gate."""
+    doc_id: str | None = Field(default=None, description="Document ID")
+    content_preview: str | None = Field(
+        default=None,
+        description="First ~120 characters of retrieved text"
+    )
+    embedding_score: float | None = Field(
+        default=None,
+        description="Cosine similarity score (1 − ChromaDB distance)"
+    )
+    rerank_score: float | None = Field(
+        default=None,
+        description="Reranker score if a reranker was applied"
+    )
+    skip_reason: str = Field(
+        description="Machine-readable reason for skipping, e.g. 'failed_embedding_threshold:0.70'"
+    )
+
+
 class RetrievalResult(BaseModel):
     """
     Metadata about a RAG retrieval operation.
@@ -268,6 +288,14 @@ class RetrievalResult(BaseModel):
     attributed_field: str | None = Field(
         default=None,
         description="Field this retrieval result is attributed to (set on per-field fallback queries; None for primary queries that may cover multiple fields)"
+    )
+    reranker_top: SkippedDocInfo | None = Field(
+        default=None,
+        description="Present when the reranker's top-ranked doc was skipped because it failed the embedding threshold; the next qualifying doc became top_match"
+    )
+    attempted_top: SkippedDocInfo | None = Field(
+        default=None,
+        description="Present when no doc passed the threshold; shows what the system would have used, with skip_reason explaining the gate failure"
     )
 
 

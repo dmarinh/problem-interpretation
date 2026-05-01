@@ -321,12 +321,95 @@ class TestGroundEnvironmentalConditions:
         """Should not ground None values."""
         service, _, _ = grounding_service
         grounded = GroundedValues()
-        
+
         conditions = ExtractedEnvironmentalConditions()
         service._ground_environmental_conditions(conditions, grounded)
-        
+
         assert not grounded.has("ph")
         assert not grounded.has("water_activity")
+
+    def test_ground_ph_range_stores_pending(self, grounding_service):
+        """pH range: lower bound stored with range_pending=True, parsed_range=[min, max]."""
+        service, _, _ = grounding_service
+        grounded = GroundedValues()
+
+        conditions = ExtractedEnvironmentalConditions(ph_min=5.5, ph_max=6.0)
+        service._ground_environmental_conditions(conditions, grounded)
+
+        assert grounded.get("ph") == 5.5
+        prov = grounded.provenance["ph"]
+        assert prov.source == ValueSource.USER_EXPLICIT
+        assert prov.range_pending is True
+        assert prov.parsed_range == [5.5, 6.0]
+
+    def test_ground_aw_range_stores_pending(self, grounding_service):
+        """aw range: lower bound stored with range_pending=True, parsed_range=[min, max]."""
+        service, _, _ = grounding_service
+        grounded = GroundedValues()
+
+        conditions = ExtractedEnvironmentalConditions(water_activity_min=0.93, water_activity_max=0.96)
+        service._ground_environmental_conditions(conditions, grounded)
+
+        assert grounded.get("water_activity") == 0.93
+        prov = grounded.provenance["water_activity"]
+        assert prov.source == ValueSource.USER_EXPLICIT
+        assert prov.range_pending is True
+        assert prov.parsed_range == [0.93, 0.96]
+
+    def test_single_ph_value_no_range_pending(self, grounding_service):
+        """Single ph_value: range_pending must be False, parsed_range null. Regression guard."""
+        service, _, _ = grounding_service
+        grounded = GroundedValues()
+
+        conditions = ExtractedEnvironmentalConditions(ph_value=6.0)
+        service._ground_environmental_conditions(conditions, grounded)
+
+        assert grounded.get("ph") == 6.0
+        prov = grounded.provenance["ph"]
+        assert prov.range_pending is False
+        assert prov.parsed_range is None
+
+    def test_ph_range_takes_priority_over_single_value(self, grounding_service):
+        """When both ph_range and ph_value are present, range takes priority."""
+        service, _, _ = grounding_service
+        grounded = GroundedValues()
+
+        conditions = ExtractedEnvironmentalConditions(ph_value=5.5, ph_min=5.5, ph_max=6.0)
+        service._ground_environmental_conditions(conditions, grounded)
+
+        prov = grounded.provenance["ph"]
+        assert prov.range_pending is True
+        assert prov.parsed_range == [5.5, 6.0]
+
+    def test_ground_both_ph_and_aw_ranges(self, grounding_service):
+        """Combined pH + aw ranges: both fields get independent range_pending entries."""
+        service, _, _ = grounding_service
+        grounded = GroundedValues()
+
+        conditions = ExtractedEnvironmentalConditions(
+            ph_min=5.5, ph_max=6.0,
+            water_activity_min=0.93, water_activity_max=0.96,
+        )
+        service._ground_environmental_conditions(conditions, grounded)
+
+        ph_prov = grounded.provenance["ph"]
+        assert ph_prov.range_pending is True
+        assert ph_prov.parsed_range == [5.5, 6.0]
+
+        aw_prov = grounded.provenance["water_activity"]
+        assert aw_prov.range_pending is True
+        assert aw_prov.parsed_range == [0.93, 0.96]
+
+    def test_ph_range_invalid_bounds_warns(self, grounding_service):
+        """pH range with an out-of-range bound produces a warning, not a grounded value."""
+        service, _, _ = grounding_service
+        grounded = GroundedValues()
+
+        conditions = ExtractedEnvironmentalConditions(ph_min=5.0, ph_max=20.0)
+        service._ground_environmental_conditions(conditions, grounded)
+
+        assert not grounded.has("ph")
+        assert any("ph" in w.lower() for w in grounded.warnings)
 
 
 class TestGroundTemperature:
@@ -948,8 +1031,145 @@ class TestSingleton:
         """Reset should create new instance."""
         reset_grounding_service()
         service1 = get_grounding_service()
-        
+
         reset_grounding_service()
         service2 = get_grounding_service()
-        
+
         assert service1 is not service2
+
+
+# =============================================================================
+# _build_retrieval_metadata
+# =============================================================================
+
+class TestBuildRetrievalMetadata:
+    """
+    Unit tests for _build_retrieval_metadata in grounding_service.py.
+
+    The function maps a rag-layer RetrievalResponse to a metadata RetrievalResult.
+    Key behaviour under test: which doc becomes top_match, when reranker_top /
+    attempted_top are emitted, and how runners_up are deduplicated.
+    """
+
+    def _rag_result(self, doc_id, distance, rerank_score=None, content="text", metadata=None):
+        from app.rag.retrieval import RetrievalResult as RagResult
+        from app.models.enums import RetrievalConfidenceLevel
+        conf = max(0.0, 1.0 - distance)
+        level = RetrievalConfidenceLevel.HIGH if conf >= 0.85 else (
+            RetrievalConfidenceLevel.MEDIUM if conf >= 0.70 else RetrievalConfidenceLevel.LOW
+        )
+        return RagResult(
+            content=content,
+            confidence=conf,
+            confidence_level=level,
+            source=f"src_{doc_id}",
+            metadata=metadata or {},
+            doc_id=doc_id,
+            distance=distance,
+            rerank_score=rerank_score,
+        )
+
+    def _response(self, results, threshold=0.70):
+        from app.rag.retrieval import RetrievalResponse
+        top_result = next((r for r in results if r.confidence >= threshold), None)
+        return RetrievalResponse(
+            query="test query",
+            results=results,
+            top_result=top_result,
+            has_confident_result=top_result is not None,
+            threshold=threshold,
+        )
+
+    def test_common_case_no_reranker_top(self):
+        """When results[0] clears the threshold, reranker_top and attempted_top are absent."""
+        from app.services.grounding.grounding_service import _build_retrieval_metadata
+
+        r1 = self._rag_result("doc_24", distance=0.25, rerank_score=0.90)  # conf=0.75 passes
+        r2 = self._rag_result("doc_26", distance=0.45, rerank_score=0.60)  # conf=0.55 fails
+        result = _build_retrieval_metadata(self._response([r1, r2]))
+
+        assert result.chunk_id == "doc_24"
+        assert result.reranker_top is None
+        assert result.attempted_top is None
+        assert len(result.runners_up) == 1
+        assert result.runners_up[0].doc_id == "doc_26"
+
+    def test_reranker_divergence_reranker_top_populated(self):
+        """
+        When results[0] is the reranker's top pick but fails threshold while
+        results[1] passes, reranker_top is emitted and top_match shows results[1].
+        This is the Q04 scenario.
+        """
+        from app.services.grounding.grounding_service import _build_retrieval_metadata
+
+        r1 = self._rag_result("doc_26", distance=0.45, rerank_score=0.95)  # conf=0.55 fails
+        r2 = self._rag_result("doc_24", distance=0.25, rerank_score=0.80)  # conf=0.75 passes
+        result = _build_retrieval_metadata(self._response([r1, r2]))
+
+        assert result.chunk_id == "doc_24"
+        assert result.reranker_top is not None
+        assert result.reranker_top.doc_id == "doc_26"
+        assert result.reranker_top.skip_reason == "failed_embedding_threshold:0.70"
+        assert result.reranker_top.embedding_score == round(1.0 - 0.45, 4)
+        assert result.reranker_top.rerank_score == 0.95
+        assert result.attempted_top is None
+        # Both doc_26 and doc_24 are already surfaced — runners_up is empty.
+        assert result.runners_up == []
+
+    def test_all_failed_attempted_top_populated(self):
+        """When no result passes threshold, top_match is None and attempted_top is set."""
+        from app.services.grounding.grounding_service import _build_retrieval_metadata
+
+        r1 = self._rag_result("doc_26", distance=0.45, rerank_score=0.90)  # conf=0.55 fails
+        r2 = self._rag_result("doc_24", distance=0.50, rerank_score=0.70)  # conf=0.50 fails
+        result = _build_retrieval_metadata(self._response([r1, r2]))
+
+        assert result.chunk_id is None
+        assert result.reranker_top is None
+        assert result.attempted_top is not None
+        assert result.attempted_top.doc_id == "doc_26"
+        assert result.attempted_top.skip_reason == "failed_embedding_threshold:0.70"
+
+    def test_empty_results_all_null(self):
+        """Empty result list: all doc fields null, no skipped docs, no runners_up."""
+        from app.services.grounding.grounding_service import _build_retrieval_metadata
+        from app.rag.retrieval import RetrievalResponse
+
+        response = RetrievalResponse(
+            query="empty",
+            results=[],
+            top_result=None,
+            has_confident_result=False,
+            threshold=0.70,
+        )
+        result = _build_retrieval_metadata(response)
+
+        assert result.chunk_id is None
+        assert result.reranker_top is None
+        assert result.attempted_top is None
+        assert result.runners_up == []
+
+    def test_three_results_with_divergence_runners_up_deduplicated(self):
+        """With 3 results and divergence, runners_up excludes top_match and reranker_top."""
+        from app.services.grounding.grounding_service import _build_retrieval_metadata
+
+        r1 = self._rag_result("doc_26", distance=0.45, rerank_score=0.95)  # reranker top, fails
+        r2 = self._rag_result("doc_24", distance=0.25, rerank_score=0.80)  # top_match
+        r3 = self._rag_result("doc_22", distance=0.28, rerank_score=0.60)  # pure runner-up
+        result = _build_retrieval_metadata(self._response([r1, r2, r3]))
+
+        assert result.chunk_id == "doc_24"
+        assert result.reranker_top.doc_id == "doc_26"
+        assert len(result.runners_up) == 1
+        assert result.runners_up[0].doc_id == "doc_22"
+
+    def test_threshold_value_in_skip_reason(self):
+        """skip_reason embeds the exact threshold used by the query."""
+        from app.services.grounding.grounding_service import _build_retrieval_metadata
+
+        r1 = self._rag_result("doc_26", distance=0.45, rerank_score=0.9)  # conf=0.55 fails 0.62
+        r2 = self._rag_result("doc_24", distance=0.30, rerank_score=0.7)  # conf=0.70 passes 0.62
+        result = _build_retrieval_metadata(self._response([r1, r2], threshold=0.62))
+
+        assert result.reranker_top is not None
+        assert result.reranker_top.skip_reason == "failed_embedding_threshold:0.62"

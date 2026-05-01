@@ -34,6 +34,7 @@ class RetrievalResponse(BaseModel):
     top_result: RetrievalResult | None = Field(default=None, description="Best result if above threshold")
     has_confident_result: bool = Field(default=False, description="Whether any result meets threshold")
     reranker_used: str | None = Field(default=None, description="Reranker model if used")
+    threshold: float = Field(default=0.0, description="Embedding confidence threshold used for this query")
 
 
 class RetrievalService:
@@ -185,6 +186,7 @@ class RetrievalService:
             top_result=top_result,
             has_confident_result=has_confident_result,
             reranker_used=reranker_used,
+            threshold=threshold,
         )
     
     def _apply_reranker(
@@ -275,9 +277,20 @@ class RetrievalService:
         
         Uses the pathogen_hazards confidence threshold.
         """
+        # "food hazard" matches the ingestion template ("Hazard for {food}: {pathogen}...")
+        # universally across all food types.  "pathogen bacteria contamination" were
+        # dropped because they only appear in some foods' CDC notes, creating vocabulary
+        # asymmetry that caused foods like rice to score below threshold despite having
+        # valid hazard docs.
+        #
+        # data_type filter restricts Stage 1 to food_pathogen_hazard rows — the only
+        # subtype with food_name metadata.  Without it, the query could return a
+        # cdc_epidemiology or growth_parameters doc, which has no food_name and causes
+        # Stage 2 to be skipped.
         return self.query(
-            query_text=f"{food_description} pathogen bacteria hazard contamination",
+            query_text=f"{food_description} food hazard",
             doc_type=VectorStore.TYPE_PATHOGEN_HAZARDS,
+            where={"data_type": "food_pathogen_hazard"},
             n_results=n_results,
             threshold=settings.pathogen_hazards_confidence,
         )
