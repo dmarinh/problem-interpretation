@@ -12,6 +12,14 @@ En body:
   "query": "Raw chicken left out for 3 hours at room temperature"
 }
 
+# CURL
+curl -X 'POST' \
+  'http://127.0.0.1:8000/api/v1/translate?verbose=false' \
+  -H 'accept: application/json' \
+  -H 'Content-Type: application/json' \
+  -d '{
+  "query": "What'\''s the worst-case pathogen growth on raw chicken left at 25 °C for 4 hours"
+}'
 
 
 # On Linux:
