@@ -36,6 +36,71 @@ from typing import TypeVar, Type, Any
 from pydantic import BaseModel
 
 from app.config import settings
+from app.services.llm.exceptions import (
+    LLMAuthenticationError,
+    LLMCreditExhaustedError,
+    LLMRateLimitError,
+    LLMServiceUnavailableError,
+)
+
+
+def _raise_as_provider_error(exc: Exception) -> None:
+    """Map a LiteLLM exception to the appropriate LLMProviderError subclass.
+
+    Instructor wraps the original LiteLLM exception inside its own retry
+    exception after exhausting retries (InstructorRetryException).  We walk
+    the exception chain so the LiteLLM cause is found even when wrapped.
+    """
+    import litellm
+
+    _LITELLM_TYPES = (
+        litellm.AuthenticationError,
+        litellm.BudgetExceededError,
+        litellm.RateLimitError,
+        litellm.NotFoundError,
+        litellm.ServiceUnavailableError,
+        litellm.APIConnectionError,
+        litellm.InternalServerError,
+    )
+
+    # Walk __cause__ / __context__ chain to find the deepest LiteLLM exception.
+    candidate: Exception | None = exc
+    litellm_exc: Exception | None = None
+    seen: set[int] = set()
+    while candidate is not None and id(candidate) not in seen:
+        seen.add(id(candidate))
+        if isinstance(candidate, _LITELLM_TYPES):
+            litellm_exc = candidate
+            break
+        candidate = candidate.__cause__ or candidate.__context__  # type: ignore[assignment]
+
+    if litellm_exc is None:
+        return  # Not a recognised provider error; let it propagate as-is.
+
+    # LiteLLM's __str__ prepends "litellm.ClassName: " — strip it so the detail
+    # field that reaches the client isn't redundantly prefixed.
+    raw = str(litellm_exc)
+    provider_msg = raw.split(": ", 1)[1] if raw.startswith("litellm.") else raw
+
+    if isinstance(litellm_exc, litellm.AuthenticationError):
+        raise LLMAuthenticationError(f"LLM authentication failed: {provider_msg}", litellm_exc)
+    if isinstance(litellm_exc, litellm.BudgetExceededError):
+        raise LLMCreditExhaustedError(f"LLM account budget exceeded: {provider_msg}", litellm_exc)
+    if isinstance(litellm_exc, litellm.RateLimitError):
+        # OpenAI returns HTTP 429 for both rate limiting and credit exhaustion;
+        # distinguish by message content.
+        lowered = provider_msg.lower()
+        if any(k in lowered for k in ("insufficient_quota", "quota", "billing", "exceeded your current")):
+            raise LLMCreditExhaustedError(f"LLM account credit exhausted: {provider_msg}", litellm_exc)
+        raise LLMRateLimitError(f"LLM rate limit reached: {provider_msg}", litellm_exc)
+    if isinstance(litellm_exc, litellm.NotFoundError):
+        raise LLMServiceUnavailableError(
+            f"LLM API returned 404 — check LLM_API_BASE and LLM_MODEL in your configuration. "
+            f"Provider detail: {provider_msg}",
+            litellm_exc,
+        )
+    if isinstance(litellm_exc, (litellm.ServiceUnavailableError, litellm.APIConnectionError, litellm.InternalServerError)):
+        raise LLMServiceUnavailableError(f"LLM service unavailable: {provider_msg}", litellm_exc)
 
 
 # Type variable for generic structured extraction
@@ -117,15 +182,19 @@ class LLMClient:
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": prompt})
         
-        response = await acompletion(
-            model=self.model,
-            messages=messages,
-            temperature=temperature if temperature is not None else self.temperature,
-            max_tokens=max_tokens or self.max_tokens,
-            api_key=self.api_key,
-            api_base=self.api_base,
-        )
-        
+        try:
+            response = await acompletion(
+                model=self.model,
+                messages=messages,
+                temperature=temperature if temperature is not None else self.temperature,
+                max_tokens=max_tokens or self.max_tokens,
+                api_key=self.api_key,
+                api_base=self.api_base,
+            )
+        except Exception as exc:
+            _raise_as_provider_error(exc)
+            raise
+
         return LLMResponse(
             content=response.choices[0].message.content,
             model=response.model,
@@ -191,15 +260,19 @@ class LLMClient:
             full_messages.append({"role": "system", "content": system_prompt})
         full_messages.extend(messages)
         
-        return await client.chat.completions.create(
-            model=self.model,
-            response_model=response_model,
-            messages=full_messages,
-            temperature=temperature if temperature is not None else self.temperature,
-            max_tokens=max_tokens or self.max_tokens,
-            api_key=self.api_key,
-            api_base=self.api_base,
-        )
+        try:
+            return await client.chat.completions.create(
+                model=self.model,
+                response_model=response_model,
+                messages=full_messages,
+                temperature=temperature if temperature is not None else self.temperature,
+                max_tokens=max_tokens or self.max_tokens,
+                api_key=self.api_key,
+                api_base=self.api_base,
+            )
+        except Exception as exc:
+            _raise_as_provider_error(exc)
+            raise
     
     async def health_check(self) -> dict[str, Any]:
         """

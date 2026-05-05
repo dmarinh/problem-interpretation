@@ -1602,6 +1602,138 @@ class TestGrowthDescription:
     def test_reduction(self):
         """Should describe log reduction correctly."""
         from app.api.routes.translation import _format_growth_description
-        
+
         desc = _format_growth_description(-3.0)
         assert "reduction" in desc.lower()
+
+
+class TestLLMProviderErrors:
+    """LLM provider errors must surface as the correct HTTP status codes, not HTTP 200."""
+
+    @pytest.fixture
+    def client(self):
+        return TestClient(app)
+
+    def _post(self, client, exc):
+        with patch("app.api.routes.translation.get_orchestrator") as mock_get:
+            mock_orch = MagicMock()
+            mock_orch.translate = AsyncMock(side_effect=exc)
+            mock_get.return_value = mock_orch
+            return client.post("/api/v1/translate", json={"query": "chicken left out 3 hours"})
+
+    def test_rate_limit_returns_429(self, client):
+        from app.services.llm.exceptions import LLMRateLimitError
+        resp = self._post(client, LLMRateLimitError("LLM rate limit reached"))
+        assert resp.status_code == 429
+
+    def test_credit_exhausted_returns_402(self, client):
+        from app.services.llm.exceptions import LLMCreditExhaustedError
+        resp = self._post(client, LLMCreditExhaustedError("LLM account credit exhausted"))
+        assert resp.status_code == 402
+
+    def test_auth_error_returns_401(self, client):
+        from app.services.llm.exceptions import LLMAuthenticationError
+        resp = self._post(client, LLMAuthenticationError("LLM authentication failed"))
+        assert resp.status_code == 401
+
+    def test_service_unavailable_returns_503(self, client):
+        from app.services.llm.exceptions import LLMServiceUnavailableError
+        resp = self._post(client, LLMServiceUnavailableError("LLM service unavailable"))
+        assert resp.status_code == 503
+
+    def test_provider_error_detail_is_user_message(self, client):
+        from app.services.llm.exceptions import LLMCreditExhaustedError
+        resp = self._post(client, LLMCreditExhaustedError("LLM account credit exhausted: quota exceeded"))
+        assert resp.json()["detail"] == "LLM account credit exhausted: quota exceeded"
+
+    def test_generic_exception_still_returns_200(self, client):
+        resp = self._post(client, RuntimeError("unexpected internal error"))
+        assert resp.status_code == 200
+        assert resp.json()["success"] is False
+
+    def test_not_found_returns_503(self, client):
+        from app.services.llm.exceptions import LLMServiceUnavailableError
+        resp = self._post(client, LLMServiceUnavailableError("LLM model or endpoint not found"))
+        assert resp.status_code == 503
+
+
+class TestRaiseAsProviderError:
+    """Unit tests for the _raise_as_provider_error chain-walking helper."""
+
+    def _call(self, exc: Exception):
+        from app.services.llm.client import _raise_as_provider_error
+        try:
+            _raise_as_provider_error(exc)
+        except Exception as raised:
+            return raised
+        return None
+
+    def _make_litellm(self, cls):
+        """Construct a LiteLLM exception without triggering real HTTP calls."""
+        import litellm
+        try:
+            return cls(message="test", llm_provider="openai", model="gpt-4o")
+        except Exception:
+            try:
+                return cls("test")
+            except Exception:
+                return cls.__new__(cls)
+
+    def test_direct_rate_limit(self):
+        import litellm
+        from app.services.llm.exceptions import LLMRateLimitError
+        exc = self._make_litellm(litellm.RateLimitError)
+        raised = self._call(exc)
+        assert isinstance(raised, LLMRateLimitError)
+
+    def test_direct_auth_error(self):
+        import litellm
+        from app.services.llm.exceptions import LLMAuthenticationError
+        exc = self._make_litellm(litellm.AuthenticationError)
+        raised = self._call(exc)
+        assert isinstance(raised, LLMAuthenticationError)
+
+    def test_direct_not_found(self):
+        import litellm
+        from app.services.llm.exceptions import LLMServiceUnavailableError
+        exc = self._make_litellm(litellm.NotFoundError)
+        raised = self._call(exc)
+        assert isinstance(raised, LLMServiceUnavailableError)
+
+    def test_wrapped_rate_limit_detected_through_chain(self):
+        """Instructor wraps LiteLLM exceptions; the chain walker must find them."""
+        import litellm
+        from app.services.llm.exceptions import LLMRateLimitError
+        litellm_exc = self._make_litellm(litellm.RateLimitError)
+        # Simulate Instructor wrapping: outer exception with __cause__ pointing to LiteLLM exc
+        outer = RuntimeError("instructor retry wrapper")
+        outer.__cause__ = litellm_exc
+        raised = self._call(outer)
+        assert isinstance(raised, LLMRateLimitError)
+
+    def test_wrapped_not_found_detected_through_chain(self):
+        import litellm
+        from app.services.llm.exceptions import LLMServiceUnavailableError
+        litellm_exc = self._make_litellm(litellm.NotFoundError)
+        outer = RuntimeError("instructor retry wrapper")
+        outer.__cause__ = litellm_exc
+        raised = self._call(outer)
+        assert isinstance(raised, LLMServiceUnavailableError)
+
+    def test_unknown_exception_returns_none(self):
+        raised = self._call(ValueError("something unrelated"))
+        assert raised is None
+
+    def test_quota_keyword_maps_to_credit_exhausted(self):
+        import litellm
+        from app.services.llm.exceptions import LLMCreditExhaustedError
+        try:
+            exc = litellm.RateLimitError(
+                message="You exceeded your current quota",
+                llm_provider="openai",
+                model="gpt-4o",
+            )
+        except Exception:
+            pytest.skip("Cannot construct RateLimitError with this LiteLLM version")
+        raised = self._call(exc)
+        assert isinstance(raised, LLMCreditExhaustedError)

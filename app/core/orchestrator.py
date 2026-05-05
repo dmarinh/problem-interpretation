@@ -12,6 +12,7 @@ Coordinates the full translation pipeline:
 from app.config import settings
 from app.core.state import SessionState, SessionManager, get_session_manager
 from app.models.enums import SessionStatus, IntentType, ModelType
+from app.services.llm.exceptions import LLMProviderError
 from app.models.metadata import ComBaseModelAudit, SystemAudit
 from app.services.audit.system import build_system_audit
 from app.services.extraction.semantic_parser import SemanticParser, get_semantic_parser
@@ -157,6 +158,8 @@ class Orchestrator:
             
             return TranslationResult(state)
             
+        except LLMProviderError:
+            raise
         except Exception as e:
             state.set_error(str(e))
             return TranslationResult(state)

@@ -7,7 +7,7 @@ into structured model inputs and predictions.
 
 from datetime import datetime
 
-from fastapi import APIRouter, Query, status
+from fastapi import APIRouter, HTTPException, Query, status
 
 from app.api.schemas.translation import (
     AuditDetail,
@@ -34,6 +34,7 @@ from app.api.schemas.translation import (
 from app.core.orchestrator import get_orchestrator, TranslationResult
 from app.models.enums import SessionStatus
 from app.models.metadata import InterpretationMetadata, RangeClamp, ValueSource
+from app.services.llm.exceptions import LLMProviderError
 
 
 router = APIRouter(prefix="/translate", tags=["translation"])
@@ -529,6 +530,8 @@ async def translate_query(
             audit=_build_audit_detail(result, field_audit) if verbose else None,
         )
         
+    except LLMProviderError as e:
+        raise HTTPException(status_code=e.http_status, detail=e.user_message)
     except Exception as e:
         return TranslationResponse(
             success=False,
