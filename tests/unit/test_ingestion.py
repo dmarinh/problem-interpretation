@@ -180,19 +180,23 @@ class TestIngestionPipeline:
 
 class TestMultiSourceAttribution:
     """
-    food_properties rows whose notes field cites a secondary source must
-    report both IDs in the stored source_id metadata field.
+    Per-field ph_source_id / aw_source_id columns drive source attribution.
+    Notes text is opaque data; it must never contribute source IDs.
     """
 
-    _FIELDS = ["food_name", "food_category", "ph_min", "ph_max", "aw_min", "aw_max", "notes", "source_id"]
+    _FIELDS = [
+        "food_name", "food_category",
+        "ph_min", "ph_max", "ph_source_id",
+        "aw_min", "aw_max", "aw_source_id",
+        "notes",
+    ]
 
-    # Notes text copied verbatim from the real CSV rows.
-    _NOTES = {
-        "bread white": "White bread; pH from FDA-PH-2007, aw 0.94-0.97 from IFT-2003-T31 Table 3-1",
-        "cheese parmesan": "Hard aged cheese; pH from FDA-PH-2007, aw from IFT-2003-T31 Table 3-1",
-        "honey": "Raw honey; pH from FDA-PH-2007, aw 0.75 from IFT-2003-T31 Table 3-1",
-        "maple syrup": "Pure maple syrup; pH from FDA-PH-2007, aw 0.85 from IFT-2003-T31 Table 3-1",
-    }
+    _KNOWN_IDS = frozenset({"FDA-PH-2007", "IFT-2003-T31", "IFT-2003-T33", "CDC-2019"})
+
+    def _patch(self, monkeypatch, expected_count: int = 1) -> None:
+        import app.rag.data_sources.food_safety as fs
+        monkeypatch.setattr(fs, "EXPECTED_FOOD_PROPERTIES_COUNT", expected_count)
+        monkeypatch.setattr(fs, "_valid_source_ids", lambda: self._KNOWN_IDS)
 
     def _write_food_csv(self, path: Path, rows: list) -> None:
         with open(path, "w", newline="", encoding="utf-8") as f:
@@ -201,17 +205,19 @@ class TestMultiSourceAttribution:
             writer.writerows(rows)
 
     @pytest.mark.parametrize("food_name", ["bread white", "cheese parmesan", "honey", "maple syrup"])
-    def test_multi_source_row_has_both_source_ids(self, pipeline, vector_store, temp_dir, food_name):
-        """Multi-source rows must list the column source_id AND the notes-parsed ID."""
+    def test_multi_source_row_derives_both_ids_from_columns(
+        self, pipeline, vector_store, temp_dir, monkeypatch, food_name
+    ):
+        """Rows with distinct ph_source_id and aw_source_id emit both IDs, pH first."""
         from app.rag.data_sources.food_safety import load_food_properties
 
+        self._patch(monkeypatch)
         self._write_food_csv(temp_dir / "food_properties.csv", [{
             "food_name": food_name,
             "food_category": "test",
-            "ph_min": "5.0", "ph_max": "6.0",
-            "aw_min": "0.94", "aw_max": "0.97",
-            "notes": self._NOTES[food_name],
-            "source_id": "FDA-PH-2007",
+            "ph_min": "5.0", "ph_max": "6.0", "ph_source_id": "FDA-PH-2007",
+            "aw_min": "0.94", "aw_max": "0.97", "aw_source_id": "IFT-2003-T31",
+            "notes": "",
         }])
 
         load_food_properties(pipeline, temp_dir)
@@ -220,21 +226,22 @@ class TestMultiSourceAttribution:
         assert docs, f"No document found for {food_name!r}"
 
         stored = docs[0]["metadata"]["source_id"]
-        ids = [s.strip() for s in stored.split(",")]
-        assert "FDA-PH-2007" in ids, f"Primary source_id missing from {stored!r}"
-        assert "IFT-2003-T31" in ids, f"Notes-parsed source_id missing from {stored!r}"
+        ids = [s.strip() for s in stored.split(",") if s.strip()]
+        assert ids == ["FDA-PH-2007", "IFT-2003-T31"], f"Unexpected source_id list: {ids}"
 
-    def test_single_source_row_has_exactly_one_source_id(self, pipeline, vector_store, temp_dir):
-        """A row whose notes mention no registered sources must not grow extra IDs."""
+    def test_same_ph_aw_source_deduplicates_to_one_id(
+        self, pipeline, vector_store, temp_dir, monkeypatch
+    ):
+        """When ph_source_id == aw_source_id only one entry appears in stored source_id."""
         from app.rag.data_sources.food_safety import load_food_properties
 
+        self._patch(monkeypatch)
         self._write_food_csv(temp_dir / "food_properties.csv", [{
             "food_name": "chicken",
             "food_category": "poultry",
-            "ph_min": "6.2", "ph_max": "6.4",
-            "aw_min": "0.99", "aw_max": "0.99",
+            "ph_min": "6.2", "ph_max": "6.4", "ph_source_id": "IFT-2003-T33",
+            "aw_min": "0.99", "aw_max": "0.99", "aw_source_id": "IFT-2003-T33",
             "notes": "Chicken breast, raw",
-            "source_id": "IFT-2003-T33",
         }])
 
         load_food_properties(pipeline, temp_dir)
@@ -244,7 +251,141 @@ class TestMultiSourceAttribution:
 
         stored = docs[0]["metadata"]["source_id"]
         ids = [s.strip() for s in stored.split(",") if s.strip()]
-        assert ids == ["IFT-2003-T33"], f"Expected exactly one ID, got {ids}"
+        assert ids == ["IFT-2003-T33"], f"Expected exactly one ID after dedup, got {ids}"
+
+    def test_ph_only_row_excludes_empty_aw_source(
+        self, pipeline, vector_store, temp_dir, monkeypatch
+    ):
+        """A row with no aw range emits only the ph_source_id."""
+        from app.rag.data_sources.food_safety import load_food_properties
+
+        self._patch(monkeypatch)
+        self._write_food_csv(temp_dir / "food_properties.csv", [{
+            "food_name": "vinegar",
+            "food_category": "condiment",
+            "ph_min": "2.0", "ph_max": "3.5", "ph_source_id": "FDA-PH-2007",
+            "aw_min": "", "aw_max": "", "aw_source_id": "",
+            "notes": "",
+        }])
+
+        load_food_properties(pipeline, temp_dir)
+
+        docs = vector_store.get_documents(where={"food_name": "vinegar"})
+        assert docs
+
+        stored = docs[0]["metadata"]["source_id"]
+        ids = [s.strip() for s in stored.split(",") if s.strip()]
+        assert ids == ["FDA-PH-2007"], f"Expected only ph_source_id, got {ids}"
+
+    def test_notes_field_does_not_contribute_to_source_ids(
+        self, pipeline, vector_store, temp_dir, monkeypatch
+    ):
+        """Notes prose citing source IDs must not affect the stored source_id."""
+        from app.rag.data_sources.food_safety import load_food_properties
+
+        self._patch(monkeypatch)
+        self._write_food_csv(temp_dir / "food_properties.csv", [{
+            "food_name": "bread white",
+            "food_category": "grain",
+            # Both columns point to the same source; notes mentions a second one.
+            "ph_min": "5.0", "ph_max": "6.0", "ph_source_id": "FDA-PH-2007",
+            "aw_min": "0.94", "aw_max": "0.97", "aw_source_id": "FDA-PH-2007",
+            "notes": "White bread; pH from FDA-PH-2007, aw 0.94-0.97 from IFT-2003-T31 Table 3-1",
+        }])
+
+        load_food_properties(pipeline, temp_dir)
+
+        docs = vector_store.get_documents(where={"food_name": "bread white"})
+        assert docs
+
+        stored = docs[0]["metadata"]["source_id"]
+        ids = [s.strip() for s in stored.split(",") if s.strip()]
+        # IFT-2003-T31 appears in notes but not in ph_source_id/aw_source_id — must be absent.
+        assert ids == ["FDA-PH-2007"], f"Notes text must not inflate source_id; got {ids}"
+
+    def test_validation_error_missing_ph_source_id(self, pipeline, temp_dir, monkeypatch):
+        """A populated ph range with an empty ph_source_id must raise ValueError."""
+        from app.rag.data_sources.food_safety import load_food_properties
+
+        self._patch(monkeypatch)
+        self._write_food_csv(temp_dir / "food_properties.csv", [{
+            "food_name": "apple",
+            "food_category": "fruit",
+            "ph_min": "3.3", "ph_max": "4.0", "ph_source_id": "",
+            "aw_min": "0.97", "aw_max": "0.99", "aw_source_id": "FDA-PH-2007",
+            "notes": "",
+        }])
+
+        with pytest.raises(ValueError, match="ph_source_id is empty"):
+            load_food_properties(pipeline, temp_dir)
+
+    def test_validation_error_missing_aw_source_id(self, pipeline, temp_dir, monkeypatch):
+        """A populated aw range with an empty aw_source_id must raise ValueError."""
+        from app.rag.data_sources.food_safety import load_food_properties
+
+        self._patch(monkeypatch)
+        self._write_food_csv(temp_dir / "food_properties.csv", [{
+            "food_name": "apple",
+            "food_category": "fruit",
+            "ph_min": "3.3", "ph_max": "4.0", "ph_source_id": "FDA-PH-2007",
+            "aw_min": "0.97", "aw_max": "0.99", "aw_source_id": "",
+            "notes": "",
+        }])
+
+        with pytest.raises(ValueError, match="aw_source_id is empty"):
+            load_food_properties(pipeline, temp_dir)
+
+    def test_validation_error_unknown_ph_source_id(self, pipeline, temp_dir, monkeypatch):
+        """A ph_source_id not present in source_references.csv must raise ValueError."""
+        from app.rag.data_sources.food_safety import load_food_properties
+
+        self._patch(monkeypatch)
+        self._write_food_csv(temp_dir / "food_properties.csv", [{
+            "food_name": "apple",
+            "food_category": "fruit",
+            "ph_min": "3.3", "ph_max": "4.0", "ph_source_id": "UNKNOWN-SRC-999",
+            "aw_min": "0.97", "aw_max": "0.99", "aw_source_id": "FDA-PH-2007",
+            "notes": "",
+        }])
+
+        with pytest.raises(ValueError, match="ph_source_id.*not found in source_references"):
+            load_food_properties(pipeline, temp_dir)
+
+    def test_validation_error_unknown_aw_source_id(self, pipeline, temp_dir, monkeypatch):
+        """An aw_source_id not present in source_references.csv must raise ValueError."""
+        from app.rag.data_sources.food_safety import load_food_properties
+
+        self._patch(monkeypatch)
+        self._write_food_csv(temp_dir / "food_properties.csv", [{
+            "food_name": "apple",
+            "food_category": "fruit",
+            "ph_min": "3.3", "ph_max": "4.0", "ph_source_id": "FDA-PH-2007",
+            "aw_min": "0.97", "aw_max": "0.99", "aw_source_id": "UNKNOWN-SRC-999",
+            "notes": "",
+        }])
+
+        with pytest.raises(ValueError, match="aw_source_id.*not found in source_references"):
+            load_food_properties(pipeline, temp_dir)
+
+    def test_row_count_sanity_check(self, pipeline, temp_dir, monkeypatch):
+        """A CSV with the wrong row count must raise ValueError naming the expected count."""
+        import app.rag.data_sources.food_safety as fs
+        from app.rag.data_sources.food_safety import load_food_properties
+
+        # Patch only _valid_source_ids — leave EXPECTED_FOOD_PROPERTIES_COUNT at 252
+        # so a single-row fixture triggers the mismatch.
+        monkeypatch.setattr(fs, "_valid_source_ids", lambda: self._KNOWN_IDS)
+
+        self._write_food_csv(temp_dir / "food_properties.csv", [{
+            "food_name": "apple",
+            "food_category": "fruit",
+            "ph_min": "3.3", "ph_max": "4.0", "ph_source_id": "FDA-PH-2007",
+            "aw_min": "0.97", "aw_max": "0.99", "aw_source_id": "IFT-2003-T31",
+            "notes": "",
+        }])
+
+        with pytest.raises(ValueError, match=r"252.*EXPECTED_FOOD_PROPERTIES_COUNT"):
+            load_food_properties(pipeline, temp_dir)
 
 
 class TestManifestWarning:

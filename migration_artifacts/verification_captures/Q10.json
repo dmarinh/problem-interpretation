@@ -1,0 +1,298 @@
+{
+    "success": true,
+    "session_id": "d73aac11-b22d-4bdf-855d-5ef4560f37b7",
+    "status": "completed",
+    "created_at": "2026-05-04T16:52:15.075720",
+    "completed_at": "2026-05-04T16:52:17.361585",
+    "original_query": "Predict Listeria growth in cheese at 4 C for 14 days.",
+    "prediction": {
+        "organism": "LISTERIA_MONOCYTOGENES",
+        "model_type": "growth",
+        "engine": "combase_local",
+        "temperature_celsius": 4.0,
+        "duration_minutes": 20160.0,
+        "ph": 5.3,
+        "water_activity": 0.934,
+        "mu_max": 0.004645877921002375,
+        "doubling_time_hours": 149.19616751582546,
+        "total_log_increase": 0.6779401926149943,
+        "is_multi_step": false,
+        "steps": [
+            {
+                "step_order": 1,
+                "temperature_celsius": 4.0,
+                "duration_minutes": 20160.0
+            }
+        ],
+        "step_predictions": [
+            {
+                "step_order": 1,
+                "temperature_celsius": 4.0,
+                "duration_minutes": 20160.0,
+                "mu_max": 0.004645877921002375,
+                "log_increase": 0.6779401926149943
+            }
+        ],
+        "growth_description": "Moderate growth: 0.7 log increase (~5x population)"
+    },
+    "provenance": [
+        {
+            "field": "organism",
+            "value": "Listeria monocytogenes/innocua",
+            "source": "user_explicit",
+            "notes": "Extracted via direct"
+        },
+        {
+            "field": "ph",
+            "value": "5.3",
+            "source": "rag_retrieval",
+            "notes": "Range [5.2, 5.3] \u00e2\u2020\u2019 selected upper bound 5.3 (Range narrowed to upper bound for growth model (more pathogen growth/survival = more conservative))"
+        },
+        {
+            "field": "water_activity",
+            "value": "0.934",
+            "source": "rag_retrieval",
+            "notes": "Clamped 0.76 \u00e2\u2020\u2019 0.934: Model constraint"
+        },
+        {
+            "field": "temperature_celsius",
+            "value": "4.0",
+            "source": "user_explicit",
+            "notes": "Extracted via direct"
+        },
+        {
+            "field": "duration_minutes",
+            "value": "20160.0",
+            "source": "user_explicit",
+            "notes": "Extracted via direct"
+        }
+    ],
+    "warnings": [
+        {
+            "type": "range_clamp",
+            "message": "Value 0.76 clamped to 0.934 (valid range: 0.934-1.0)",
+            "field": "water_activity"
+        },
+        {
+            "type": "warning",
+            "message": "Water activity 0.76 is outside the model's valid range [0.934, 1.0]; clamped to 0.934. Prediction is at the model boundary.",
+            "field": null
+        }
+    ],
+    "error": null,
+    "audit": {
+        "field_audit": {
+            "organism": {
+                "final_value": "Listeria monocytogenes/innocua",
+                "source": "user_explicit",
+                "retrieval": null,
+                "extraction": {
+                    "method": "direct",
+                    "raw_match": null,
+                    "parsed_range": null,
+                    "matched_pattern": null,
+                    "conservative": null,
+                    "notes": null,
+                    "similarity": null,
+                    "canonical_phrase": null
+                },
+                "standardization": null
+            },
+            "ph": {
+                "final_value": 5.3,
+                "source": "rag_retrieval",
+                "retrieval": {
+                    "query": "cheese pH water activity properties",
+                    "top_match": {
+                        "doc_id": "food_properties_14",
+                        "embedding_score": 0.7513,
+                        "rerank_score": 6.9474,
+                        "retrieved_text": "cheese parmesan (dairy): pH range 5.2 to 5.3. water activity 0.68 to 0.76. Hard aged cheese [FDA-PH-2007] [IFT-2003-T31]",
+                        "source_ids": [
+                            "FDA-PH-2007",
+                            "IFT-2003-T31"
+                        ],
+                        "full_citations": {
+                            "FDA-PH-2007": "FDA Center for Food Safety and Applied Nutrition (2007). Approximate pH of Foods and Food Products. FDA/CFSAN. Complete pH list. https://www.fda.gov/food/laboratory-methods-food/approximate-ph-foods-and-food-products",
+                            "IFT-2003-T31": "Institute of Food Technologists (2003). Evaluation and Definition of Potentially Hazardous Foods. Comprehensive Reviews in Food Science and Food Safety 2(s1):1-108. Table 3-1 - Water activity values. DOI: 10.1111/j.1541-4337.2003.tb00052.x"
+                        }
+                    },
+                    "runners_up": [
+                        {
+                            "doc_id": "food_properties_18",
+                            "content_preview": "natural cheeses (dairy): water activity 0.95 to 1.0. Variable by type [IFT-2003-T31]",
+                            "embedding_score": 0.6495,
+                            "rerank_score": 5.3812
+                        },
+                        {
+                            "doc_id": "food_properties_12",
+                            "content_preview": "cheese cottage (dairy): pH range 4.75 to 5.02. Fresh cheese [FDA-PH-2007]",
+                            "embedding_score": 0.6295,
+                            "rerank_score": -0.025
+                        }
+                    ],
+                    "reranker_top": null,
+                    "attempted_top": null
+                },
+                "extraction": {
+                    "method": "regex",
+                    "raw_match": "5.2 to 5.3",
+                    "parsed_range": [
+                        5.2,
+                        5.3
+                    ],
+                    "matched_pattern": null,
+                    "conservative": null,
+                    "notes": null,
+                    "similarity": null,
+                    "canonical_phrase": null
+                },
+                "standardization": {
+                    "rule": "range_bound_selection",
+                    "direction": "upper",
+                    "before_value": [
+                        5.2,
+                        5.3
+                    ],
+                    "after_value": 5.3,
+                    "reason": "Range narrowed to upper bound for growth model (more pathogen growth/survival = more conservative)"
+                }
+            },
+            "water_activity": {
+                "final_value": 0.934,
+                "source": "rag_retrieval",
+                "retrieval": {
+                    "query": "cheese pH water activity properties",
+                    "top_match": {
+                        "doc_id": "food_properties_14",
+                        "embedding_score": 0.7513,
+                        "rerank_score": 6.9474,
+                        "retrieved_text": "cheese parmesan (dairy): pH range 5.2 to 5.3. water activity 0.68 to 0.76. Hard aged cheese [FDA-PH-2007] [IFT-2003-T31]",
+                        "source_ids": [
+                            "FDA-PH-2007",
+                            "IFT-2003-T31"
+                        ],
+                        "full_citations": {
+                            "FDA-PH-2007": "FDA Center for Food Safety and Applied Nutrition (2007). Approximate pH of Foods and Food Products. FDA/CFSAN. Complete pH list. https://www.fda.gov/food/laboratory-methods-food/approximate-ph-foods-and-food-products",
+                            "IFT-2003-T31": "Institute of Food Technologists (2003). Evaluation and Definition of Potentially Hazardous Foods. Comprehensive Reviews in Food Science and Food Safety 2(s1):1-108. Table 3-1 - Water activity values. DOI: 10.1111/j.1541-4337.2003.tb00052.x"
+                        }
+                    },
+                    "runners_up": [
+                        {
+                            "doc_id": "food_properties_18",
+                            "content_preview": "natural cheeses (dairy): water activity 0.95 to 1.0. Variable by type [IFT-2003-T31]",
+                            "embedding_score": 0.6495,
+                            "rerank_score": 5.3812
+                        },
+                        {
+                            "doc_id": "food_properties_12",
+                            "content_preview": "cheese cottage (dairy): pH range 4.75 to 5.02. Fresh cheese [FDA-PH-2007]",
+                            "embedding_score": 0.6295,
+                            "rerank_score": -0.025
+                        }
+                    ],
+                    "reranker_top": null,
+                    "attempted_top": null
+                },
+                "extraction": {
+                    "method": "regex",
+                    "raw_match": "0.68 to 0.76",
+                    "parsed_range": [
+                        0.68,
+                        0.76
+                    ],
+                    "matched_pattern": null,
+                    "conservative": null,
+                    "notes": null,
+                    "similarity": null,
+                    "canonical_phrase": null
+                },
+                "standardization": {
+                    "rule": "range_clamp",
+                    "direction": null,
+                    "before_value": 0.76,
+                    "after_value": 0.934,
+                    "reason": "Model constraint"
+                }
+            },
+            "temperature_celsius": {
+                "final_value": 4.0,
+                "source": "user_explicit",
+                "retrieval": null,
+                "extraction": {
+                    "method": "direct",
+                    "raw_match": null,
+                    "parsed_range": null,
+                    "matched_pattern": null,
+                    "conservative": null,
+                    "notes": null,
+                    "similarity": null,
+                    "canonical_phrase": null
+                },
+                "standardization": null
+            },
+            "duration_minutes": {
+                "final_value": 20160.0,
+                "source": "user_explicit",
+                "retrieval": null,
+                "extraction": {
+                    "method": "direct",
+                    "raw_match": null,
+                    "parsed_range": null,
+                    "matched_pattern": null,
+                    "conservative": null,
+                    "notes": null,
+                    "similarity": null,
+                    "canonical_phrase": null
+                },
+                "standardization": null
+            }
+        },
+        "combase_model": {
+            "organism": "LISTERIA_MONOCYTOGENES",
+            "organism_id": "lm",
+            "organism_display_name": "Listeria monocytogenes/innocua",
+            "model_type": "growth",
+            "model_id": 1,
+            "coefficients_str": "-18.851;0.2409;4.2628;6.36771;0;0;0;-0.00332;-0.31377;-43.1241;0;0;0;0;0",
+            "valid_ranges": {
+                "temperature_celsius": [
+                    1.0,
+                    40.0
+                ],
+                "ph": [
+                    4.4,
+                    7.5
+                ],
+                "water_activity": [
+                    0.934,
+                    1.0
+                ]
+            },
+            "selection_reason": "LLM inference (implied_model_type field)"
+        },
+        "audit": {
+            "range_clamps": [
+                {
+                    "field_name": "water_activity",
+                    "original_value": 0.76,
+                    "clamped_value": 0.934,
+                    "valid_min": 0.934,
+                    "valid_max": 1.0,
+                    "reason": "Model constraint"
+                }
+            ],
+            "defaults_imputed": [],
+            "warnings": [
+                "Water activity 0.76 is outside the model's valid range [0.934, 1.0]; clamped to 0.934. Prediction is at the model boundary."
+            ]
+        },
+        "system": {
+            "rag_store_hash": "496c0db5593c9144",
+            "rag_ingested_at": "2026-05-04T16:50:56.948718+00:00",
+            "source_csv_audit_date": "2026-05-04T16:35:08.373788+00:00",
+            "ptm_version": "6d71349",
+            "combase_model_table_hash": "87546d35af5755b1"
+        }
+    }
+}

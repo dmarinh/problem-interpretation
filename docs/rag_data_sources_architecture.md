@@ -119,7 +119,7 @@ This separation allows the same CSV loader to be used for food properties, patho
 
 | File | Records | Source | Purpose |
 |------|---------|--------|---------|
-| `food_properties.csv` | 259 | FDA-PH-2007, IFT-2003 | Food pH and water activity |
+| `food_properties.csv` | 252 | FDA-PH-2007, IFT-2003 | Food pH and water activity |
 | `pathogen_aw_limits.csv` | 14 | IFT-2003-T32 | Pathogen growth limits |
 | `pathogen_characteristics.csv` | 30 | CDC-2011-T3 | Epidemiology (illnesses, deaths) |
 | `pathogen_transmission_details.csv` | 27 | CDC-2011-A1 | Transmission routes, % foodborne |
@@ -572,7 +572,7 @@ For a completely new domain (e.g., chemical hazards):
 - Run `python -m cli.rag_admin --clear` to reload
 
 **Citation tags not appearing in LLM output**:
-- Verify CSV has `source_id` column
+- Verify CSV has `source_id` column (`food_properties.csv` uses `ph_source_id`/`aw_source_id` instead — the loader merges these into a single `source_id` in metadata)
 - Check loader appends `[{source_id}]` to document text
 
 **Metadata not filtering correctly**:

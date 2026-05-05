@@ -431,6 +431,39 @@ Four primary source documents, 14 registered source-IDs (tracked in `data/source
 | `tcs_classification_tables.csv` | 25 | IFT-2003-TA / TB | TCS classification rules |
 | `food_pathogen_hazards.csv` | — | Derived from IFT-2003-T1 + CDC-2011-T3 | Food-pathogen hazard records |
 
+**`food_properties.csv` schema** (current, as of 2026-05-04):
+`food_name`, `food_category`, `ph_min`, `ph_max`, `ph_source_id`, `aw_min`, `aw_max`, `aw_source_id`, `notes`
+
+Per-field source attribution: `ph_source_id` is the registered authority for pH values; `aw_source_id` is the registered authority for water activity values. Both columns are validated against `data/sources/source_references.csv` at ingestion. 248 rows share the same source for pH and aw; 4 rows (cheese parmesan, bread white, honey, maple syrup) have distinct per-field sources.
+
+Example row — single source (butter):
+
+| column | value |
+|---|---|
+| `food_name` | butter |
+| `food_category` | dairy |
+| `ph_min` | 6.1 |
+| `ph_max` | 6.4 |
+| `ph_source_id` | IFT-2003-T33 |
+| `aw_min` | *(empty)* |
+| `aw_max` | *(empty)* |
+| `aw_source_id` | *(empty)* |
+| `notes` | Fresh butter |
+
+Example row — dual source (honey):
+
+| column | value |
+|---|---|
+| `food_name` | honey |
+| `food_category` | sweetener |
+| `ph_min` | 3.7 |
+| `ph_max` | 4.2 |
+| `ph_source_id` | FDA-PH-2007 |
+| `aw_min` | 0.75 |
+| `aw_max` | 0.75 |
+| `aw_source_id` | IFT-2003-T31 |
+| `notes` | Raw honey |
+
 ### 6.3 Extraction and audit history
 
 **2026-03-11** — Initial extraction from 5 source PDFs, performed by a prior Claude model (Opus 4.5).
@@ -659,11 +692,15 @@ The alternative — refusing the prediction outright — was rejected as less pr
 **Known limitation.** When a value is range-narrowed AND then clamped on the same field, the per-field `standardization` block records only the clamp (last event wins). The pre-clamp range is recoverable from the `extraction.parsed_range` field. A future refactor making the standardization block a list rather than a single object will resolve this; see §16.
 
 ### 8.11 Multi-source citation attribution
-**Status:** ✅ Architectural (Phase 9.3, April 2026).
+**Status:** ✅ Architectural (Phase 9.3, April 2026). CSV schema migrated to per-field columns 2026-05-04.
 
-The `food_properties.csv` schema allows only one `source_id` per row, but some rows carry values from two sources (e.g., bread white draws pH from FDA-PH-2007 and aw from IFT-2003-T31 Table 3-1). At ingestion, the document-builder parses the row's `notes` field for additional `[SOURCE-ID]` patterns and merges them into the document's source list, validated against `data/sources/source_references.csv`. The retrieval response then reports both source_ids and full bibliographic citations.
+`food_properties.csv` carries dedicated per-field source columns: `ph_source_id` (the registered authority for pH values) and `aw_source_id` (the registered authority for water activity values). At ingestion, `load_food_properties()` reads these two columns directly and derives the document's source list as an ordered, deduplicated union — pH source first, aw source second if different — via `dict.fromkeys`. The merged string is stored in ChromaDB metadata as `source_id`; the retrieval response reports both sources and full bibliographic citations where two sources are present.
 
-This fix does NOT establish per-field attribution (which source supports pH vs which supports aw); per-field attribution requires a CSV schema migration that is filed but not scheduled. Per-row multi-source attribution is the current state and is sufficient for regulatory cross-checking.
+Of the 252 rows, 248 share the same source for pH and aw (stored `source_id` is a single ID); 4 rows (cheese parmesan, bread white, honey, maple syrup) have `ph_source_id=FDA-PH-2007` and `aw_source_id=IFT-2003-T31`, producing stored `source_id="FDA-PH-2007,IFT-2003-T31"`.
+
+Validation at ingestion: any row with a populated pH or aw range must declare the corresponding source ID, and every declared source ID must be registered in `data/sources/source_references.csv`. Either condition failing raises `ValueError` that aborts ingestion. A row-count sanity check (`EXPECTED_FOOD_PROPERTIES_COUNT = 252`) fires at end of function.
+
+The per-field schema in principle would support surfacing per-field sources at the retrieval-block level (pH retrieval shows only the pH source; aw retrieval shows only the aw source). The current implementation deliberately preserves the union behavior to maintain the audit-shape contract documented through test journal Q01–Q17 and the frontend Zod alignment. A future audit-evolution piece of work could change this; the per-field schema is the prerequisite that has now been put in place.
 
 ### 8.12 RAG store provenance manifest
 **Status:** ✅ Architectural (Phase 9.3, April 2026).
@@ -720,7 +757,7 @@ Ground truth for this system is not a single correct answer per query but the di
 | Grounding Service | ✅ Complete | Rules + RAG integration; embedding fallback. Range-bound selection moved out (now in Standardization, §8.8). Rule details (matched_pattern, conservative, notes, similarity, canonical_phrase) propagated to provenance. |
 | Standardization Service | ✅ Complete | Range-bound selection (model-type aware), default imputation, range clamping. No bias-correction layer (§8.7). |
 | ComBase Engine | ✅ Complete | Growth, thermal inactivation, non-thermal survival. Out-of-range inputs are clamped (§8.10). |
-| RAG System | ✅ Complete | ChromaDB + reranking; verification queries; manifest at ingestion (§8.12); multi-source citation attribution from notes field (§8.11). |
+| RAG System | ✅ Complete | ChromaDB + reranking; verification queries; manifest at ingestion (§8.12); multi-source citation attribution from per-field CSV columns (§8.11). |
 | RAG Data Population | 🟡 Partial | CDC-2019 not yet merged into pathogen_characteristics |
 | Orchestrator | ✅ Complete | Audit metadata captured post-standardization; `field_audit` is canonical, legacy `provenance` array auto-derived |
 | API (`/api/v1/translate`) | ✅ Live | `verbose=true` exposes the full structured audit shape |
@@ -863,6 +900,7 @@ The following inconsistencies present in v1.1 have been resolved in v1.2:
 | 1.0 | 2026-04-24 | Initial consolidated context document. Covers PTM core + benchmark suite through end of Phase 9.1. Synthesises 15+ source files (technical doc, issues, sensitivity queries, grounding architecture, RAG system, extraction notes, benchmark experiments, dashboard specs) and the 2026-04-17 RAG audit. Naming normalised to PTM throughout. |
 | 1.1 | 2026-04-25 | Added §2 "Scientific philosophy and project vision" — captures the project thesis (LLMs as the means to model the previously-unmodellable human input/output layer of food safety assessment), the Holistic Risk Model three-layer framing, the three work packages with PTM as WP1, the two distinct sources of variability (human + LLM stochasticity), the scientific framing for biology-oriented audiences, the case for curated RAG over frontier-model web search, and the strategic ComBase integration target. Sections 3–15 renumbered accordingly (cross-references updated throughout). The philosophy is the lens for evaluating future design decisions but is explicitly not immutable. |
 | 1.2 | 2026-04-28 | Major audit-trail and architecture cleanup landed. Phases 9.2 / 9.3 / 9.4 closed. Specific changes: (a) range-bound selection moved from GroundingService to StandardizationService — §5.2, §5.3, §8.8; (b) bias-correction layer removed entirely (no duration multiplier, no temperature bump) — §5.3, §8.1, §8.7; (c) confidence numbers removed (per-rule, per-field, overall, intent) — §5.2, §5.6, §8.7; (d) audit metadata captured post-standardization with structured per-field `standardization` block populated for all events — §5.5, §5.6, §8.9; (e) out-of-range values clamped (not extrapolated) with structured `RangeClampInfo` — §8.10; (f) multi-source citation attribution at ingestion — §8.11; (g) RAG manifest at ingestion for store provenance stamping — §8.12; (h) default organism imputation as structured event — §8.13; (i) thermal_inactivation routing fixed via intent classifier prompt — §10.1. Closed inconsistencies #2 (default_ph_neutral), #3 (bias direction), #6 (audit pre-standardization snapshot), and removed `bias_corrections` from response shape. Standardization-block-as-a-list refactor filed in §16 as a deferred future enhancement. Older tech docs (`problem_translation_module_complete_techincal_documentation.md`, `grounding_service_documentation.md`, `grounding_service_architecture_expanded.md`) are now formally out of date pending replacement by a `specifications.md` reverse-engineered from the codebase (planned). |
+| 1.3 | 2026-05-04 | `food_properties.csv` schema migrated from a single `source_id` column to per-field `ph_source_id` / `aw_source_id` columns. `load_food_properties()` rewritten to read these columns directly; notes-parsing workaround (`_BRACKET_RE`, `_PROSE_RE`, `_parse_extra_source_ids`) deleted. Row-count sanity check (`EXPECTED_FOOD_PROPERTIES_COUNT = 252`) and per-field validation (empty-source, unknown-source) added. `TestMultiSourceAttribution` in `tests/unit/test_ingestion.py` replaced with 9 new tests covering the per-field schema. §6.2 updated with schema table + example rows; §8.11 rewritten; §10.1 RAG System note updated. Externally-visible audit shape (`top_match.source_ids`, `full_citations`) unchanged — audit-shape contract from test journal Q01–Q17 preserved. |
 
 ---
 

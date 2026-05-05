@@ -558,13 +558,9 @@ All files in `data/rag/`. Loaded by `app/rag/data_sources/food_safety.py`.
 
 `IngestionPipeline.ingest_text()` calls `TextLoader.chunk_text()` to split text, then adds chunks to ChromaDB via `VectorStore.add_documents()`.
 
-**Document construction for food_properties.csv:** Each row produces a natural-language sentence. The `notes` field is appended as-is. Two regex patterns parse additional source IDs from the `notes` field:
-- Bracket style: `[IFT-2003-T31]` — matched by `_BRACKET_RE = re.compile(r'\[([A-Z]{2,}-\d{4}[A-Z0-9\-]*)\]')`
-- Prose style: `"aw 0.94-0.97 from IFT-2003-T31"` — matched by `_PROSE_RE = re.compile(r'\bfrom\s+([A-Z]{2,}-\d{4}[A-Z0-9\-]*)')`
+**Document construction for food_properties.csv:** Each row produces a natural-language sentence. The `notes` field is appended as-is. Source attribution is read from dedicated per-field columns: `ph_source_id` (authority for pH values) and `aw_source_id` (authority for water activity values). The document's source list is derived as an ordered, deduplicated union — pH source first, aw source second if different — via `dict.fromkeys`. Each source ID is appended as a `[SOURCE-ID]` tag to the document text; the merged comma-separated string is stored in ChromaDB metadata as `source_id`.
 
-Extracted source IDs are validated against `data/sources/source_references.csv`. Valid IDs are merged with the row's primary `source_id` (comma-separated) and appended as `[SOURCE-ID]` tags to the document text. The merged `source_id` is stored in ChromaDB metadata.
-
-**This is a workaround for the one-source-per-row CSV schema limitation.** Multi-source attribution at the row level, not at the field level (which source supports pH vs. aw is not tracked separately).
+Validation at ingestion: any row with a populated pH or aw range must declare its source ID; every declared source ID must appear in `data/sources/source_references.csv`. Either condition failing raises `ValueError` that aborts ingestion. `EXPECTED_FOOD_PROPERTIES_COUNT = 252` is asserted at end of function (`food_safety.py:169`).
 
 ### 6.3 RAG Manifest
 

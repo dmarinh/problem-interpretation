@@ -332,3 +332,25 @@ The Priority 2 heuristic is a fragile fallback: it hardcodes vocabulary assumpti
 **Action:** When a new value source is added (user input, RAG fallback, clarification response), check it against the existing schema models for every range-capable field. If the new source's schema lacks range fields that an existing source has, the new path will silently flatten ranges — and the audit will show a single value as if the user never provided a range. The pattern: every source path should produce a structurally identical audit for the same kind of input. Divergence in audit shape signals divergence in code paths.
 
 **Reference:** `app/models/extraction.py` (`ExtractedEnvironmentalConditions`), `app/services/grounding/grounding_service.py` (`_ground_environmental_conditions`), `app/services/extraction/semantic_parser.py` (`SCENARIO_EXTRACTION_PROMPT` line 72).
+
+---
+
+### 2026-05-04 — Completing a deferred migration: notes-parser workaround → per-field schema
+
+**Context:** The 2026-04-28 session (§8.11 audit entry) introduced a notes-parser workaround to handle multi-source rows in `food_properties.csv`. The lesson recorded there noted it as a deliberate stop-gap pending a CSV schema migration. This session executed that migration.
+
+**What went well**
+
+- **The workaround was small and self-contained enough to delete entirely.** `_BRACKET_RE`, `_PROSE_RE`, `_parse_extra_source_ids`, and `import re` were all removed in one pass. The pre-migration discovery report (`migration_artifacts/multi_source_rows.md`) had already identified the exact 4 multi-source rows and proposed the per-field values, so implementation had no ambiguity.
+
+- **Code review surfaced three real issues after initial implementation.** The `row_idx` comment overclaimed alignment with `rag_audit_changelog.md` (only true when no comment rows exist in the CSV); `_valid_source_ids()` was called inside the loop rather than hoisted; and the sanity-check test's `match=` pattern was too narrow. All three were corrected before closing.
+
+- **The externally-visible audit shape was unchanged.** `top_match.source_ids` and `full_citations` for multi-source rows continue to emit both `FDA-PH-2007` and `IFT-2003-T31` — the mechanism changed from notes-parsing to column reads, but consumers see identical data.
+
+**Failure mode pattern: deferred migrations are cheapest when discovery artifacts are already written**
+
+The reason this migration completed cleanly in one session is that `migration_artifacts/multi_source_rows.md` pre-classified every row, confirmed zero registry-rejected candidates, and proposed exact `ph_source_id`/`aw_source_id` values. The CSV migration and the ingestion rewrite both had zero ambiguity. File the discovery artifact at deferral time, not at migration time.
+
+**What to do differently**
+
+- When a workaround is filed as deferred, note in the same session the exact artifact needed to make the migration unambiguous (discovery report, proposed values, etc.). This was done well here — `multi_source_rows.md` was written before the deferral — but make it an explicit step in the deferral workflow.

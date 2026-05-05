@@ -1,6 +1,6 @@
 ---
 name: Project Architecture & Safety Invariants
-description: Core architecture, safety-critical invariants, and canonical patterns discovered during Phase 2–7 reviews + Phase 3 two-tier RAG review
+description: Core architecture, safety-critical invariants, and canonical patterns discovered during Phase 2–7 reviews + Phase 3 two-tier RAG review + food_properties migration review (2026-05-04)
 type: project
 ---
 
@@ -186,3 +186,16 @@ Pipeline: User Query → SemanticParser (LLM) → GroundingService (RAG + rules)
 - `test_field_accuracy_heatmap_colorscale_has_exactly_six_stops` is fragile — any stop addition breaks it.
 - test_viz_model_comparison.py mirrored helper is identical to the production expression — if the page
   expression changes without updating the mirror, tests continue to pass against the stale copy.
+
+## food_properties.csv Migration (2026-05-04): per-field source columns
+- Migrated from single `source_id` column + notes-parsing workaround to dedicated `ph_source_id` / `aw_source_id` columns
+- `EXPECTED_FOOD_PROPERTIES_COUNT = 252` constant in food_safety.py (after 2026-04-17 audit removed 7 rows)
+- `_valid_source_ids()` is `lru_cache(maxsize=1)` — tests bypass via `monkeypatch.setattr(fs, '_valid_source_ids', lambda: ...)`. This works because the bare-name call inside `load_food_properties` resolves via the module's `__dict__`, which monkeypatch modifies directly.
+- Validation order: empty-source check fires BEFORE unknown-source check (correct — empty source cannot be unknown).
+- `row_idx = records - 1` in error messages: this is 0-indexed DATA row count (comment-skipped rows excluded), NOT CSV file line number. If comment rows precede the error row, row_idx will not match the rag_audit_changelog "Row (original)" column.
+- Sanity check placement: after the loop, before `return` — correct.
+- No rows exist in current CSV with neither ph nor aw data; no whitespace-only source IDs.
+- `valid_ids = _valid_source_ids()` is called inside the loop (once per row). With lru_cache, the cost is one frozenset lookup per call — negligible but could be hoisted to before the loop for clarity.
+- `test_notes_field_does_not_contribute_to_source_ids` IS a genuine proof: IFT-2003-T31 appears in notes but NOT in ph_source_id/aw_source_id; the test confirms it is absent from stored source_id. Would fail if notes were parsed.
+- Source ID validation when source_references.csv is missing: `_valid_source_ids()` returns `frozenset()`, causing any non-empty source ID to fail validation. Correct fail-safe behavior.
+- chunk_size=512, food_properties docs are ~90-150 chars → always 1 chunk per row. Comment in sanity check about "food_properties_0..food_properties_251" IDs is accurate for current data but fragile: depends on 1 chunk per row assumption.

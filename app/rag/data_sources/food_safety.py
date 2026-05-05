@@ -17,7 +17,6 @@ Sources:
 """
 
 import csv
-import re
 from functools import lru_cache
 from pathlib import Path
 from dataclasses import dataclass
@@ -28,12 +27,6 @@ from app.rag.ingestion import IngestionPipeline
 
 # Path to the authoritative source ID registry, relative to this file.
 _SOURCE_REF_CSV = Path(__file__).parent.parent.parent.parent / "data" / "sources" / "source_references.csv"
-
-# Two patterns that appear in notes fields when a row's values come from two sources
-# (changelog entries #14-17).  Bracket style: [IFT-2003-T31].
-# Prose style: "aw 0.94-0.97 from IFT-2003-T31 Table 3-1".
-_BRACKET_RE = re.compile(r'\[([A-Z]{2,}-\d{4}[A-Z0-9\-]*)\]')
-_PROSE_RE = re.compile(r'\bfrom\s+([A-Z]{2,}-\d{4}[A-Z0-9\-]*)')
 
 
 @lru_cache(maxsize=1)
@@ -46,19 +39,6 @@ def _valid_source_ids() -> frozenset:
         return frozenset(row["source_id"] for row in reader if row.get("source_id"))
 
 
-def _parse_extra_source_ids(notes: str, valid_ids: frozenset) -> list[str]:
-    """
-    Extract additional source IDs embedded in a notes field and validate against
-    the registry.  Returns only IDs that appear in valid_ids so table references
-    like "Table 3-1" are not misidentified as source identifiers.
-    """
-    candidates: set[str] = set()
-    for m in _BRACKET_RE.finditer(notes):
-        candidates.add(m.group(1))
-    for m in _PROSE_RE.finditer(notes):
-        candidates.add(m.group(1))
-    return [sid for sid in candidates if sid in valid_ids]
-
 
 @dataclass
 class LoadResult:
@@ -68,6 +48,12 @@ class LoadResult:
     records_processed: int
     success: bool
     error: Optional[str] = None
+
+
+# Expected row count in the production food_properties.csv (252 after 2026-04-17 audit).
+# Update this constant if rows are deliberately added or removed from the CSV,
+# and log the change in data/rag/rag_audit_changelog.md.
+EXPECTED_FOOD_PROPERTIES_COUNT = 252
 
 
 def load_food_properties(pipeline: IngestionPipeline, data_dir: Path) -> LoadResult:
@@ -82,13 +68,14 @@ def load_food_properties(pipeline: IngestionPipeline, data_dir: Path) -> LoadRes
     
     chunks = 0
     records = 0
-    
+    valid_ids = _valid_source_ids()
+
     with open(file_path, "r", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
             if not row.get("food_name") or row["food_name"].startswith("#"):
                 continue
-            
+
             records += 1
             
             # Build semantic document
@@ -115,15 +102,44 @@ def load_food_properties(pipeline: IngestionPipeline, data_dir: Path) -> LoadRes
             
             doc = ": ".join(parts[:2]) + ". " + ". ".join(parts[2:]) if len(parts) > 2 else ": ".join(parts)
             
-            # Merge column source_id with any secondary sources cited in notes.
-            # Some rows carry values from two references but the schema has one
-            # source_id column; the secondary appears in notes as prose or bracket
-            # style (changelog entries #14-17).  Stored comma-separated so the
-            # grounding service, which already splits on comma, picks them both up.
-            source_id = row.get("source_id", "")
-            notes_text = row.get("notes", "")
-            extra = _parse_extra_source_ids(notes_text, _valid_source_ids())
-            all_source_ids = list(dict.fromkeys(([source_id] if source_id else []) + extra))
+            # Per-field source attribution from dedicated CSV columns.
+            # pH source is listed first; aw source follows if different from pH source.
+            # This ordering is deliberate: pH is the primary field in the combined
+            # Tier 1 query; aw is secondary and often sourced from a different table.
+            # dict.fromkeys preserves insertion order and removes duplicates.
+            ph_source = row.get("ph_source_id", "").strip()
+            aw_source = row.get("aw_source_id", "").strip()
+
+            # records is 1-indexed at this point (incremented above).
+            # row_idx counts accepted data rows only (comment/blank rows excluded).
+            # For a CSV with no comment rows this matches the rag_audit_changelog "row_index" column.
+            row_idx = records - 1
+
+            # Validation: a populated range must declare its source.
+            has_ph = bool(row.get("ph_min", "").strip() or row.get("ph_max", "").strip())
+            has_aw = bool(row.get("aw_min", "").strip() or row.get("aw_max", "").strip())
+            if has_ph and not ph_source:
+                raise ValueError(
+                    f"Row {row_idx} ({row['food_name']!r}): ph_min/ph_max populated "
+                    f"but ph_source_id is empty"
+                )
+            if has_aw and not aw_source:
+                raise ValueError(
+                    f"Row {row_idx} ({row['food_name']!r}): aw_min/aw_max populated "
+                    f"but aw_source_id is empty"
+                )
+            if ph_source and ph_source not in valid_ids:
+                raise ValueError(
+                    f"Row {row_idx} ({row['food_name']!r}): ph_source_id "
+                    f"{ph_source!r} not found in source_references.csv"
+                )
+            if aw_source and aw_source not in valid_ids:
+                raise ValueError(
+                    f"Row {row_idx} ({row['food_name']!r}): aw_source_id "
+                    f"{aw_source!r} not found in source_references.csv"
+                )
+
+            all_source_ids = list(dict.fromkeys(s for s in [ph_source, aw_source] if s))
             merged_source_id = ",".join(all_source_ids)
 
             for sid in all_source_ids:
@@ -146,7 +162,16 @@ def load_food_properties(pipeline: IngestionPipeline, data_dir: Path) -> LoadRes
             
             if result["success"]:
                 chunks += result["chunks"]
-    
+
+    # Sanity check: confirm the production CSV has not silently gained or lost rows.
+    if records != EXPECTED_FOOD_PROPERTIES_COUNT:
+        raise ValueError(
+            f"food_properties.csv: expected {EXPECTED_FOOD_PROPERTIES_COUNT} data rows, "
+            f"found {records}. If the CSV was intentionally updated, "
+            f"change EXPECTED_FOOD_PROPERTIES_COUNT in food_safety.py and log "
+            f"the change in data/rag/rag_audit_changelog.md."
+        )
+
     return LoadResult("food_properties", chunks, records, True)
 
 

@@ -1,0 +1,295 @@
+{
+    "success": true,
+    "session_id": "72bf1001-38a8-411f-ad07-7c9abb8338b2",
+    "status": "completed",
+    "created_at": "2026-05-04T16:53:37.495752",
+    "completed_at": "2026-05-04T16:53:44.002289",
+    "original_query": "Our chicken was held at 4 C for 24 hours, then transferred to a truck where it spent 6 hours at 13 C. Predict pathogen growth across the whole period.",
+    "prediction": {
+        "organism": "SALMONELLA",
+        "model_type": "growth",
+        "engine": "combase_local",
+        "temperature_celsius": 7.0,
+        "duration_minutes": 1800.0,
+        "ph": 6.4,
+        "water_activity": 1.0,
+        "mu_max": 0.0302690239882967,
+        "doubling_time_hours": 22.899555031174632,
+        "total_log_increase": 0.6585624439341016,
+        "is_multi_step": true,
+        "steps": [
+            {
+                "step_order": 1,
+                "temperature_celsius": 7.0,
+                "duration_minutes": 1440.0
+            },
+            {
+                "step_order": 2,
+                "temperature_celsius": 13.0,
+                "duration_minutes": 360.0
+            }
+        ],
+        "step_predictions": [
+            {
+                "step_order": 1,
+                "temperature_celsius": 7.0,
+                "duration_minutes": 1440.0,
+                "mu_max": 0.0302690239882967,
+                "log_increase": 0.315496082177146
+            },
+            {
+                "step_order": 2,
+                "temperature_celsius": 13.0,
+                "duration_minutes": 360.0,
+                "mu_max": 0.1316565817482114,
+                "log_increase": 0.34306636175695554
+            }
+        ],
+        "growth_description": "Moderate growth: 0.7 log increase (~5x population)"
+    },
+    "provenance": [
+        {
+            "field": "ph",
+            "value": "6.4",
+            "source": "rag_retrieval_fallback",
+            "notes": "Range [6.2, 6.4] \u00e2\u2020\u2019 selected upper bound 6.4 (Range narrowed to upper bound for growth model (more pathogen growth/survival = more conservative))"
+        },
+        {
+            "field": "water_activity",
+            "value": "1.0",
+            "source": "rag_retrieval_fallback",
+            "notes": "Range [0.99, 1.0] \u00e2\u2020\u2019 selected upper bound 1.0 (Range narrowed to upper bound for growth model (more pathogen growth/survival = more conservative))"
+        },
+        {
+            "field": "organism",
+            "value": "Salmonellae",
+            "source": "rag_retrieval",
+            "notes": "Extracted via ranked_by_annual_deaths"
+        }
+    ],
+    "warnings": [
+        {
+            "type": "range_clamp",
+            "message": "Value 4.0 clamped to 7.0 (valid range: 7.0-40.0)",
+            "field": "temperature_celsius (step 1)"
+        },
+        {
+            "type": "warning",
+            "message": "Step 1: temperature 4.0\u00c2\u00b0C is outside the model's valid range [7.0, 40.0]\u00c2\u00b0C; clamped to 7.0\u00c2\u00b0C. Prediction is at the model boundary.",
+            "field": null
+        }
+    ],
+    "error": null,
+    "audit": {
+        "field_audit": {
+            "ph": {
+                "final_value": 6.4,
+                "source": "rag_retrieval_fallback",
+                "retrieval": {
+                    "query": "chicken pH acidity",
+                    "top_match": {
+                        "doc_id": "food_properties_24",
+                        "embedding_score": 0.6871,
+                        "rerank_score": 2.5013,
+                        "retrieved_text": "chicken (poultry): pH range 6.2 to 6.4. Raw chicken [IFT-2003-T33]",
+                        "source_ids": [
+                            "IFT-2003-T33"
+                        ],
+                        "full_citations": {
+                            "IFT-2003-T33": "Institute of Food Technologists (2003). Evaluation and Definition of Potentially Hazardous Foods. Comprehensive Reviews in Food Science and Food Safety 2(s1):1-108. Table 3-3 - pH ranges of foods. DOI: 10.1111/j.1541-4337.2003.tb00052.x"
+                        }
+                    },
+                    "runners_up": [
+                        {
+                            "doc_id": "food_properties_4",
+                            "content_preview": "milk acidophilus (dairy): pH range 4.09 to 4.25. Acidophilus milk [FDA-PH-2007]",
+                            "embedding_score": 0.553,
+                            "rerank_score": -4.8221
+                        },
+                        {
+                            "doc_id": "food_properties_136",
+                            "content_preview": "beets canned acidified (vegetable): pH range 4.3 to 4.6. Acidified canned beets [FDA-PH-2007]",
+                            "embedding_score": 0.4857,
+                            "rerank_score": -5.442
+                        }
+                    ],
+                    "reranker_top": null,
+                    "attempted_top": null
+                },
+                "extraction": {
+                    "method": "regex+llm",
+                    "raw_match": "6.2 to 6.4",
+                    "parsed_range": [
+                        6.2,
+                        6.4
+                    ],
+                    "matched_pattern": null,
+                    "conservative": null,
+                    "notes": null,
+                    "similarity": null,
+                    "canonical_phrase": null
+                },
+                "standardization": {
+                    "rule": "range_bound_selection",
+                    "direction": "upper",
+                    "before_value": [
+                        6.2,
+                        6.4
+                    ],
+                    "after_value": 6.4,
+                    "reason": "Range narrowed to upper bound for growth model (more pathogen growth/survival = more conservative)"
+                }
+            },
+            "water_activity": {
+                "final_value": 1.0,
+                "source": "rag_retrieval_fallback",
+                "retrieval": {
+                    "query": "chicken water activity aw moisture",
+                    "top_match": {
+                        "doc_id": "food_properties_26",
+                        "embedding_score": 0.7145,
+                        "rerank_score": 3.3422,
+                        "retrieved_text": "fresh poultry (poultry): water activity 0.99 to 1.0. All fresh poultry [IFT-2003-T31]",
+                        "source_ids": [
+                            "IFT-2003-T31"
+                        ],
+                        "full_citations": {
+                            "IFT-2003-T31": "Institute of Food Technologists (2003). Evaluation and Definition of Potentially Hazardous Foods. Comprehensive Reviews in Food Science and Food Safety 2(s1):1-108. Table 3-1 - Water activity values. DOI: 10.1111/j.1541-4337.2003.tb00052.x"
+                        }
+                    },
+                    "runners_up": [
+                        {
+                            "doc_id": "food_properties_25",
+                            "content_preview": "fresh meat (meat): water activity 0.99 to 1.0. All fresh meats [IFT-2003-T31]",
+                            "embedding_score": 0.5505,
+                            "rerank_score": -2.7596
+                        },
+                        {
+                            "doc_id": "food_properties_27",
+                            "content_preview": "cured meat (meat): water activity 0.87 to 0.95. Variable by cure level [IFT-2003-T31]",
+                            "embedding_score": 0.5138,
+                            "rerank_score": -3.1306
+                        }
+                    ],
+                    "reranker_top": null,
+                    "attempted_top": null
+                },
+                "extraction": {
+                    "method": "regex+llm",
+                    "raw_match": "0.99 to 1.0",
+                    "parsed_range": [
+                        0.99,
+                        1.0
+                    ],
+                    "matched_pattern": null,
+                    "conservative": null,
+                    "notes": null,
+                    "similarity": null,
+                    "canonical_phrase": null
+                },
+                "standardization": {
+                    "rule": "range_bound_selection",
+                    "direction": "upper",
+                    "before_value": [
+                        0.99,
+                        1.0
+                    ],
+                    "after_value": 1.0,
+                    "reason": "Range narrowed to upper bound for growth model (more pathogen growth/survival = more conservative)"
+                }
+            },
+            "organism": {
+                "final_value": "Salmonellae",
+                "source": "rag_retrieval",
+                "retrieval": {
+                    "query": "chicken food hazard",
+                    "top_match": {
+                        "doc_id": "pathogen_hazards_370",
+                        "embedding_score": 0.753,
+                        "rerank_score": 6.1693,
+                        "retrieved_text": "Hazard for chicken raw: Salmonella spp. (case fatality rate <1%, 238 annual US deaths, primary hazard). Control: cooking to 74C; prevent cross-contamination. Most common pathogen in poultry. Leading cause of foodborne deaths by incidence. [CDC-2019-T1T2]",
+                        "source_ids": [
+                            "CDC-2019-T1T2"
+                        ],
+                        "full_citations": {
+                            "CDC-2019-T1T2": "Scallan Walter EJ, Cui Z, Tierney R, Griffin PM, Hoekstra RM, Payne DC, Rose EB, Devine C, Namwase AS, Mirza SA, Kambhampati AK, Straily A, Bruce BB (2025). Foodborne Illness Acquired in the United States\u00e2\u20ac\u201dMajor Pathogens 2019. Emerging Infectious Diseases 31(4):669-677. Tables 1 and 2 - Estimated illnesses hospitalizations and deaths circa 2019. DOI: 10.3201/eid3104.240913"
+                        }
+                    },
+                    "runners_up": [
+                        {
+                            "doc_id": "pathogen_hazards_371",
+                            "content_preview": "Hazard for chicken raw: Campylobacter jejuni (case fatality rate <1%, 197 annual US deaths, primary hazard). Control: co",
+                            "embedding_score": 0.682,
+                            "rerank_score": 6.0857
+                        },
+                        {
+                            "doc_id": "pathogen_hazards_372",
+                            "content_preview": "Hazard for chicken raw: Listeria monocytogenes (case fatality rate 15-30%, 172 annual US deaths, secondary hazard). Cont",
+                            "embedding_score": 0.7021,
+                            "rerank_score": 5.7495
+                        }
+                    ],
+                    "reranker_top": null,
+                    "attempted_top": null
+                },
+                "extraction": {
+                    "method": "ranked_by_annual_deaths",
+                    "raw_match": null,
+                    "parsed_range": null,
+                    "matched_pattern": null,
+                    "conservative": null,
+                    "notes": null,
+                    "similarity": null,
+                    "canonical_phrase": null
+                },
+                "standardization": null
+            }
+        },
+        "combase_model": {
+            "organism": "SALMONELLA",
+            "organism_id": "ss",
+            "organism_display_name": "Salmonellae",
+            "model_type": "growth",
+            "model_id": 1,
+            "coefficients_str": "-11.906;0.3649;1.7832;7.00019;-0.00442;0;0;-0.00458;-0.12539;-62.114;0;0;0;0;0",
+            "valid_ranges": {
+                "temperature_celsius": [
+                    7.0,
+                    40.0
+                ],
+                "ph": [
+                    3.9,
+                    7.4
+                ],
+                "water_activity": [
+                    0.973,
+                    1.0
+                ]
+            },
+            "selection_reason": "LLM inference (implied_model_type field)"
+        },
+        "audit": {
+            "range_clamps": [
+                {
+                    "field_name": "temperature_celsius (step 1)",
+                    "original_value": 4.0,
+                    "clamped_value": 7.0,
+                    "valid_min": 7.0,
+                    "valid_max": 40.0,
+                    "reason": "Model constraint for growth"
+                }
+            ],
+            "defaults_imputed": [],
+            "warnings": [
+                "Step 1: temperature 4.0\u00c2\u00b0C is outside the model's valid range [7.0, 40.0]\u00c2\u00b0C; clamped to 7.0\u00c2\u00b0C. Prediction is at the model boundary."
+            ]
+        },
+        "system": {
+            "rag_store_hash": "496c0db5593c9144",
+            "rag_ingested_at": "2026-05-04T16:50:56.948718+00:00",
+            "source_csv_audit_date": "2026-05-04T16:35:08.373788+00:00",
+            "ptm_version": "6d71349",
+            "combase_model_table_hash": "87546d35af5755b1"
+        }
+    }
+}

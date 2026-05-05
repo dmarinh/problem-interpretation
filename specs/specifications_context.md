@@ -52,7 +52,7 @@ The following design decisions are settled. The spec should describe them as the
 
 6. **Empty audit categories emit truly empty arrays `[]`**, not sentinel strings like `["(none applied)"]`. The "(none applied)" rendering is a UI concern. If you find sentinel-emission anywhere in the backend, it's a regression and should be flagged in the deliverable summary.
 
-7. **Multi-source citation attribution at ingestion**: when a `food_properties.csv` row's `notes` field references additional source IDs (in `[SOURCE-ID]` or "from SOURCE-ID" form), those are parsed at ingestion and added to the document's source list. Validate against `data/sources/source_references.csv`. This is a workaround for the row-level single-source-id schema constraint.
+7. **Multi-source citation attribution at ingestion**: `food_properties.csv` carries dedicated `ph_source_id` and `aw_source_id` columns. `load_food_properties()` reads these directly and derives the document's source list as an ordered, deduplicated union (pH source first, aw source second if different) via `dict.fromkeys`. Every source ID is validated against `data/sources/source_references.csv` before ingestion; `EXPECTED_FOOD_PROPERTIES_COUNT = 252` is asserted at end of function.
 
 8. **RAG provenance manifest** is written at ingestion alongside the ChromaDB persistence directory: `rag_store_hash`, `rag_ingested_at`, `source_csv_audit_date`. The orchestrator reads it at request time to populate the `system` block. When the manifest is missing, the system fields are emitted as null and a warning ("RAG manifest missing — store provenance unknown") is added.
 
@@ -66,7 +66,6 @@ These items are deliberately out of scope for the current spec and should be not
 
 - **Standardization-block-as-a-list refactor.** Currently when both range_bound_selection and range_clamp fire on the same field, only the clamp is recorded on the per-field `standardization` block (last-event-wins). The pre-clamp range is recoverable from `extraction.parsed_range`. A future refactor will make the block a list.
 - **Sourcing of `rules.py` interpretation values.** The current values are plausible defaults. Some are sourceable (refrigerator temperature, freezer temperature, room temperature). Some are convention-backed. Some are linguistic-only and not sourceable in any standard. A planned tier split will add `source_id` per rule.
-- **Per-field source attribution within multi-source food rows.** Currently the multi-source attribution is row-level (this row cites FDA-PH-2007 and IFT-2003-T31). Per-field attribution (pH cites FDA, aw cites IFT) requires a CSV schema migration.
 - **CDC-2019 pathogen rows merged into `pathogen_characteristics.csv`.** The source is registered but rows are not yet populated.
 - **Result Interpretation Module** (Phase 10).
 - **Multi-step scenarios with per-step model-type inference** (Phase 11).

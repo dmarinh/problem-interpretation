@@ -1,0 +1,332 @@
+{
+    "success": true,
+    "session_id": "67358d33-6eb2-4963-9409-3ef6ddcfbee1",
+    "status": "completed",
+    "created_at": "2026-05-04T16:52:30.264029",
+    "completed_at": "2026-05-04T16:52:33.134904",
+    "original_query": "Predict pathogen growth on a slice of white bread at 25 C for 4 hours.",
+    "prediction": {
+        "organism": "SALMONELLA",
+        "model_type": "growth",
+        "engine": "combase_local",
+        "temperature_celsius": 25.0,
+        "duration_minutes": 240.0,
+        "ph": 6.2,
+        "water_activity": 0.973,
+        "mu_max": 0.5368264242391806,
+        "doubling_time_hours": 1.2911942282690554,
+        "total_log_increase": 0.9325630151477208,
+        "is_multi_step": false,
+        "steps": [
+            {
+                "step_order": 1,
+                "temperature_celsius": 25.0,
+                "duration_minutes": 240.0
+            }
+        ],
+        "step_predictions": [
+            {
+                "step_order": 1,
+                "temperature_celsius": 25.0,
+                "duration_minutes": 240.0,
+                "mu_max": 0.5368264242391806,
+                "log_increase": 0.9325630151477208
+            }
+        ],
+        "growth_description": "Moderate growth: 0.9 log increase (~9x population)"
+    },
+    "provenance": [
+        {
+            "field": "ph",
+            "value": "6.2",
+            "source": "rag_retrieval",
+            "notes": "Range [5.0, 6.2] \u00e2\u2020\u2019 selected upper bound 6.2 (Range narrowed to upper bound for growth model (more pathogen growth/survival = more conservative))"
+        },
+        {
+            "field": "water_activity",
+            "value": "0.973",
+            "source": "rag_retrieval",
+            "notes": "Clamped 0.97 \u00e2\u2020\u2019 0.973: Model constraint"
+        },
+        {
+            "field": "temperature_celsius",
+            "value": "25.0",
+            "source": "user_explicit",
+            "notes": "Extracted via direct"
+        },
+        {
+            "field": "duration_minutes",
+            "value": "240.0",
+            "source": "user_explicit",
+            "notes": "Extracted via direct"
+        },
+        {
+            "field": "organism",
+            "value": "Salmonella",
+            "source": "conservative_default",
+            "notes": "No pathogen specified. Using Salmonella as conservative default. Salmonella is a leading cause of foodborne illness and is broadly applicable across food categories."
+        }
+    ],
+    "warnings": [
+        {
+            "type": "range_clamp",
+            "message": "Value 0.97 clamped to 0.973 (valid range: 0.973-1.0)",
+            "field": "water_activity"
+        },
+        {
+            "type": "warning",
+            "message": "No pathogen specified. Using Salmonella as conservative default.",
+            "field": null
+        },
+        {
+            "type": "warning",
+            "message": "Water activity 0.97 is outside the model's valid range [0.973, 1.0]; clamped to 0.973. Prediction is at the model boundary.",
+            "field": null
+        }
+    ],
+    "error": null,
+    "audit": {
+        "field_audit": {
+            "ph": {
+                "final_value": 6.2,
+                "source": "rag_retrieval",
+                "retrieval": {
+                    "query": "slice of white bread pH water activity properties",
+                    "top_match": {
+                        "doc_id": "food_properties_211",
+                        "embedding_score": 0.7927,
+                        "rerank_score": 6.2453,
+                        "retrieved_text": "bread white (grain): pH range 5.0 to 6.2. water activity 0.94 to 0.97. White bread [FDA-PH-2007] [IFT-2003-T31]",
+                        "source_ids": [
+                            "FDA-PH-2007",
+                            "IFT-2003-T31"
+                        ],
+                        "full_citations": {
+                            "FDA-PH-2007": "FDA Center for Food Safety and Applied Nutrition (2007). Approximate pH of Foods and Food Products. FDA/CFSAN. Complete pH list. https://www.fda.gov/food/laboratory-methods-food/approximate-ph-foods-and-food-products",
+                            "IFT-2003-T31": "Institute of Food Technologists (2003). Evaluation and Definition of Potentially Hazardous Foods. Comprehensive Reviews in Food Science and Food Safety 2(s1):1-108. Table 3-1 - Water activity values. DOI: 10.1111/j.1541-4337.2003.tb00052.x"
+                        }
+                    },
+                    "runners_up": [
+                        {
+                            "doc_id": "food_properties_227",
+                            "content_preview": "bread crust (grain): water activity 0.3. Dried bread crust [IFT-2003-T31]",
+                            "embedding_score": 0.6295,
+                            "rerank_score": 0.617
+                        },
+                        {
+                            "doc_id": "food_properties_214",
+                            "content_preview": "bread pumpernickel (grain): pH 5.4. Pumpernickel bread [FDA-PH-2007]",
+                            "embedding_score": 0.5812,
+                            "rerank_score": -5.1229
+                        }
+                    ],
+                    "reranker_top": null,
+                    "attempted_top": null
+                },
+                "extraction": {
+                    "method": "regex",
+                    "raw_match": "5.0 to 6.2",
+                    "parsed_range": [
+                        5.0,
+                        6.2
+                    ],
+                    "matched_pattern": null,
+                    "conservative": null,
+                    "notes": null,
+                    "similarity": null,
+                    "canonical_phrase": null
+                },
+                "standardization": {
+                    "rule": "range_bound_selection",
+                    "direction": "upper",
+                    "before_value": [
+                        5.0,
+                        6.2
+                    ],
+                    "after_value": 6.2,
+                    "reason": "Range narrowed to upper bound for growth model (more pathogen growth/survival = more conservative)"
+                }
+            },
+            "water_activity": {
+                "final_value": 0.973,
+                "source": "rag_retrieval",
+                "retrieval": {
+                    "query": "slice of white bread pH water activity properties",
+                    "top_match": {
+                        "doc_id": "food_properties_211",
+                        "embedding_score": 0.7927,
+                        "rerank_score": 6.2453,
+                        "retrieved_text": "bread white (grain): pH range 5.0 to 6.2. water activity 0.94 to 0.97. White bread [FDA-PH-2007] [IFT-2003-T31]",
+                        "source_ids": [
+                            "FDA-PH-2007",
+                            "IFT-2003-T31"
+                        ],
+                        "full_citations": {
+                            "FDA-PH-2007": "FDA Center for Food Safety and Applied Nutrition (2007). Approximate pH of Foods and Food Products. FDA/CFSAN. Complete pH list. https://www.fda.gov/food/laboratory-methods-food/approximate-ph-foods-and-food-products",
+                            "IFT-2003-T31": "Institute of Food Technologists (2003). Evaluation and Definition of Potentially Hazardous Foods. Comprehensive Reviews in Food Science and Food Safety 2(s1):1-108. Table 3-1 - Water activity values. DOI: 10.1111/j.1541-4337.2003.tb00052.x"
+                        }
+                    },
+                    "runners_up": [
+                        {
+                            "doc_id": "food_properties_227",
+                            "content_preview": "bread crust (grain): water activity 0.3. Dried bread crust [IFT-2003-T31]",
+                            "embedding_score": 0.6295,
+                            "rerank_score": 0.617
+                        },
+                        {
+                            "doc_id": "food_properties_214",
+                            "content_preview": "bread pumpernickel (grain): pH 5.4. Pumpernickel bread [FDA-PH-2007]",
+                            "embedding_score": 0.5812,
+                            "rerank_score": -5.1229
+                        }
+                    ],
+                    "reranker_top": null,
+                    "attempted_top": null
+                },
+                "extraction": {
+                    "method": "regex",
+                    "raw_match": "0.94 to 0.97",
+                    "parsed_range": [
+                        0.94,
+                        0.97
+                    ],
+                    "matched_pattern": null,
+                    "conservative": null,
+                    "notes": null,
+                    "similarity": null,
+                    "canonical_phrase": null
+                },
+                "standardization": {
+                    "rule": "range_clamp",
+                    "direction": null,
+                    "before_value": 0.97,
+                    "after_value": 0.973,
+                    "reason": "Model constraint"
+                }
+            },
+            "temperature_celsius": {
+                "final_value": 25.0,
+                "source": "user_explicit",
+                "retrieval": null,
+                "extraction": {
+                    "method": "direct",
+                    "raw_match": null,
+                    "parsed_range": null,
+                    "matched_pattern": null,
+                    "conservative": null,
+                    "notes": null,
+                    "similarity": null,
+                    "canonical_phrase": null
+                },
+                "standardization": null
+            },
+            "duration_minutes": {
+                "final_value": 240.0,
+                "source": "user_explicit",
+                "retrieval": null,
+                "extraction": {
+                    "method": "direct",
+                    "raw_match": null,
+                    "parsed_range": null,
+                    "matched_pattern": null,
+                    "conservative": null,
+                    "notes": null,
+                    "similarity": null,
+                    "canonical_phrase": null
+                },
+                "standardization": null
+            },
+            "organism": {
+                "final_value": "Salmonella",
+                "source": "conservative_default",
+                "retrieval": {
+                    "query": "slice of white bread food hazard",
+                    "top_match": null,
+                    "runners_up": [
+                        {
+                            "doc_id": "pathogen_hazards_418",
+                            "content_preview": "Hazard for rice cooked: Clostridium perfringens (case fatality rate <1%, 41 annual US deaths, secondary hazard). Control",
+                            "embedding_score": 0.4162,
+                            "rerank_score": -8.5055
+                        },
+                        {
+                            "doc_id": "pathogen_hazards_417",
+                            "content_preview": "Hazard for rice cooked: Bacillus cereus (case fatality rate rare, 0 annual US deaths, primary hazard). Control: proper c",
+                            "embedding_score": 0.4532,
+                            "rerank_score": -8.7264
+                        }
+                    ],
+                    "reranker_top": null,
+                    "attempted_top": {
+                        "doc_id": "pathogen_hazards_425",
+                        "content_preview": "Hazard for canned foods low acid: Clostridium botulinum (case fatality rate 5-10%, 9 annual US deaths, primary hazard). ",
+                        "embedding_score": 0.4081,
+                        "rerank_score": -8.2299,
+                        "skip_reason": "failed_embedding_threshold:0.75"
+                    }
+                },
+                "extraction": null,
+                "standardization": {
+                    "rule": "default_imputed",
+                    "direction": null,
+                    "before_value": null,
+                    "after_value": "Salmonella",
+                    "reason": "No pathogen specified. Using Salmonella as conservative default. Salmonella is a leading cause of foodborne illness and is broadly applicable across food categories."
+                }
+            }
+        },
+        "combase_model": {
+            "organism": "SALMONELLA",
+            "organism_id": "ss",
+            "organism_display_name": "Salmonellae",
+            "model_type": "growth",
+            "model_id": 1,
+            "coefficients_str": "-11.906;0.3649;1.7832;7.00019;-0.00442;0;0;-0.00458;-0.12539;-62.114;0;0;0;0;0",
+            "valid_ranges": {
+                "temperature_celsius": [
+                    7.0,
+                    40.0
+                ],
+                "ph": [
+                    3.9,
+                    7.4
+                ],
+                "water_activity": [
+                    0.973,
+                    1.0
+                ]
+            },
+            "selection_reason": "LLM inference (implied_model_type field)"
+        },
+        "audit": {
+            "range_clamps": [
+                {
+                    "field_name": "water_activity",
+                    "original_value": 0.97,
+                    "clamped_value": 0.973,
+                    "valid_min": 0.973,
+                    "valid_max": 1.0,
+                    "reason": "Model constraint"
+                }
+            ],
+            "defaults_imputed": [
+                {
+                    "field_name": "organism",
+                    "default_value": "Salmonella",
+                    "reason": "No pathogen specified. Using Salmonella as conservative default. Salmonella is a leading cause of foodborne illness and is broadly applicable across food categories."
+                }
+            ],
+            "warnings": [
+                "No pathogen specified. Using Salmonella as conservative default.",
+                "Water activity 0.97 is outside the model's valid range [0.973, 1.0]; clamped to 0.973. Prediction is at the model boundary."
+            ]
+        },
+        "system": {
+            "rag_store_hash": "496c0db5593c9144",
+            "rag_ingested_at": "2026-05-04T16:50:56.948718+00:00",
+            "source_csv_audit_date": "2026-05-04T16:35:08.373788+00:00",
+            "ptm_version": "6d71349",
+            "combase_model_table_hash": "87546d35af5755b1"
+        }
+    }
+}

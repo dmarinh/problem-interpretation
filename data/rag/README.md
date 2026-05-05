@@ -42,7 +42,9 @@ Pre-modification snapshots kept for rollback. **Do not ingest into RAG.**
 
 ## Source ID Convention
 
-All files use standardized `source_id` column. See `../sources/source_references.csv` for full citations.
+Most files use a standardized `source_id` column. `food_properties.csv` is the exception: it uses per-field `ph_source_id` and `aw_source_id` columns so that the authority for pH values and the authority for water activity values can differ. The ingestion loader merges these into a single comma-separated `source_id` in ChromaDB metadata (e.g., `"FDA-PH-2007,IFT-2003-T31"` for the 4 dual-source rows).
+
+See `../sources/source_references.csv` for full citations.
 
 ## Ingestion
 

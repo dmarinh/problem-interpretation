@@ -154,3 +154,59 @@ Added `data_year` and `notes` columns (all 30 rows). Updated 8 rows with 2019 ep
 ## Ingestion-layer workaround for multi-source rows (2026-04-27)
 
 Rows whose `notes` field cite a secondary source (entries #14, #15, #16, #17 above) are handled at ingestion time: `load_food_properties()` parses `notes` for source IDs matching `[SOURCE-ID]` bracket style or `"from SOURCE-ID"` prose style, validates each candidate against `data/sources/source_references.csv`, and stores the union of the column `source_id` and any validated extras as a comma-separated string in the ChromaDB `source_id` metadata field.  This means retrieval audit blocks now report both sources (e.g., `source_ids: ["FDA-PH-2007", "IFT-2003-T31"]`) for multi-source rows.  Per-field attribution (which source supports pH vs aw) requires a schema migration and is explicitly deferred.
+
+**Superseded by the 2026-05-04 schema migration below.**
+
+---
+
+## food_properties.csv per-field source schema migration (2026-05-04)
+
+**Type:** Schema migration + ingestion rewrite  
+**Supersedes:** Ingestion-layer workaround entry above (2026-04-27)
+
+### What migrated
+
+`food_properties.csv` schema changed from:
+
+```
+food_name, food_category, ph_min, ph_max, aw_min, aw_max, notes, source_id
+```
+
+to:
+
+```
+food_name, food_category, ph_min, ph_max, ph_source_id, aw_min, aw_max, aw_source_id, notes
+```
+
+`ph_source_id` is the registered authority for pH values; `aw_source_id` is the registered authority for water activity values. Total rows: 252 (unchanged). 248 rows have the same source for both fields; 4 rows (row_index 14, 211, 233, 234) have distinct per-field sources.
+
+Full diff in `migration_artifacts/csv_migration_diff.md`. Discovery report (pre-classification of all multi-source rows) in `migration_artifacts/multi_source_rows.md`.
+
+### What was removed from the ingestion layer
+
+`load_food_properties()` in `app/rag/data_sources/food_safety.py` no longer contains:
+- `import re`
+- `_BRACKET_RE` (regex for `[SOURCE-ID]` bracket style)
+- `_PROSE_RE` (regex for `"from SOURCE-ID"` prose style)
+- `_parse_extra_source_ids()` function
+
+The function now reads `ph_source_id` and `aw_source_id` columns directly and derives the ChromaDB `source_id` metadata field as an ordered, deduplicated union (pH first) via `dict.fromkeys`.
+
+Validation added: any row with a populated pH or aw range must declare its source ID; every declared source ID must be present in `data/sources/source_references.csv`. Either condition failing raises `ValueError`. `EXPECTED_FOOD_PROPERTIES_COUNT = 252` is checked at end of function.
+
+### Audit shape stability
+
+The externally-visible audit shape is unchanged. `top_match.source_ids` and `full_citations` for multi-source rows continue to emit both `"FDA-PH-2007"` and `"IFT-2003-T31"` — the mechanism changed from notes-parsing to column reads, but consumers see identical data. Verified against canonical test journal entries Q03, Q05, Q06, Q10, Q12, Q15, Q16, Q17 (all pass, 782/782 tests green).
+
+### Architectural note
+
+The per-field schema is the structural prerequisite for per-retrieval per-field source surfacing (pH retrieval shows only the pH source; aw retrieval shows only the aw source). This capability is deliberately not implemented in this migration to preserve the audit-shape contract through Q01–Q17. A future audit-evolution piece of work can enable it.
+
+### Migration artifacts
+
+| Artifact | Purpose |
+|---|---|
+| `migration_artifacts/multi_source_rows.md` | Discovery report: enumerates 4 multi-source rows, confirms zero registry-rejected candidates, proposes per-field source values |
+| `migration_artifacts/csv_migration_diff.md` | Before/after diff for all 252 rows (sample single-source + all 4 multi-source rows) |
+| `migration_artifacts/ingestion_rewrite_grep.md` | Grep audit confirming deleted symbols are gone and new symbols land only where expected |
+| `migration_artifacts/verification_report.md` | Post-migration verification report: all 8 journal queries (Q03, Q05, Q06, Q10, Q12, Q15, Q16, Q17) pass; audit shape confirmed unchanged; multi-source citation order `["FDA-PH-2007","IFT-2003-T31"]` stable; build `6d71349`, RAG hash `496c0db5593c9144`, ingested `2026-05-04T16:50:56Z` |
