@@ -50,10 +50,10 @@ class LoadResult:
     error: Optional[str] = None
 
 
-# Expected row count in the production food_properties.csv (252 after 2026-04-17 audit).
+# Expected row count in the production food_properties.csv (253 after 2026-05-06 addition).
 # Update this constant if rows are deliberately added or removed from the CSV,
 # and log the change in data/rag/rag_audit_changelog.md.
-EXPECTED_FOOD_PROPERTIES_COUNT = 252
+EXPECTED_FOOD_PROPERTIES_COUNT = 253
 
 
 def load_food_properties(pipeline: IngestionPipeline, data_dir: Path) -> LoadResult:

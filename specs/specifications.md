@@ -560,7 +560,7 @@ All files in `data/rag/`. Loaded by `app/rag/data_sources/food_safety.py`.
 
 **Document construction for food_properties.csv:** Each row produces a natural-language sentence. The `notes` field is appended as-is. Source attribution is read from dedicated per-field columns: `ph_source_id` (authority for pH values) and `aw_source_id` (authority for water activity values). The document's source list is derived as an ordered, deduplicated union — pH source first, aw source second if different — via `dict.fromkeys`. Each source ID is appended as a `[SOURCE-ID]` tag to the document text; the merged comma-separated string is stored in ChromaDB metadata as `source_id`.
 
-Validation at ingestion: any row with a populated pH or aw range must declare its source ID; every declared source ID must appear in `data/sources/source_references.csv`. Either condition failing raises `ValueError` that aborts ingestion. `EXPECTED_FOOD_PROPERTIES_COUNT = 252` is asserted at end of function (`food_safety.py:169`).
+Validation at ingestion: any row with a populated pH or aw range must declare its source ID; every declared source ID must appear in `data/sources/source_references.csv`. Either condition failing raises `ValueError` that aborts ingestion. `EXPECTED_FOOD_PROPERTIES_COUNT = 253` is asserted at end of function (`food_safety.py:169`).
 
 ### 6.3 RAG Manifest
 

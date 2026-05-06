@@ -423,7 +423,7 @@ Four primary source documents, 14 registered source-IDs (tracked in `data/source
 
 | File | Records | Source | Content |
 |------|---------|--------|---------|
-| `food_properties.csv` | 252 (post-audit) | FDA-PH-2007 + IFT-2003-T31/T33 | pH, water activity per food |
+| `food_properties.csv` | 253 | FDA-PH-2007 + IFT-2003-T31/T33 | pH, water activity per food |
 | `pathogen_characteristics.csv` | 30 | CDC-2011-T3 (+ merge with CDC-2019 pending — see below) | Annual illnesses, deaths, CFR |
 | `pathogen_transmission_details.csv` | 27 | CDC-2011-A1 | Transmission routes, % foodborne |
 | `pathogen_food_associations.csv` | 46 | IFT-2003-T1 | Food category → pathogen mapping |
@@ -696,9 +696,9 @@ The alternative — refusing the prediction outright — was rejected as less pr
 
 `food_properties.csv` carries dedicated per-field source columns: `ph_source_id` (the registered authority for pH values) and `aw_source_id` (the registered authority for water activity values). At ingestion, `load_food_properties()` reads these two columns directly and derives the document's source list as an ordered, deduplicated union — pH source first, aw source second if different — via `dict.fromkeys`. The merged string is stored in ChromaDB metadata as `source_id`; the retrieval response reports both sources and full bibliographic citations where two sources are present.
 
-Of the 252 rows, 248 share the same source for pH and aw (stored `source_id` is a single ID); 4 rows (cheese parmesan, bread white, honey, maple syrup) have `ph_source_id=FDA-PH-2007` and `aw_source_id=IFT-2003-T31`, producing stored `source_id="FDA-PH-2007,IFT-2003-T31"`.
+Of the 253 rows, 249 share the same source for pH and aw (stored `source_id` is a single ID); 4 rows (cheese parmesan, bread white, honey, maple syrup) have `ph_source_id=FDA-PH-2007` and `aw_source_id=IFT-2003-T31`, producing stored `source_id="FDA-PH-2007,IFT-2003-T31"`.
 
-Validation at ingestion: any row with a populated pH or aw range must declare the corresponding source ID, and every declared source ID must be registered in `data/sources/source_references.csv`. Either condition failing raises `ValueError` that aborts ingestion. A row-count sanity check (`EXPECTED_FOOD_PROPERTIES_COUNT = 252`) fires at end of function.
+Validation at ingestion: any row with a populated pH or aw range must declare the corresponding source ID, and every declared source ID must be registered in `data/sources/source_references.csv`. Either condition failing raises `ValueError` that aborts ingestion. A row-count sanity check (`EXPECTED_FOOD_PROPERTIES_COUNT = 253`) fires at end of function.
 
 The per-field schema in principle would support surfacing per-field sources at the retrieval-block level (pH retrieval shows only the pH source; aw retrieval shows only the aw source). The current implementation deliberately preserves the union behavior to maintain the audit-shape contract documented through test journal Q01–Q17 and the frontend Zod alignment. A future audit-evolution piece of work could change this; the per-field schema is the prerequisite that has now been put in place.
 

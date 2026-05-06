@@ -210,3 +210,11 @@ The per-field schema is the structural prerequisite for per-retrieval per-field 
 | `migration_artifacts/csv_migration_diff.md` | Before/after diff for all 252 rows (sample single-source + all 4 multi-source rows) |
 | `migration_artifacts/ingestion_rewrite_grep.md` | Grep audit confirming deleted symbols are gone and new symbols land only where expected |
 | `migration_artifacts/verification_report.md` | Post-migration verification report: all 8 journal queries (Q03, Q05, Q06, Q10, Q12, Q15, Q16, Q17) pass; audit shape confirmed unchanged; multi-source citation order `["FDA-PH-2007","IFT-2003-T31"]` stable; build `6d71349`, RAG hash `496c0db5593c9144`, ingested `2026-05-04T16:50:56Z` |
+
+---
+
+## 2026-05-06 — Row addition: gelatin dessert
+
+**Author:** Daniel Marin
+**Net row count:** 252 → 253
+

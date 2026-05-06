@@ -119,7 +119,7 @@ This separation allows the same CSV loader to be used for food properties, patho
 
 | File | Records | Source | Purpose |
 |------|---------|--------|---------|
-| `food_properties.csv` | 252 | FDA-PH-2007, IFT-2003 | Food pH and water activity |
+| `food_properties.csv` | 253 | FDA-PH-2007, IFT-2003 | Food pH and water activity |
 | `pathogen_aw_limits.csv` | 14 | IFT-2003-T32 | Pathogen growth limits |
 | `pathogen_characteristics.csv` | 30 | CDC-2011-T3 | Epidemiology (illnesses, deaths) |
 | `pathogen_transmission_details.csv` | 27 | CDC-2011-A1 | Transmission routes, % foodborne |

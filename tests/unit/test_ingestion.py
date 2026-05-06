@@ -372,7 +372,7 @@ class TestMultiSourceAttribution:
         import app.rag.data_sources.food_safety as fs
         from app.rag.data_sources.food_safety import load_food_properties
 
-        # Patch only _valid_source_ids — leave EXPECTED_FOOD_PROPERTIES_COUNT at 252
+        # Patch only _valid_source_ids — leave EXPECTED_FOOD_PROPERTIES_COUNT at 253
         # so a single-row fixture triggers the mismatch.
         monkeypatch.setattr(fs, "_valid_source_ids", lambda: self._KNOWN_IDS)
 
@@ -384,7 +384,7 @@ class TestMultiSourceAttribution:
             "notes": "",
         }])
 
-        with pytest.raises(ValueError, match=r"252.*EXPECTED_FOOD_PROPERTIES_COUNT"):
+        with pytest.raises(ValueError, match=r"253.*EXPECTED_FOOD_PROPERTIES_COUNT"):
             load_food_properties(pipeline, temp_dir)
 
 
