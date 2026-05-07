@@ -1,0 +1,23 @@
+{
+  "queries": [
+    {
+      "id": "R1",
+      "text": "We need to model L. monocytogenes growth in vacuum-packed sliced turkey deli meat during retail display. Assume typical retail refrigeration. The product has a 35-day shelf life. What growth can we expect?",
+      "notes": "Motivating example. Frontier models (e.g., gpt-4o) extract duration from 'shelf life of 35 days' (35*24*60 = 50400 minutes). Some open-source models (e.g., Gemma) fail to populate duration_minutes at all.",
+      "checks": [
+        {"id": "pathogen",    "field": "pathogen_mentioned", "kind": "populated_and_contains", "any_of": ["listeria", "monocytogenes"]},
+        {"id": "food",        "field": "food_description",   "kind": "populated_and_contains", "any_of": ["turkey", "deli"]},
+        {"id": "model_type",  "field": "implied_model_type", "kind": "equals", "value": "growth"},
+        {"id": "duration",    "field": "duration_minutes",   "kind": "populated"},
+        {
+          "id": "temperature",
+          "kind": "any_of_populated",
+          "fields": [
+            {"field": "temperature_value", "kind": "populated"},
+            {"field": "temperature_description", "kind": "populated_and_contains", "any_of": ["refriger", "fridge", "chilled", "cold"]}
+          ]
+        }
+      ]
+    }
+  ]
+}
