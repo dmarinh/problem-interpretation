@@ -38,7 +38,8 @@ Extract the following information if present:
 - Food state (raw, cooked, frozen, thawed, etc.)
 - Pathogen if explicitly mentioned
 - Temperature information (explicit values or descriptions like "room temperature")
-- Duration information (explicit values or descriptions like "a few hours")
+- Duration information: set value_minutes by converting to minutes using the conversion table below;
+  for vague terms ("overnight", "a few hours") leave value_minutes null and put the phrasing in description
 - Environmental conditions (pH, salt content, atmosphere, etc.)
 - Whether this is a multi-step scenario (e.g., transport then storage)
 - What the user is concerned about (safety, spoilage, shelf life)
@@ -72,8 +73,45 @@ Important guidelines:
 - If a range is given (e.g., "20-25C"), capture it as a range; this also applies to pH (e.g., "pH 5.5-6.0" → ph_min=5.5, ph_max=6.0) and water activity (e.g., "aw 0.92-0.95" → water_activity_min=0.92, water_activity_max=0.95)
 - If time/temperature is ambiguous (e.g., "a while"), mark it as ambiguous
 - Convert all temperatures to Celsius
-- Convert all durations to minutes
 - For multi-step scenarios, capture each step in sequence order
+
+Duration extraction — conversion table and examples:
+
+  Conversion table (use for unit arithmetic):
+    30 seconds =     0.5 minutes
+    1 minute   =     1 minutes
+    1 hour     =    60 minutes
+    1 day      = 1,440 minutes
+    1 week     = 7 days = 10,080 minutes
+    2 weeks    = 14 days = 20,160 minutes
+    35 days    = 5 weeks = 50,400 minutes
+
+  Worked examples:
+    "for 35 days"                  → value_minutes=50400,  description="35 days"
+    "a 35-day shelf life"          → value_minutes=50400,  description="35-day shelf life"
+    "shelf life of 12 days"        → value_minutes=17280,  description="12-day shelf life"
+    "5-7 days at 4°C"              → value_minutes=10080,  description="5-7 days"  (use upper bound; conservative for growth)
+    "approximately 2 weeks"        → value_minutes=20160,  description="approximately 2 weeks"
+    "for 840 hours"                → value_minutes=50400,  description="840 hours"
+    "cook for 30 seconds at 72°C"  → value_minutes=0.5,    description="30 seconds"
+    "overnight"                    → value_minutes=null,   description="overnight",              is_ambiguous=true
+    "during retail display"        → value_minutes=null,   description="during retail display",  is_ambiguous=true
+    "a few days"                   → value_minutes=null,   description="a few days",             is_ambiguous=true
+    "throughout transport"         → value_minutes=null,   description="throughout transport",   is_ambiguous=true
+
+  Multi-step example:
+    "24 hours at 4°C then 6 hours at 10°C"
+      step 1: value_minutes=1440, description="24 hours"
+      step 2: value_minutes=360,  description="6 hours"
+
+  Rules:
+    - Set value_minutes whenever the input contains a number followed by a time unit.
+    - Use the upper bound for ranges ("5-7 days" → 10080; conservative for growth modelling).
+    - Do NOT set value_minutes when no number is present. "During retail display" has no number.
+    - Do NOT interpret "shelf life" as a numeric duration unless a number accompanies it.
+    - Do NOT estimate vague magnitudes. "A few days" is not 3 days. Leave value_minutes null.
+    - Do NOT perform date arithmetic ("from 1 Jan to 5 Feb"). Put the phrasing in description.
+    - Always populate description even when value_minutes is null — downstream resolution depends on it.
 """
 
 INTENT_CLASSIFICATION_PROMPT = """You are a food safety expert assistant. Classify the user's intent.

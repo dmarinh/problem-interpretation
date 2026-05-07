@@ -58,7 +58,16 @@ class ExtractedDuration(BaseModel):
     """
     value_minutes: float | None = Field(
         default=None,
-        description="Explicit duration in minutes if mentioned"
+        gt=0,
+        le=131400,  # 90 days — soft ceiling for realistic shelf-life scenarios
+        description=(
+            "Duration in minutes, converted from input units "
+            "(hours×60, days×1440, weeks×10080). "
+            "Leave null for vague or implicit durations; put original phrasing in description instead. "
+            "Valid range: (0, 131400] — 90-day ceiling. "
+            "Out-of-range values trigger Instructor retry; on retry exhaustion the request fails "
+            "with an explicit error rather than silently accepting an implausible value."
+        ),
     )
     description: str | None = Field(
         default=None,

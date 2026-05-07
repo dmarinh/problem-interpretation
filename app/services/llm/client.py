@@ -154,7 +154,7 @@ class LLMClient:
         self.api_base = api_base or settings.llm_api_base
         self.temperature = temperature if temperature is not None else settings.llm_temperature
         self.max_tokens = max_tokens or settings.llm_max_tokens
-        self.instructor_mode = instructor_mode
+        self.instructor_mode = instructor_mode or settings.llm_instructor_mode
     
     async def complete(
         self,

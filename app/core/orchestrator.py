@@ -9,12 +9,14 @@ Coordinates the full translation pipeline:
 5. Engine execution
 """
 
-from app.config import settings
+import re
+
 from app.core.state import SessionState, SessionManager, get_session_manager
 from app.models.enums import SessionStatus, IntentType, ModelType
 from app.services.llm.exceptions import LLMProviderError
 from app.models.metadata import ComBaseModelAudit, SystemAudit
 from app.services.audit.system import build_system_audit
+from app.models.extraction import ExtractedDuration
 from app.services.extraction.semantic_parser import SemanticParser, get_semantic_parser
 from app.services.grounding.grounding_service import (
     GroundedValues,
@@ -101,6 +103,14 @@ class Orchestrator:
             
             # Step 2: Extract scenario
             await self._extract_scenario(state)
+
+            # Backstop: warn when the LLM captured a numeric duration phrase in
+            # description but left value_minutes null.  Does not patch values —
+            # the existing rule-library / conservative-default path handles it.
+            # Fires only on whitespace-separated forms ("35 days"), not hyphenated
+            # adjectives ("35-day shelf life") — the prompt's worked examples cover
+            # those; failures there show up cleanly as Set C misses, not backstop catches.
+            self._check_duration_backstop(state)
 
             # Step 3: Determine model type. Model type should have been extracted in step 2 by the LLM.
             # However, we determine it here with rules as a fallback, and we make sure that model type is
@@ -292,6 +302,36 @@ class Orchestrator:
     async def _extract_scenario(self, state: SessionState) -> None:
         """Extract scenario from user input."""
         state.extracted_scenario = await self._parser.extract_scenario(state.user_input)
+
+    # Matches whitespace-separated "N unit" forms (e.g. "35 days", "840 hours").
+    # Deliberately excludes hyphenated adjective forms ("35-day") — those are covered
+    # by the prompt's worked examples; failures there surface cleanly in live Test C
+    # results rather than being masked by the backstop.
+    _NUMERIC_DURATION_RE = re.compile(
+        r"\b\d+(?:\.\d+)?\s+(?:second|sec|minute|min|hour|hr|h|day|d|week|wk|w)s?\b",
+        re.IGNORECASE,
+    )
+
+    def _check_duration_backstop(self, state: "SessionState") -> None:
+        """
+        Warn when the LLM captured a numeric duration phrase in description but
+        did not populate value_minutes.  Detection only — no value patching.
+        """
+        if not state.metadata or not state.extracted_scenario:
+            return
+
+        def _check(dur: ExtractedDuration, label: str) -> None:
+            if dur.value_minutes is None and dur.description:
+                if self._NUMERIC_DURATION_RE.search(dur.description):
+                    state.metadata.warnings.append(
+                        f"Duration phrase detected in description but value_minutes not extracted"
+                        f" ({label}): '{dur.description}'. Falling back to rule-library path."
+                    )
+
+        scenario = state.extracted_scenario
+        _check(scenario.single_step_duration, "single-step")
+        for i, step in enumerate(scenario.time_temperature_steps):
+            _check(step.duration, f"step {i + 1}")
     
     async def _ground_values(self, state: SessionState) -> "GroundedValues":
         """Ground extracted values via RAG."""

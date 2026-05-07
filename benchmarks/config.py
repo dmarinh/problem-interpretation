@@ -69,16 +69,16 @@ MODELS = [
     #     "tier": 1,
     #     # Current default. Strong structured output. Baseline for comparison.
     # },
-    {
-        "name": "Claude Sonnet 4",
-        "litellm_model": "anthropic/claude-sonnet-4-20250514",
-        "api_key_env_var": "ANTHROPIC_API_KEY",
-        "api_base": None,
-        "cost_per_call": 0.007,
-        "instructor_mode": None,
-        "tier": 1,
-        # Alternative frontier provider. Tests provider independence.
-    },
+    # {
+    #     "name": "Claude Sonnet 4",
+    #     "litellm_model": "anthropic/claude-sonnet-4-20250514",
+    #     "api_key_env_var": "ANTHROPIC_API_KEY",
+    #     "api_base": None,
+    #     "cost_per_call": 0.007,
+    #     "instructor_mode": None,
+    #     "tier": 1,
+    #     # Alternative frontier provider. Tests provider independence.
+    # },
 
     # # ===================================================================
     # # TIER 2: Cost-optimized chat models (production candidates)
@@ -86,16 +86,16 @@ MODELS = [
     # # Purpose: find the cheapest model that maintains acceptable accuracy.
     # # If a model here matches Tier 1 accuracy, it's the production choice.
 
-    # {
-    #     "name": "GPT-4o-mini",
-    #     "litellm_model": "gpt-4o-mini",
-    #     "api_key_env_var": "OPENAI_API_KEY",
-    #     "api_base": None,
-    #     "cost_per_call": 0.0003,
-    #     "instructor_mode": None,
-    #     "tier": 2,
-    #     # ~20x cheaper than GPT-4o. Same API. Key question: how much accuracy lost?
-    # },
+    {
+        "name": "GPT-4o-mini",
+        "litellm_model": "gpt-4o-mini",
+        "api_key_env_var": "OPENAI_API_KEY",
+        "api_base": None,
+        "cost_per_call": 0.0003,
+        "instructor_mode": None,
+        "tier": 2,
+        # ~20x cheaper than GPT-4o. Same API. Key question: how much accuracy lost?
+    },
     # {
     #     "name": "Claude Haiku 3.5",
     #     "litellm_model": "anthropic/claude-3-5-haiku-20241022",
@@ -135,18 +135,18 @@ MODELS = [
     # Reasoning tokens add 3-5x cost. If accuracy is the same as chat
     # models, reasoning is an unnecessary expense for this task.
 
-    # {
-    #     "name": "o3-mini",
-    #     "litellm_model": "o3-mini",
-    #     "api_key_env_var": "OPENAI_API_KEY",
-    #     "api_base": None,
-    #     "cost_per_call": 0.015,
-    #     "instructor_mode": None,
-    #     "tier": 3,
-    #     # OpenAI reasoning model. ~3x cost of GPT-4o due to thinking tokens.
-    #     # Tests: does reasoning help with growth/inactivation classification?
-    # },
-    # {
+    {
+        "name": "o3-mini",
+        "litellm_model": "o3-mini",
+        "api_key_env_var": "OPENAI_API_KEY",
+        "api_base": None,
+        "cost_per_call": 0.015,
+        "instructor_mode": None,
+        "tier": 3,
+        # OpenAI reasoning model. ~3x cost of GPT-4o due to thinking tokens.
+        # Tests: does reasoning help with growth/inactivation classification?
+    },
+    #{
     #     "name": "Gemini 2.5 Flash",
     #     "litellm_model": "gemini/gemini-2.5-flash-preview-04-17",
     #     "api_key_env_var": "GEMINI_API_KEY",
@@ -186,16 +186,16 @@ MODELS = [
     #     "tier": 4,
     #     # Fits entirely in 8GB VRAM. Fastest local option. Tests minimum viable size.
     # },
-    # {
-    #     "name": "Gemma 3 12B",
-    #     "litellm_model": "ollama/gemma3:12b",
-    #     "api_key_env_var": None,
-    #     "api_base": "http://localhost:11434",
-    #     "cost_per_call": 0.0,
-    #     "instructor_mode": "JSON",
-    #     "tier": 4,
-    #     # Google's open source model
-    # },
+    {
+        "name": "Gemma 3 12B",
+        "litellm_model": "ollama/gemma3:12b",
+        "api_key_env_var": None,
+        "api_base": "http://localhost:11434",
+        "cost_per_call": 0.0,
+        "instructor_mode": "JSON",
+        "tier": 4,
+        # Google's open source model
+    },
     # {
     #     "name": "Llama 3.2 Latest",
     #     "litellm_model": "ollama/llama3.2:latest",

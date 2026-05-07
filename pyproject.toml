@@ -92,6 +92,7 @@ markers = [
     "unit: Unit tests",
     "integration: Integration tests",
     "slow: Slow tests",
+    "live: Tests requiring a live LLM API call (excluded from CI; run with pytest -m live)",
 ]
 
 # =============================================================================

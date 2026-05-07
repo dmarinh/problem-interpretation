@@ -97,7 +97,15 @@ class Settings(BaseSettings):
         le=32000,
         description="Maximum tokens in response"
     )
-    
+    llm_instructor_mode: Optional[str] = Field(
+        default=None,
+        description=(
+            "Instructor extraction mode. "
+            "None or 'TOOLS': native function/tool-calling API (best for OpenAI, Anthropic). "
+            "'JSON': schema embedded in prompt (required for Ollama and other local models)."
+        ),
+    )
+
     # -------------------------------------------------------------------------
     # RAG Configuration
     # -------------------------------------------------------------------------
