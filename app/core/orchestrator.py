@@ -9,12 +9,15 @@ Coordinates the full translation pipeline:
 5. Engine execution
 """
 
+import logging
 import re
+
+_log = logging.getLogger(__name__)
 
 from app.core.state import SessionState, SessionManager, get_session_manager
 from app.models.enums import SessionStatus, IntentType, ModelType
 from app.services.llm.exceptions import LLMProviderError
-from app.models.metadata import ComBaseModelAudit, SystemAudit
+from app.models.metadata import ComBaseModelAudit, SystemAudit, ValueProvenance, ValueSource
 from app.services.audit.system import build_system_audit
 from app.models.extraction import ExtractedDuration
 from app.services.extraction.semantic_parser import SemanticParser, get_semantic_parser
@@ -28,6 +31,32 @@ from app.services.standardization.standardization_service import (
     get_standardization_service,
 )
 from app.engines.combase.engine import ComBaseEngine, get_combase_engine
+
+
+def _missing_key_to_audit_key(field_spec: str) -> str:
+    """
+    Map StandardizationService's missing_required field spec to the audit key
+    used in metadata.provenance.
+
+    StandardizationService uses short specs:
+      "duration"          → single-step duration
+      "duration (step N)" → multi-step step N duration
+      "temperature"       → single-step temperature (rare — gets a default before missing)
+      "organism"          → organism (same in both namespaces)
+
+    metadata.provenance uses full field names matching grounded.provenance keys:
+      "duration_minutes", "duration_minutes (step N)", "temperature_celsius"
+    """
+    if field_spec == "duration":
+        return "duration_minutes"
+    if field_spec.startswith("duration (step "):
+        return field_spec.replace("duration (step ", "duration_minutes (step ", 1)
+    if field_spec == "temperature":
+        return "temperature_celsius"
+    if field_spec == "organism":
+        return "organism"
+    _log.warning("_missing_key_to_audit_key: unrecognised field spec %r — passing through; audit key may be wrong", field_spec)
+    return field_spec
 
 
 class TranslationResult:
@@ -127,7 +156,28 @@ class Orchestrator:
             state.update_status(SessionStatus.STANDARDIZING)
             std_result = self._standardizer.standardize(grounded, effective_model_type)
 
+            # Always record partial standardization events — even on validation failure,
+            # so field_audit captures every field the orchestrator attempted to resolve.
+            if state.metadata:
+                state.metadata.defaults_imputed.extend(std_result.defaults_imputed)
+                for clamp in std_result.range_clamps:
+                    state.metadata.add_range_clamp(clamp)
+                state.metadata.warnings.extend(std_result.warnings)
+
             if std_result.missing_required:
+                if state.metadata:
+                    for field in std_result.missing_required:
+                        # Add a null-provenance entry so field_audit shows this field
+                        # with final_value=null instead of omitting it entirely.
+                        audit_key = _missing_key_to_audit_key(field)
+                        if audit_key not in state.metadata.provenance:
+                            state.metadata.add_provenance(
+                                audit_key,
+                                ValueProvenance(source=ValueSource.MISSING),
+                            )
+                        state.metadata.warnings.append(
+                            f"Validation failed: required value missing — {field}"
+                        )
                 state.set_error(
                     f"Missing required values: {', '.join(std_result.missing_required)}"
                 )
@@ -139,13 +189,6 @@ class Orchestrator:
                 return TranslationResult(state)
 
             state.execution_payload = std_result.payload
-
-            # Record defaults and range clamps in metadata
-            if state.metadata:
-                state.metadata.defaults_imputed.extend(std_result.defaults_imputed)
-                for clamp in std_result.range_clamps:
-                    state.metadata.add_range_clamp(clamp)
-                state.metadata.warnings.extend(std_result.warnings)
 
             # Step 6: Execute model
             state.update_status(SessionStatus.EXECUTING)
@@ -336,16 +379,37 @@ class Orchestrator:
     async def _ground_values(self, state: SessionState) -> "GroundedValues":
         """Ground extracted values via RAG."""
         grounded = await self._grounder.ground_scenario(state.extracted_scenario)
-        
+
         # Store grounded values and provenance
         state.grounded_values = grounded.values
-        
+
         if state.metadata:
             for field, prov in grounded.provenance.items():
                 state.metadata.add_provenance(field, prov)
             for retrieval in grounded.retrievals:
                 state.metadata.add_retrieval(retrieval)
-        
+            # Bridge per-step provenances so field_audit reflects multi-step structure.
+            # grounded.provenance holds flat fields (organism/ph/aw); per-step temps
+            # and durations live in grounded.steps and would otherwise be invisible
+            # to _build_field_audit in translation.py.
+            # Also populate grounded_values with step-qualified keys so the
+            # final_value lookup in _build_field_audit (which reads grounded_values)
+            # resolves to the actual value rather than None.
+            for step in grounded.steps:
+                temp_key = f"temperature_celsius (step {step.step_order})"
+                dur_key = f"duration_minutes (step {step.step_order})"
+                if step.temp_provenance is not None:
+                    state.metadata.add_provenance(temp_key, step.temp_provenance)
+                if step.dur_provenance is not None:
+                    state.metadata.add_provenance(dur_key, step.dur_provenance)
+                if step.temperature_celsius is not None:
+                    state.grounded_values[temp_key] = step.temperature_celsius
+                if step.duration_minutes is not None:
+                    state.grounded_values[dur_key] = step.duration_minutes
+            # TODO: grounded.warnings (e.g. "Step 1 duration: Could not interpret...") are
+            # not surfaced here. They represent grounding-side diagnostic info that belongs
+            # in audit.warnings. Filed as a separate gap — see specs/lessons.md 2026-05-07.
+
         return grounded
     
     async def _execute_model(self, state: SessionState) -> None:

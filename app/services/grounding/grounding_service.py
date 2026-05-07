@@ -406,7 +406,7 @@ class GroundingService:
                     "ph",
                     conditions.ph_min,
                     source=ValueSource.USER_EXPLICIT,
-                    extraction_method="direct",
+                    extraction_method="llm_extraction",
                     raw_match=f"{conditions.ph_min}–{conditions.ph_max}",
                     parsed_range=[conditions.ph_min, conditions.ph_max],
                     range_pending=True,
@@ -422,7 +422,7 @@ class GroundingService:
                     "ph",
                     conditions.ph_value,
                     source=ValueSource.USER_EXPLICIT,
-                    extraction_method="direct",
+                    extraction_method="llm_extraction",
                 )
             else:
                 grounded.warnings.append(
@@ -437,7 +437,7 @@ class GroundingService:
                     "water_activity",
                     conditions.water_activity_min,
                     source=ValueSource.USER_EXPLICIT,
-                    extraction_method="direct",
+                    extraction_method="llm_extraction",
                     raw_match=f"{conditions.water_activity_min}–{conditions.water_activity_max}",
                     parsed_range=[conditions.water_activity_min, conditions.water_activity_max],
                     range_pending=True,
@@ -453,7 +453,7 @@ class GroundingService:
                     "water_activity",
                     conditions.water_activity,
                     source=ValueSource.USER_EXPLICIT,
-                    extraction_method="direct",
+                    extraction_method="llm_extraction",
                 )
             else:
                 grounded.warnings.append(
@@ -464,16 +464,16 @@ class GroundingService:
         # Other conditions (these don't require range selection)
         if conditions.co2_percent is not None:
             grounded.set("co2_percent", conditions.co2_percent, ValueSource.USER_EXPLICIT,
-                         extraction_method="direct")
+                         extraction_method="llm_extraction")
         if conditions.nitrite_ppm is not None:
             grounded.set("nitrite_ppm", conditions.nitrite_ppm, ValueSource.USER_EXPLICIT,
-                         extraction_method="direct")
+                         extraction_method="llm_extraction")
         if conditions.lactic_acid_ppm is not None:
             grounded.set("lactic_acid_ppm", conditions.lactic_acid_ppm, ValueSource.USER_EXPLICIT,
-                         extraction_method="direct")
+                         extraction_method="llm_extraction")
         if conditions.acetic_acid_ppm is not None:
             grounded.set("acetic_acid_ppm", conditions.acetic_acid_ppm, ValueSource.USER_EXPLICIT,
-                         extraction_method="direct")
+                         extraction_method="llm_extraction")
     
     # =========================================================================
     # RAG RETRIEVAL WITH HYBRID EXTRACTION
@@ -889,7 +889,7 @@ class GroundingService:
                 source=ValueSource.RAG_RETRIEVAL,
                 retrieval_source=top.doc_id,
                 original_text=top.content,
-                extraction_method="direct",
+                extraction_method="fuzzy_match",
             )
     
     # =========================================================================
@@ -916,14 +916,14 @@ class GroundingService:
         if temp.value_celsius is not None:
             return temp.value_celsius, ValueProvenance(
                 source=ValueSource.USER_EXPLICIT,
-                extraction_method="direct",
+                extraction_method="llm_extraction",
             )
 
         if temp.is_range and temp.range_min_celsius is not None and temp.range_max_celsius is not None:
             return temp.range_min_celsius, ValueProvenance(
                 source=ValueSource.USER_EXPLICIT,
                 transformation_applied="range extracted, awaiting standardization",
-                extraction_method="direct",
+                extraction_method="llm_extraction",
                 parsed_range=[temp.range_min_celsius, temp.range_max_celsius],
                 range_pending=True,
             )
@@ -966,14 +966,14 @@ class GroundingService:
         if dur.value_minutes is not None:
             return dur.value_minutes, ValueProvenance(
                 source=ValueSource.USER_EXPLICIT,
-                extraction_method="direct",
+                extraction_method="llm_extraction",
             )
 
         if dur.range_min_minutes is not None and dur.range_max_minutes is not None:
             return dur.range_min_minutes, ValueProvenance(
                 source=ValueSource.USER_EXPLICIT,
                 transformation_applied="range extracted, awaiting standardization",
-                extraction_method="direct",
+                extraction_method="llm_extraction",
                 parsed_range=[dur.range_min_minutes, dur.range_max_minutes],
                 range_pending=True,
             )

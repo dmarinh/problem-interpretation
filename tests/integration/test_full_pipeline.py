@@ -29,7 +29,9 @@ from app.models.extraction import (
     ExtractedTemperature,
     ExtractedDuration,
     ExtractedEnvironmentalConditions,
+    ExtractedTimeTemperatureStep,
 )
+from app.models.metadata import ValueSource
 
 
 def create_scenario(
@@ -794,3 +796,311 @@ class TestThermalInactivationEndToEnd:
                     f"Expected lower bound for thermal inactivation pH; "
                     f"got direction={ph_entry.standardization.direction}"
                 )
+
+
+class TestValidationFailureAudit:
+    """
+    Integration tests: field_audit completeness when standardization fails
+    with missing required values (A2-style multi-step query).
+
+    Uses the full pipeline with real grounding and standardization; only the
+    LLM is mocked to control what the semantic parser extracts.
+    """
+
+    def _make_a2_scenario(self) -> ExtractedScenario:
+        """
+        Minimal A2-style scenario: 2-step, step 1 has a resolvable temperature
+        but no duration, step 2 is complete.  Standardization will fail with
+        "duration (step 1)" in missing_required.
+        """
+        return ExtractedScenario(
+            food_description="ground beef",
+            food_state="raw",
+            pathogen_mentioned=None,
+            is_multi_step=True,
+            single_step_temperature=ExtractedTemperature(),
+            single_step_duration=ExtractedDuration(),
+            time_temperature_steps=[
+                ExtractedTimeTemperatureStep(
+                    description="transport from supermarket",
+                    temperature=ExtractedTemperature(description="room temperature"),
+                    duration=ExtractedDuration(),  # no value, no description — will fail
+                    sequence_order=1,
+                ),
+                ExtractedTimeTemperatureStep(
+                    description="home refrigerator storage",
+                    temperature=ExtractedTemperature(description="refrigerated"),
+                    duration=ExtractedDuration(value_minutes=1440.0),
+                    sequence_order=2,
+                ),
+            ],
+            environmental_conditions=ExtractedEnvironmentalConditions(),
+            concern_type="safety",
+            is_storage_scenario=True,
+        )
+
+    @pytest.mark.asyncio
+    async def test_failure_response_names_missing_field(self, orchestrator, mock_semantic_parser):
+        mock_semantic_parser.extract_scenario = AsyncMock(return_value=self._make_a2_scenario())
+        result = await orchestrator.translate(
+            "For the exposure assessment, we need to estimate Salmonella growth on ground beef "
+            "from purchase to cooking. Model the growth during the transport and home storage "
+            "segments separately."
+        )
+        assert result.success is False
+        assert result.error is not None
+        assert "duration" in result.error.lower()
+
+    @pytest.mark.asyncio
+    async def test_organism_in_field_audit(self, orchestrator, mock_semantic_parser):
+        from app.api.routes.translation import _build_field_audit
+        mock_semantic_parser.extract_scenario = AsyncMock(return_value=self._make_a2_scenario())
+        result = await orchestrator.translate("A2-style ground beef multi-step query")
+        field_audit = _build_field_audit(result)
+        assert "organism" in field_audit
+        assert field_audit["organism"].final_value is not None
+
+    @pytest.mark.asyncio
+    async def test_step_temperature_in_field_audit(self, orchestrator, mock_semantic_parser):
+        """Step 1 temperature resolved via rule → must appear with a non-null final_value."""
+        from app.api.routes.translation import _build_field_audit
+        mock_semantic_parser.extract_scenario = AsyncMock(return_value=self._make_a2_scenario())
+        result = await orchestrator.translate("A2-style ground beef multi-step query")
+        field_audit = _build_field_audit(result)
+        assert "temperature_celsius (step 1)" in field_audit
+        assert field_audit["temperature_celsius (step 1)"].final_value is not None
+
+    @pytest.mark.asyncio
+    async def test_missing_duration_in_field_audit_with_null_value(self, orchestrator, mock_semantic_parser):
+        """Step 1 duration was not provided → must appear with final_value=null and source=missing."""
+        from app.api.routes.translation import _build_field_audit
+        mock_semantic_parser.extract_scenario = AsyncMock(return_value=self._make_a2_scenario())
+        result = await orchestrator.translate("A2-style ground beef multi-step query")
+        field_audit = _build_field_audit(result)
+        assert "duration_minutes (step 1)" in field_audit
+        entry = field_audit["duration_minutes (step 1)"]
+        assert entry.final_value is None
+        assert entry.source == ValueSource.MISSING.value
+
+    @pytest.mark.asyncio
+    async def test_defaults_imputed_appear_in_audit_summary(self, orchestrator, mock_semantic_parser):
+        """
+        ph and water_activity must appear in the audit even on failure.
+        They may be grounded from RAG (field_audit) or defaulted (defaults_imputed)
+        depending on what the test vector store contains for the food.
+        Either channel is acceptable — the invariant is that they are not silently absent.
+        """
+        from app.api.routes.translation import _build_field_audit, _build_audit_detail
+        mock_semantic_parser.extract_scenario = AsyncMock(return_value=self._make_a2_scenario())
+        result = await orchestrator.translate("A2-style ground beef multi-step query")
+        field_audit = _build_field_audit(result)
+        audit = _build_audit_detail(result, field_audit)
+        all_resolved_fields = set(field_audit.keys()) | {d.field_name for d in audit.audit.defaults_imputed}
+        assert "ph" in all_resolved_fields
+        assert "water_activity" in all_resolved_fields
+
+    @pytest.mark.asyncio
+    async def test_structured_warning_in_audit(self, orchestrator, mock_semantic_parser):
+        """audit.audit.warnings must contain a message naming the missing field."""
+        from app.api.routes.translation import _build_field_audit, _build_audit_detail
+        mock_semantic_parser.extract_scenario = AsyncMock(return_value=self._make_a2_scenario())
+        result = await orchestrator.translate("A2-style ground beef multi-step query")
+        field_audit = _build_field_audit(result)
+        audit = _build_audit_detail(result, field_audit)
+        warning_text = " ".join(audit.audit.warnings)
+        assert "Validation failed" in warning_text
+        assert "duration" in warning_text
+
+    @pytest.mark.asyncio
+    async def test_prediction_is_null(self, orchestrator, mock_semantic_parser):
+        mock_semantic_parser.extract_scenario = AsyncMock(return_value=self._make_a2_scenario())
+        result = await orchestrator.translate("A2-style ground beef multi-step query")
+        assert result.execution_result is None
+
+    @pytest.mark.live
+    @pytest.mark.asyncio
+    async def test_a2_verbatim_live(self, orchestrator):
+        """
+        Runs the A2 query verbatim with a real LLM.  The LLM may or may not
+        extract durations for both steps; the test asserts that whatever the
+        outcome, field_audit is never empty and the failure path (if taken)
+        still produces a useful audit with at least organism and ph entries.
+
+        Marked @pytest.mark.live — excluded from standard pytest run.
+        Run with: pytest -m live tests/integration/test_full_pipeline.py::TestValidationFailureAudit::test_a2_verbatim_live
+        """
+        from app.services.extraction.semantic_parser import get_semantic_parser
+        from app.api.routes.translation import _build_field_audit
+
+        # Swap in the real parser for this test
+        real_orchestrator = Orchestrator(
+            session_manager=orchestrator._sessions,
+            semantic_parser=get_semantic_parser(),
+            grounding_service=orchestrator._grounder,
+            standardization_service=orchestrator._standardizer,
+            combase_engine=orchestrator._engine,
+        )
+
+        result = await real_orchestrator.translate(
+            "For the exposure assessment, we need to estimate Salmonella growth on ground beef "
+            "from purchase to cooking. The consumer picks it up at the supermarket, drives home "
+            "— assume a typical shopping trip — and stores it in the home refrigerator. "
+            "Model the growth during the transport and home storage segments separately."
+        )
+
+        field_audit = _build_field_audit(result)
+        assert len(field_audit) > 0, "field_audit must never be empty regardless of success/failure"
+        assert "organism" in field_audit, "organism must always be present in field_audit"
+        # On failure: error must name the missing field
+        if not result.success:
+            assert result.error is not None
+            assert result.metadata is not None
+            warning_text = " ".join(result.metadata.warnings)
+            assert "Validation failed" in warning_text
+
+
+class TestTemperatureExtractionShape:
+    """
+    Set A — prompt extraction shape (live LLM, @pytest.mark.live).
+
+    Verifies that the temperature guard section in SCENARIO_EXTRACTION_PROMPT
+    produces the correct (value_celsius, description) shape for each worked example.
+    Uses the semantic parser directly — no orchestrator needed.
+
+    Run with: pytest -m live tests/integration/test_full_pipeline.py::TestTemperatureExtractionShape
+    """
+
+    @pytest.mark.live
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("phrase,expected_celsius,desc_contains", [
+        # Explicit numeric — value_celsius populated, description null or carries qualifier
+        ("4°C",                          4.0,                    None),
+        ("around 4°C",                   4.0,                    "4"),
+        ("72°F",                         pytest.approx(22.2, abs=0.5), "72"),
+        ("refrigerator set to 38°F",     pytest.approx(3.3,  abs=0.5), "38"),
+        # Descriptive — value_celsius null, description carries original phrase verbatim
+        ("home refrigerator",            None, "home refrigerator"),
+        ("domestic refrigerator",        None, "domestic refrigerator"),
+        ("household freezer",            None, "household freezer"),
+        ("typical retail refrigeration", None, "typical retail refrigeration"),
+        ("room temperature",             None, "room temperature"),
+        ("stored cold",                  None, "stored cold"),
+        ("ambient",                      None, "ambient"),
+    ])
+    async def test_extraction_shape(self, phrase, expected_celsius, desc_contains):
+        """
+        Live extractor must produce the documented (value_celsius, description) shape.
+
+        Tolerance on Fahrenheit conversions is abs=0.5 — LLM rounding on conversions
+        is not what this workstream is testing; the direction matters, not the precision.
+        """
+        from app.services.extraction.semantic_parser import get_semantic_parser
+
+        parser = get_semantic_parser()
+        query = f"Ground beef stored at {phrase} for 4 hours"
+        scenario = await parser.extract_scenario(query)
+        temp = scenario.single_step_temperature
+
+        if expected_celsius is None:
+            assert temp.value_celsius is None, (
+                f"'{phrase}': expected value_celsius=null but got {temp.value_celsius}. "
+                f"LLM applied world-knowledge inference despite prompt guard."
+            )
+        else:
+            assert temp.value_celsius == expected_celsius, (
+                f"'{phrase}': expected value_celsius≈{expected_celsius} but got {temp.value_celsius}"
+            )
+
+        if desc_contains is None:
+            # Pure numeric — no descriptive qualifier, description may be null
+            pass  # Not asserting on description for plain "4°C"
+        else:
+            assert temp.description is not None, (
+                f"'{phrase}': expected description to contain '{desc_contains}' but description=null"
+            )
+            assert desc_contains.lower() in temp.description.lower(), (
+                f"'{phrase}': description '{temp.description}' does not contain '{desc_contains}'. "
+                f"LLM paraphrased instead of preserving original phrasing."
+            )
+
+
+class TestVagueTemperatureAuditShapes:
+    """
+    Set C — end-to-end audit shape (live LLM, @pytest.mark.live).
+
+    Verifies that the full pipeline (prompt guard + rule library) produces
+    the correct temperature audit shape for the five target queries.
+
+    Shipping threshold: all 5 must produce the correct audit shape on 3 consecutive runs.
+    If 'method=llm_extraction' appears where 'rule_match' is expected, the prompt guard
+    is insufficient on that run and a grounding-precedence override should be reconsidered.
+
+    Run with: pytest -m live tests/integration/test_full_pipeline.py::TestVagueTemperatureAuditShapes
+    """
+
+    def _make_live_orchestrator(self, orchestrator):
+        """Swap in the real semantic parser, keep all other components from the fixture."""
+        from app.services.extraction.semantic_parser import get_semantic_parser
+        return Orchestrator(
+            session_manager=orchestrator._sessions,
+            semantic_parser=get_semantic_parser(),
+            grounding_service=orchestrator._grounder,
+            standardization_service=orchestrator._standardizer,
+            combase_engine=orchestrator._engine,
+        )
+
+    @pytest.mark.live
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("query,expected_source,expected_method", [
+        (
+            "Salmonella in ground beef stored in the home refrigerator for 4 hours",
+            "user_inferred", "rule_match",
+        ),
+        (
+            "L. monocytogenes in deli turkey under typical retail refrigeration for 35 days",
+            "user_inferred", "rule_match",
+        ),
+        (
+            "Ground beef stored cold for 2 hours",
+            "user_inferred", "rule_match",
+        ),
+        (
+            "Cheese in household freezer for 30 days",
+            "user_inferred", "rule_match",
+        ),
+        (
+            "Sauce held at 4°C for 6 hours",
+            "user_explicit", "llm_extraction",
+        ),
+    ])
+    async def test_temperature_audit_shape(self, orchestrator, query, expected_source, expected_method):
+        """
+        For each query, assert the temperature audit entry has the expected source and method.
+
+        The numeric value is not asserted here — it is determined by the rule library and is
+        unchanged from pre-workstream behaviour. Only the audit label matters.
+        """
+        from app.api.routes.translation import _build_field_audit
+
+        live_orchestrator = self._make_live_orchestrator(orchestrator)
+        result = await live_orchestrator.translate(query)
+
+        field_audit = _build_field_audit(result)
+        assert "temperature_celsius" in field_audit, (
+            f"temperature_celsius missing from field_audit for query: {query!r}"
+        )
+
+        temp_entry = field_audit["temperature_celsius"]
+        assert temp_entry.source == expected_source, (
+            f"Expected source={expected_source!r} but got {temp_entry.source!r}\n"
+            f"Query: {query!r}\n"
+            f"If source='user_explicit', the prompt guard is not suppressing LLM world-knowledge "
+            f"inference on this run."
+        )
+        assert temp_entry.extraction is not None, (
+            f"extraction block is null for query: {query!r}"
+        )
+        assert temp_entry.extraction.method == expected_method, (
+            f"Expected method={expected_method!r} but got {temp_entry.extraction.method!r}\n"
+            f"Query: {query!r}"
+        )

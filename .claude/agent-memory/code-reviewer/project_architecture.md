@@ -187,6 +187,25 @@ Pipeline: User Query → SemanticParser (LLM) → GroundingService (RAG + rules)
 - test_viz_model_comparison.py mirrored helper is identical to the production expression — if the page
   expression changes without updating the mirror, tests continue to pass against the stale copy.
 
+## Audit Completeness Fix (2026-05-07): MISSING source tier + per-step provenance bridging
+- `ValueSource.MISSING` added — sentinel for fields that appeared in `missing_required` but had no provenance
+- Bridging loop in `orchestrator._ground_values()` writes per-step temp/dur provenance into `state.metadata.provenance` AND step-qualified keys into `state.grounded_values` — both required for `_build_field_audit` to resolve `final_value`
+- Guard `if audit_key not in state.metadata.provenance` in the `missing_required` loop prevents overwriting a real grounding provenance with MISSING — correct for the happy path, but has a gap when `dur_provenance is None` (grounding returned `(None, None)`) AND the bridging loop correctly skips that key. In that case the key is absent from `provenance`, so MISSING fires — the correct outcome.
+- `_missing_key_to_audit_key()` covers the 3 known field spec forms: "duration" → "duration_minutes", "duration (step N)" → "duration_minutes (step N)", "temperature" → "temperature_celsius". Unknown specs fall through as identity.
+- Defect: "temperature_celsius" is never emitted by standardizer (temperature gets a default before missing fires) — the test `test_single_step_temperature` tests the mapping but not a real standardizer path; the mapping is still correct as a defensive fallback.
+- Integration test `test_missing_duration_in_field_audit_with_null_value` relies on real grounding resolving `description=""` → `(None, None)` from `_resolve_duration_value`; this is correct since the fixture uses `ExtractedDuration()` with no value and no description.
+- `standardization_service=None` in unit fixture triggers `get_standardization_service()` which calls `get_combase_engine().registry` at first call — the singleton chain reaches the real CSV loader. Safe because `data/combase_models.csv` is present in the repo.
+- Partial-standardization events (defaults_imputed, range_clamps, warnings) now recorded before the `missing_required` early return — this was the core bug fix.
+
+## Vague Temperature Workstream (2026-05-07): rule library + prompt guard
+
+- `find_temperature_interpretation` sorts by `len(r.pattern)` descending at call time — physical list order is irrelevant.
+- Substring match returns the original `InterpretationRule` object with `similarity=None`. Embedding fallback in `find_temperature_interpretation_with_fallback` creates a NEW `InterpretationRule` with `similarity=<float>` set. Tests assert `rule.similarity is None` to confirm substring path, not embedding path.
+- `conservative=False` on all 11 new refrigeration rules is CORRECT: refrigeration temperature (4°C) is not a conservative upper bound for growth — it is the standard setpoint that represents the low end of the growth concern range. `conservative=True` is reserved for rules that commit to the pessimistic end of an uncertain range (e.g., "cold" → 10°C, "room temperature" → 25°C).
+- Comment at rules.py line 175 states `"typical retail refrigeration"` is 29 chars — actual length is 28. Minor doc inaccuracy only, no functional impact.
+- `@pytest.mark.live` is registered in `pyproject.toml` but NOT excluded from default runs by `addopts` — must be passed as `-m "not live"` to exclude. This is a CI configuration gap: if CI runs `pytest` without a marker filter, live tests will fail on missing API keys.
+- The Set C integration test fifth parametrize case (`"Sauce held at 4°C for 6 hours"` expecting `user_explicit / llm_extraction`) is a correct regression sentinel: it confirms numeric temperatures are not over-stripped to descriptive form.
+
 ## food_properties.csv Migration (2026-05-04): per-field source columns
 - Migrated from single `source_id` column + notes-parsing workaround to dedicated `ph_source_id` / `aw_source_id` columns
 - `EXPECTED_FOOD_PROPERTIES_COUNT = 252` constant in food_safety.py (after 2026-04-17 audit removed 7 rows)

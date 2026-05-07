@@ -37,6 +37,7 @@ class ValueSource(str, Enum):
     CLARIFICATION_RESPONSE = "clarification_response"  # From user clarification
     CLAMPED_TO_RANGE = "clamped_to_range"     # Adjusted to valid range
     CALCULATED = "calculated"                  # Derived from other values
+    MISSING = "missing"                        # Field was required but neither user nor grounding supplied a value; appears in field_audit with final_value=null on validation failure
 
 
 class RangeBoundSelection(BaseModel):
@@ -92,9 +93,10 @@ class ValueProvenance(BaseModel):
         description="Description of any transformation applied"
     )
     # Audit trail extensions
+    # TODO: convert to Literal[...] for compile-time enforcement (separate refactor)
     extraction_method: str | None = Field(
         default=None,
-        description="How the value was extracted: 'regex', 'llm', 'regex+llm', 'rule', 'direct'"
+        description="How the value was extracted: 'regex', 'llm', 'regex+llm', 'rule_match', 'embedding_fallback', 'ranked_by_annual_deaths', 'direct', 'llm_extraction', 'fuzzy_match'"
     )
     raw_match: str | None = Field(
         default=None,

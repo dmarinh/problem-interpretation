@@ -480,6 +480,81 @@ class TestGroundTemperature:
         assert "temperature_celsius" in grounded.ungrounded_fields
 
 
+class TestNewTemperatureRules:
+    """
+    Set B: verify each rule added in the vague-temperature workstream.
+
+    Tests cover two levels:
+    1. find_temperature_interpretation — confirms the substring rule fires (not embedding fallback)
+       and returns the correct value.
+    2. Grounding service — confirms the full provenance shape (USER_INFERRED / rule_match).
+    """
+
+    @pytest.mark.parametrize("phrase,expected_value", [
+        ("typical retail refrigeration", 4.0),
+        ("retail refrigeration",         4.0),
+        ("household refrigerator",       4.0),
+        ("domestic refrigerator",        4.0),
+        ("home refrigerator",            4.0),
+        ("retail display",               4.0),
+        ("home fridge",                  4.0),
+        ("household freezer",           -18.0),
+        ("home freezer",                -18.0),
+        ("stored cold",                  4.0),
+        ("kept cold",                    4.0),
+    ])
+    def test_substring_rule_fires(self, phrase, expected_value):
+        from app.config.rules import find_temperature_interpretation
+        rule = find_temperature_interpretation(phrase)
+        assert rule is not None, f"No rule matched '{phrase}'"
+        assert rule.value == expected_value
+        assert rule.similarity is None, f"'{phrase}' should match via substring, not embedding"
+
+    def test_stored_cold_wins_over_cold(self):
+        """'stored cold' must resolve to 4°C, not 10°C from the 'cold' substring rule."""
+        from app.config.rules import find_temperature_interpretation
+        rule = find_temperature_interpretation("stored cold")
+        assert rule is not None
+        assert rule.value == 4.0
+        assert rule.pattern == "stored cold"
+
+    def test_kept_cold_wins_over_cold(self):
+        """'kept cold' must resolve to 4°C, not 10°C."""
+        from app.config.rules import find_temperature_interpretation
+        rule = find_temperature_interpretation("kept cold")
+        assert rule is not None
+        assert rule.value == 4.0
+        assert rule.pattern == "kept cold"
+
+    @pytest.mark.parametrize("phrase,expected_value", [
+        ("home refrigerator",            4.0),
+        ("typical retail refrigeration", 4.0),
+        ("stored cold",                  4.0),
+        ("household freezer",           -18.0),
+        # home fridge / home freezer are closest substring-collision neighbours in the sort;
+        # included to catch any future collision with the shorter "fridge" / "freezer" rules.
+        ("home fridge",                  4.0),
+        ("home freezer",                -18.0),
+    ])
+    def test_grounding_provenance_is_user_inferred_rule_match(
+        self, grounding_service, phrase, expected_value
+    ):
+        """Grounding service produces USER_INFERRED / rule_match for new rules."""
+        service, _, _ = grounding_service
+        grounded = GroundedValues()
+        scenario = ExtractedScenario(
+            single_step_temperature=ExtractedTemperature(description=phrase),
+            single_step_duration=ExtractedDuration(value_minutes=60.0),
+        )
+        service._ground_temperature(scenario, grounded)
+
+        assert grounded.get("temperature_celsius") == expected_value
+        prov = grounded.provenance["temperature_celsius"]
+        assert prov.source == ValueSource.USER_INFERRED
+        assert prov.extraction_method == "rule_match"
+        assert prov.matched_pattern is not None
+
+
 class TestGroundDuration:
     """Tests for duration grounding."""
     
@@ -982,7 +1057,7 @@ class TestGroundPathogenFromRag:
 
         assert grounded.has("organism")
         assert grounded.get("organism") == ComBaseOrganism.SALMONELLA
-        assert grounded.provenance["organism"].extraction_method == "direct"
+        assert grounded.provenance["organism"].extraction_method == "fuzzy_match"
 
     @pytest.mark.asyncio
     async def test_nothing_grounded_when_stage1_not_confident(self, grounding_service):
@@ -1173,3 +1248,25 @@ class TestBuildRetrievalMetadata:
 
         assert result.reranker_top is not None
         assert result.reranker_top.skip_reason == "failed_embedding_threshold:0.62"
+
+
+# =============================================================================
+# extraction_method label contract
+# =============================================================================
+
+class TestExtractionMethodLabels:
+    """Verify that extraction_method labels honestly describe the mechanism used."""
+
+    def test_llm_extracted_temperature_reports_llm_extraction_method(self, grounding_service):
+        service, _, _ = grounding_service
+        temp = ExtractedTemperature(value_celsius=4.0)
+        value, prov = service._resolve_temperature_value(temp)
+        assert prov.extraction_method == "llm_extraction"
+        assert prov.source == ValueSource.USER_EXPLICIT
+
+    def test_llm_extracted_duration_reports_llm_extraction_method(self, grounding_service):
+        service, _, _ = grounding_service
+        dur = ExtractedDuration(value_minutes=50400.0)
+        value, prov = service._resolve_duration_value(dur)
+        assert prov.extraction_method == "llm_extraction"
+        assert prov.source == ValueSource.USER_EXPLICIT

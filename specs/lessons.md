@@ -354,3 +354,35 @@ The reason this migration completed cleanly in one session is that `migration_ar
 **What to do differently**
 
 - When a workaround is filed as deferred, note in the same session the exact artifact needed to make the migration unambiguous (discovery report, proposed values, etc.). This was done well here — `multi_source_rows.md` was written before the deferral — but make it an explicit step in the deferral workflow.
+
+---
+
+### 2026-05-07 — Audit completeness on validation failure: two-gap root cause
+
+**Context:** On validation failure (e.g., "Missing required values: duration (step 1)"), `field_audit` collapsed to only the fields resolved before the failure point. The system returned `success=false` with an error message but an audit trail that omitted most of the fields the orchestrator had attempted to resolve.
+
+**Two independent gaps**
+
+Gap 1 — partial standardization results not recorded before early return. `std_result.defaults_imputed`, `range_clamps`, and `warnings` were only copied to `state.metadata` after the `missing_required` check, so a failure returned before any of those events were visible to the audit.
+
+Gap 2 — per-step provenances in `grounded.steps` never bridged to `metadata.provenance`. The flat key-value store (`grounded.provenance`) held organism/ph/aw; per-step temperatures and durations lived in `grounded.steps` as `GroundedStep` objects. `_build_field_audit` reads `metadata.provenance` for the audit key map and `state.grounded_values` for `final_value` resolution — both needed step-qualified keys (`"temperature_celsius (step 1)"`, etc.) that were never written.
+
+**Fix pattern: three coordinated changes**
+
+1. Move partial-results copy before the early return — always, even on failure.
+2. Bridge per-step provenances into *both* `metadata.provenance` (for the audit key map) and `state.grounded_values` (for `final_value` lookup). Missing one breaks the other.
+3. Synthesize `ValueSource.MISSING` null-provenance entries for fields that reached `missing_required` without any prior provenance — so the audit shows them with `final_value=null` rather than omitting them entirely.
+
+**Namespace impedance: standardizer specs vs. audit keys**
+
+`StandardizationService.missing_required` uses short specs ("duration", "duration (step 1)", "temperature"). `metadata.provenance` uses full field names ("duration_minutes", "duration_minutes (step 1)", "temperature_celsius"). A mapping function (`_missing_key_to_audit_key`) bridges the two. It must enumerate every known spec explicitly — an identity passthrough for unrecognised specs silently produces a wrong audit key with no error signal. Add a `logging.warning` for the unrecognised-spec fallthrough so future standardizer additions that forget to update the mapping are caught immediately rather than producing a silent audit gap.
+
+**Test design: real grounder exposes grounding assumptions**
+
+Integration tests using the real vector store revealed that ph and aw for "ground beef" are grounded from RAG (not defaulted), so an assertion `"ph" in defaults_imputed` failed. The right invariant is "ph and aw appear *somewhere* in the audit" — either in `field_audit` (grounded) or `defaults_imputed` (defaulted). Assert on the union, not on a specific channel.
+
+**What to do differently**
+
+- When an audit-trail field is populated "after success", ask immediately: "what does the audit look like if we fail at step N?" Audit events that fire only on the happy path are silent on failure — which is exactly when a complete audit trail matters most.
+- When a `_build_field_audit` function has two data sources (`metadata.provenance` for keys, `grounded_values` for final_value), both must be populated symmetrically. Adding a key to one without the other produces an entry with `final_value=null` even when a value was resolved.
+- Mapping functions between two namespaces (standardizer specs → audit keys) need exhaustiveness enforcement. A silent passthrough is a silent bug; a logged warning is the minimum acceptable fallthrough behavior.

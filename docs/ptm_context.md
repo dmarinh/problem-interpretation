@@ -392,7 +392,18 @@ Session state transitions go through `SessionStatus` (PENDING → EXTRACTING →
 ### 5.6 Metadata & provenance
 **Location:** `app/models/metadata.py`
 
-- `ValueProvenance` — `source` (categorical: USER_EXPLICIT / USER_INFERRED / RAG_RETRIEVAL / RAG_RETRIEVAL_FALLBACK / CONSERVATIVE_DEFAULT), `parsed_range`, `range_pending` (internal flag, cleared by standardization), `extraction` (method, raw_match, parsed_range, plus rule-specific fields: matched_pattern, conservative, notes, similarity, canonical_phrase), `retrieval` (query, top_match with embedding_score and rerank_score, runners_up, full_citations), and `standardization` (the structured event block; null when no standardization fired).
+- `ValueProvenance` — `source` (categorical: USER_EXPLICIT / USER_INFERRED / RAG_RETRIEVAL / RAG_RETRIEVAL_FALLBACK / CONSERVATIVE_DEFAULT / MISSING), `parsed_range`, `range_pending` (internal flag, cleared by standardization), `extraction` (method, raw_match, parsed_range, plus rule-specific fields: matched_pattern, conservative, notes, similarity, canonical_phrase), `retrieval` (query, top_match with embedding_score and rerank_score, runners_up, full_citations), and `standardization` (the structured event block; null when no standardization fired). The `MISSING` source tier is used exclusively on validation-failure paths: when a required field was not provided by the user and grounding returned no value, the orchestrator synthesises a null `ValueProvenance(source=MISSING)` so the field appears in `field_audit` with `final_value=null` rather than being silently absent.
+
+  **`extraction.method` label enumeration** — each label describes the mechanism, not the source tier:
+  - `"regex"` — value extracted from retrieved RAG text by pattern matching
+  - `"llm"` — value extracted from RAG text by LLM when regex missed
+  - `"regex+llm"` — regex found part, LLM filled the rest from RAG text
+  - `"rule_match"` — value resolved by a named interpretation rule (e.g., "room temperature" → 25 °C)
+  - `"embedding_fallback"` — no named rule matched; closest canonical phrase found by embedding similarity
+  - `"ranked_by_annual_deaths"` — organism selected from RAG Stage 2 hazard list by `annual_deaths_us` sort
+  - `"direct"` — value is a verbatim non-numeric entity from user input (currently: organism name from `pathogen_mentioned`)
+  - `"llm_extraction"` — the LLM inferred a numeric value from context; the number was not verbatim in the user's text (e.g., `value_celsius=4.0` from "home refrigerator"; `value_minutes=50400` from "35 days"). Applies to all fields in `ExtractedTemperature`, `ExtractedDuration`, and `ExtractedEnvironmentalConditions`.
+  - `"fuzzy_match"` — organism resolved by rapidfuzz fuzzy-matching against RAG Stage 1 document text via `from_text()`; neither verbatim user input nor LLM inference
 - `RangeBoundSelection` — rule="range_bound_selection", direction, before_value (range), after_value (selected bound), reason. Populated on the per-field block when a pending range was narrowed.
 - `RangeClamp` — field_name, original_value, clamped_value, valid_min, valid_max, reason. Populated both on the per-field block (`rule="range_clamp"`) and as a structured `RangeClampInfo` in the top-level `range_clamps` list.
 - `DefaultImputed` — field_name, imputed_value (float | str — strings used for organism), reason. Populated both on the per-field block (`rule="default_imputed"`) and as a structured `DefaultImputedInfo` in the top-level `defaults_imputed` list.

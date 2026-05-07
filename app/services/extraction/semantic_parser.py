@@ -37,7 +37,9 @@ Extract the following information if present:
 - Food item description (what food is involved)
 - Food state (raw, cooked, frozen, thawed, etc.)
 - Pathogen if explicitly mentioned
-- Temperature information (explicit values or descriptions like "room temperature")
+- Temperature information: set value_celsius for explicit numeric values only; for descriptive
+  phrases ("home refrigerator", "room temperature") leave value_celsius null and put the original
+  phrasing verbatim in description — see temperature extraction section below
 - Duration information: set value_minutes by converting to minutes using the conversion table below;
   for vague terms ("overnight", "a few hours") leave value_minutes null and put the phrasing in description
 - Environmental conditions (pH, salt content, atmosphere, etc.)
@@ -112,6 +114,52 @@ Duration extraction — conversion table and examples:
     - Do NOT estimate vague magnitudes. "A few days" is not 3 days. Leave value_minutes null.
     - Do NOT perform date arithmetic ("from 1 Jan to 5 Feb"). Put the phrasing in description.
     - Always populate description even when value_minutes is null — downstream resolution depends on it.
+
+Temperature extraction — numeric vs. descriptive phrases:
+
+  Principle: Your role is recognition, not estimation. Set value_celsius only when the user states
+  an explicit numeric temperature. For descriptive phrases, leave value_celsius null and copy the
+  original phrasing verbatim into description — downstream rule resolution handles category terms
+  deterministically. The same principle applies to duration: neither field should receive inferred
+  numeric values.
+
+  Conversion table (Fahrenheit / Kelvin → Celsius):
+    °C = (°F − 32) × 5/9
+    °C = K − 273.15
+    Common reference points:
+       0°C =  32°F  (freezing)
+       4°C =  39.2°F (standard refrigeration)
+      22°C =  72°F  (room temperature)
+      72°C = 162°F  (poultry pasteurisation)
+     -18°C =   0°F  (standard freezer)
+
+  Worked examples:
+    "4°C"                          → value_celsius=4.0,    description=null
+    "around 4°C"                   → value_celsius=4.0,    description="around 4°C"
+    "72°F"                         → value_celsius=22.2,   description="72°F"
+    "refrigerator set to 38°F"     → value_celsius=3.3,    description="38°F"
+    "home refrigerator"            → value_celsius=null,   description="home refrigerator"
+    "domestic refrigerator"        → value_celsius=null,   description="domestic refrigerator"
+    "household freezer"            → value_celsius=null,   description="household freezer"
+    "typical retail refrigeration" → value_celsius=null,   description="typical retail refrigeration"
+    "room temperature"             → value_celsius=null,   description="room temperature"
+    "stored cold"                  → value_celsius=null,   description="stored cold"
+    "ambient"                      → value_celsius=null,   description="ambient"
+
+  Rules:
+    - Set value_celsius when the input contains a number followed by a temperature unit (°C, °F,
+      K, degrees).
+    - For ranges ("4–7°C"), use the upper bound (conservative for growth modelling).
+    - Do NOT infer a numeric value from descriptive phrases. "Home refrigerator" is not 4°C; it is
+      a category term. Do not apply world knowledge to convert appliance names, location names, or
+      seasonal descriptors into numbers.
+    - Do NOT paraphrase. Copy the user's phrasing verbatim into description. Do not collapse "stored
+      cold" to "cold", "kitchen counter" to "room temperature", or "home freezer" to "freezer" —
+      the original phrasing is what the downstream rule library matches against.
+    - Always populate description when any descriptive phrasing is present, even when value_celsius
+      is also populated (e.g., "around 4°C" → both fields; plain "4°C" → value_celsius only).
+    - Do not infer temperature from container type, appliance name, season, or location alone unless
+      the user states a number alongside it.
 """
 
 INTENT_CLASSIFICATION_PROMPT = """You are a food safety expert assistant. Classify the user's intent.

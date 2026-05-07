@@ -97,6 +97,14 @@ These queries reflect the types of exposure scenarios that risk assessors must p
 - **Ambiguity dimensions**: Vague temperature ("typical retail refrigeration" — 4°C? 7°C? With excursions?), hidden aw (vacuum-packed turkey, not specified), duration stated but long (growth dynamics over 35 days are complex)
 - **Parameterisation challenge for humans**: "Typical retail" varies enormously — FDA surveys show retail display temperatures range from 1°C to 10°C with a median around 4.4°C but a long upper tail. The risk assessor must decide whether to use the median, the 95th percentile, or a distribution.
 
+**Insights after testing**
+
+- What we learned: The system needed to understand three things — the pathogen, the storage temperature, and the time. It got the pathogen right immediately. The temperature ("typical retail refrigeration") was treated as 4°C, which is the standard fridge setpoint but is more optimistic than what real retail surveys show; we kept the value but flagged this as a scientific decision worth revisiting. The biggest issue was the time: the system didn't recognise "35-day shelf life" as a duration at all in its first form, and when we rephrased it to "for 35 days" it got the arithmetic wrong by a factor of 20
+
+- What we fixed: We rewrote the instructions the system gives itself when reading user queries, with worked examples showing how to handle days, weeks, and shelf-life phrasings. We also added a safety check that warns when the system sees a number-and-unit phrase but fails to extract it.
+
+- What this taught us: The fix relies on the AI model being capable enough to follow the instructions properly. We tested both GPT-4o (a frontier commercial model) and Gemma 4 (a smaller open-source model). GPT-4o now handles "35 days" → 50,400 minutes correctly. Gemma 4 still failed on the same input even after the fix — it returned no value at all rather than a wrong one, but either way the user gets no useful answer. This means the choice of underlying AI model matters: smaller open models are not yet reliable enough for this kind of precise quantitative work. The system is also now honest about how it got each value — when the AI inferred a number from context, the audit says so, instead of pretending the user typed it.
+
 ---
 
 **A2. Salmonella in ground beef — consumer handling**
@@ -106,6 +114,13 @@ These queries reflect the types of exposure scenarios that risk assessors must p
 - **Source basis**: Adapted from USDA-FSIS (1998/2001) *Draft Risk Assessment of the Public Health Impact of Escherichia coli O157:H7 in Ground Beef*, and Cassin et al. (1998) *Quantitative risk assessment for Escherichia coli O157:H7 in ground beef hamburgers*. Both risk assessments required assumptions about consumer transport and home storage.
 - **Ambiguity dimensions**: "Typical shopping trip" (20 minutes? 90 minutes? What ambient temperature?), "home refrigerator" (actual consumer fridges vary 2–10°C), pH and aw of ground beef not specified
 - **Parameterisation challenge for humans**: Transport time and temperature data come from survey data with wide distributions. The risk assessor must make an explicit modelling choice about whether to use point estimates or distributions, and which percentile.
+
+
+**Insights after testing**
+
+- What we learned: Real risk-assessment queries often contain vague segments — phrases like "typical shopping trip" that experienced humans interpret loosely but the system cannot. The query failed because the transport leg had no usable duration. Worse, the failure response used to hide everything else the system had resolved successfully, leaving the user with no way to see what was working and what wasn't.
+- What we fixed: Two things. First, the failure response now shows every field the system attempted, including the missing one — so the user can see clearly what to provide. Second, descriptive temperature phrases like "home refrigerator" now resolve through a deterministic rule list rather than the AI sometimes guessing 4°C from world knowledge — the answer is the same but the system can now explain consistently how it got there.
+- What this taught us: The system works well when queries are precise, but it has no graceful path for vague segments. A future improvement would be to either ask the user for missing pieces conversationally, or to map common vague phrases ("shopping trip", "during transport") to defensible default values from published exposure-assessment studies.
 
 ---
 
@@ -203,7 +218,20 @@ These queries reflect real-time field situations where inspectors must make rapi
 - **Ambiguity dimensions**: Temperature trajectory unknown (only current reading of 12°C), "about two hours" is imprecise, starting temperature unknown (was truck at 4°C before failure?), chicken portions (skin-on? boneless? affects surface exposure), no pathogen specified
 - **Parameterisation challenge for humans**: The inspector must reconstruct a plausible temperature profile from a single data point. Most will either assume worst case (12°C for 2 hours) or try to estimate a ramp. The optimistic bias is strong — the driver has an incentive to understate the duration, and the inspector may give benefit of the doubt.
 
+**Insights after testing**
+
+- What we learned: The system handled the inspector's narrative well — it pulled the current truck temperature and the rough exposure duration straight from the language, retrieved chicken pH and water activity from the right reference sources, and produced a small predicted growth (about a tenth of a log) consistent with what food scientists would expect from a brief excursion at this temperature. Two things stood out. The pathogen field was filled by the system's "conservative default" rather than by a hazard lookup, but by coincidence the default value (Salmonella) is also the correct primary hazard for chicken — the underlying hazard retrieval narrowly missed its threshold and the right chicken-hazard documents came back as runners-up rather than as the chosen answer. And the truck broke down at some point during the past two hours, yet the system treated the whole window as if the chicken had sat at the current reading the entire time, which is a worst-case reading rather than an honest reflection of the unknown trajectory.
+
+- What we fixed: Nothing this round. Both observations belong to work already filed elsewhere. The hazard-retrieval threshold is part of the retrieval calibration study that's underway and will set thresholds against ground-truth queries instead of the current hand-set value. The flat-versus-ramp trajectory is the planned multi-step scenario work, where the system would split a narrative like this into a cold-start segment and a warm-end segment instead of collapsing them into one block.
+
+- What this taught us: Realistic inspector queries describe events with a hidden time-temperature shape — "broke down two hours ago" implies a cold start, a current end-state, and an unknown ramp between. The system currently collapses this into a single worst-case step, and on this query that produces a defensible answer, but it does so silently; a more honest version would either ask the inspector for the most likely trajectory or report best-case and worst-case predictions side by side. The query also exercised a known scope boundary: the inspector is asking "should I reject this load?" and the system can only answer "here is the predicted growth". Translating that prediction into a yes/no verdict is the next module's job.
+
+
+
+
 ---
+
+
 
 **B2. Restaurant hot-holding deviation**
 
@@ -212,6 +240,14 @@ These queries reflect real-time field situations where inspectors must make rapi
 - **Source basis**: FDA Food Code §3-501.16 specifies that TCS food must be held at 57°C (135°F) or above. This type of finding is among the most common critical violations cited in restaurant inspections. CDC epidemiological data identifies improper hot holding as a leading contributing factor to foodborne outbreaks.
 - **Ambiguity dimensions**: Temperature at 48°C now, but what was the trajectory? ("Since start of lunch" — was it ever at correct hot-holding temperature?), "roughly two and a half hours" is imprecise, soup formulation (pH, aw) unknown, which pathogen is the concern? (C. perfringens is the primary hot-holding hazard, but Salmonella and S. aureus are also relevant)
 - **Parameterisation challenge for humans**: The inspector must decide whether the food entered the danger zone gradually (cooling from proper hot-hold) or was placed at 48°C initially. The difference matters enormously for growth estimation. The 4-hour FDA Food Code time limit for TCS foods in the danger zone creates a regulatory decision framework, but the inspector still needs to estimate whether pathogens have reached unsafe levels.
+
+**Insights after testing**
+
+- What we learned: This query is built around a soup sitting at 48°C — too cold for safe hot-holding, too warm for safe storage — and the system's read of it surfaced three problems that compound. First, it picked Salmonella as the pathogen, because Salmonella is the system's fall-back when nothing better can be found, but the textbook concern at this temperature for a previously-boiled product is Clostridium perfringens (and to a lesser extent Staphylococcus aureus and Bacillus cereus) — sporeformers that survive boiling and germinate during slow cooling. The cook's mention that the soup was boiled before service is a strong cue toward those pathogens, but the system has no way to read the cue. Second, the requested temperature of 48°C falls outside the Salmonella growth model's valid range (which tops out at 40°C), so the system clamped the temperature down to 40°C. The clamp does get flagged, but it isn't honest about the fact that 40°C happens to be near Salmonella's optimum, while 48°C in reality is above it — so the predicted growth at the clamped temperature is faster than what would actually happen at the real temperature. The combination is awkward: the system reports a worrying growth number, but the pathogen and the temperature it modelled both differ from the physical scenario in ways the user has to reconstruct from the audit. Third, three of the five model inputs (the pathogen, the pH, and the water activity) were filled by the system's conservative defaults rather than from any evidence about chicken soup. The composite-food matching — "chicken soup" against the reference rows for "chicken" and "fresh poultry" — fell just below the retrieval thresholds, so the chicken-specific pH and water activity were not picked up even though they exist in the reference data.
+
+- What we fixed: Nothing this round. Each finding belongs to work already on the roadmap. The composite-food retrieval gap is part of the retrieval calibration study underway, which will set thresholds against ground-truth queries. Scenario-aware pathogen selection (recognising that a hot-holding deviation calls for sporeformer hazards rather than the raw-food hazard list) is a future enhancement that does not yet have a design. The most actionable item is a top-level warning that fires when most of a prediction's inputs come from conservative defaults rather than from evidence — so that a user reading "1.9 log of Salmonella growth" can see at a glance that the prediction is built mainly on assumptions. That warning is already in the plan and this query is the clearest argument we have for prioritising it.
+
+- What this taught us: When several defaults stack, the prediction at the bottom of the audit can look authoritative even though almost none of it is grounded. The system's audit transparently records each individual default, but it does not yet add up "this prediction is mostly assumption" into a single signal at the top. The query also showed that the system's pathogen-selection logic is food-centric — it picks the most common hazard for the named food in its raw state — and not scenario-centric. A cooked, then mishandled, product has different relevant hazards from the same product in its raw form, and the system currently cannot see the difference. Finally, the temperature-range clamp is a useful safety mechanism but it can quietly distort the meaning of a prediction when the clamp moves the modelled temperature toward or away from the chosen pathogen's growth optimum — the warning text should eventually say something about the direction of that distortion, not just that a clamp happened.
 
 ---
 
@@ -308,6 +344,17 @@ These queries reflect real production incidents and operational decisions. The l
 - **Source basis**: This query is adapted directly from the informal project description you provided. It represents a realistic production incident.
 - **Ambiguity dimensions**: Temperature trajectory unknown (gradual rise from 4°C to 13°C), failure time estimated ("maybe around 2 AM"), "since yesterday afternoon" is vague, turkey portions pH and aw not stated, strong accept/reject decision pressure (economic incentive to keep the batch)
 - **Parameterisation challenge for humans**: This is the scenario where optimistic bias is strongest. The operator has financial incentive to minimise the estimated abuse time and maximise the estimated starting temperature. Your system should standardise this by using conservative assumptions.
+
+
+**Testing insights**
+
+Testing — follow-up: threshold experiment
+
+- What we learned: After the first round of testing on this query raised the question of whether to build a deeper taxonomy bridge or simply relax the matching threshold, we ran a one-query experiment to see what would happen if the threshold were lowered. The minimum similarity required to accept a reference-data match was reduced from 0.62 to 0.50, and the same turkey-storage query was re-run. With the lower threshold, the pH and water activity for turkey were now reported as grounded in an explicit reference-data match — but the document the system actually matched was the entry for white bread, with a similarity score of 0.53. The numbers landed close to defensible territory by accident (bread's pH range overlaps chicken's at the upper end, and the bread water-activity value was then clamped up to the model's lower limit), but the underlying source was structurally unrelated to the food in question. The pathogen retrieval was unchanged — the chicken-hazard rows remained beyond reach even at the lower threshold, because the right rows are simply not in the embedding model's near-neighbourhood for a turkey query.
+
+- What we fixed: The threshold change is being reverted. The experiment was a one-query check, not a deployed change, and the audit it produced made clear that lowering the threshold without a parallel taxonomy bridge would swap one problem (silent fall-back to safe defaults) for a worse one (silent grounding in an unrelated source document, where the audit reads as if the system had found real evidence). Two related improvements that the experiment did support are kept on the roadmap: an empirical recalibration of the threshold against ground-truth queries — which may indeed land below 0.62 for the right reasons — and a future "needs clarification" failure mode where the system asks the user to provide a missing detail rather than defaulting silently when nothing matches.
+
+- What this taught us: The experiment cleanly settled a design question that had previously only been argued in the abstract: whether the similarity threshold was the lever to pull, or whether the missing piece was a separate taxonomy layer that could bridge a species name to a category the reference data names. The data showed that for a query like this one, the right reference rows are not in the embedding model's neighbourhood at any threshold — there is no setting at which the chicken or fresh-poultry rows surface as the top match for "turkey portions" while the structurally-irrelevant bread, cheese, and syrup rows do not. The two improvements address two different failure modes and are not substitutes for each other: lowering the threshold helps when the right document is just barely below the gate; a taxonomy bridge helps when the embedding model has no taxonomic awareness and the right document is structurally out of reach. The bridge work proceeds.
 
 ---
 

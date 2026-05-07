@@ -171,6 +171,79 @@ TEMPERATURE_INTERPRETATIONS: list[InterpretationRule] = [
         conservative=False,
         notes="Chilled typically means refrigerated",
     ),
+    # Refrigeration — specific appliance / context forms.
+    # find_temperature_interpretation sorts by len(pattern) descending at call time, so physical
+    # list order here does not affect match precedence — longer patterns always win.
+    InterpretationRule(
+        pattern="typical retail refrigeration",
+        value=4.0,
+        conservative=False,
+        notes="Retail cold chain; deterministic rule_match replacing prior embedding_fallback path",
+    ),
+    InterpretationRule(
+        pattern="retail refrigeration",
+        value=4.0,
+        conservative=False,
+        notes="Retail cold chain; shorter form of 'typical retail refrigeration'",
+    ),
+    InterpretationRule(
+        pattern="household refrigerator",
+        value=4.0,
+        conservative=False,
+        notes="Standard refrigeration temperature",
+    ),
+    InterpretationRule(
+        pattern="domestic refrigerator",
+        value=4.0,
+        conservative=False,
+        notes="Standard refrigeration temperature",
+    ),
+    InterpretationRule(
+        pattern="home refrigerator",
+        value=4.0,
+        conservative=False,
+        notes="Standard refrigeration temperature",
+    ),
+    InterpretationRule(
+        pattern="retail display",
+        value=4.0,
+        conservative=False,
+        notes="Retail display case; cold-chain context",
+    ),
+    InterpretationRule(
+        pattern="home fridge",
+        value=4.0,
+        conservative=False,
+        notes="Colloquial form; 'fridge' substring rule exists as fallback",
+    ),
+    # Freezer — specific appliance forms
+    InterpretationRule(
+        pattern="household freezer",
+        value=-18.0,
+        conservative=False,
+        notes="Standard freezer temperature",
+    ),
+    InterpretationRule(
+        pattern="home freezer",
+        value=-18.0,
+        conservative=False,
+        notes="Standard freezer temperature",
+    ),
+    # "Stored cold" / "kept cold" — deterministic replacements for non-deterministic path.
+    # Without these, the LLM may paraphrase "stored cold" → description="cold", which hits
+    # the "cold" → 10°C rule instead of the intended 4°C refrigeration value.
+    InterpretationRule(
+        pattern="stored cold",
+        value=4.0,
+        conservative=False,
+        notes="Stored under refrigeration; 4°C matches TEMPERATURE_CANONICAL_PHRASES[4.0] 'kept cold'",
+    ),
+    InterpretationRule(
+        pattern="kept cold",
+        value=4.0,
+        conservative=False,
+        notes="Kept under refrigeration; matches existing embedding canonical phrase at 4°C",
+    ),
     InterpretationRule(
         pattern="cold",
         value=10.0,
