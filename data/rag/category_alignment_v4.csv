@@ -1,0 +1,28 @@
+foodex2_code,foodex2_name,treatment,ptm_category,sub_anchors,notes
+A000J,Grains and grain-based products,DIRECT,grain,,Maps cleanly to existing 'grain' (breads cakes barley etc).
+A010R,Sugar plants,OUT_OF_SCOPE,,,"Dropped 2026-05-07. Refined sugar already exists as a row in food_properties.csv ('sugar' under sweetener); no need for a FoodEx2 bridge."
+A015E,Oilseeds and oilfruits,OUT_OF_SCOPE,,,"Oil-production seeds (flax sesame sunflower olives). Not a typical PTM query target. Edible oils handled separately if needed."
+A031E,Eggs and egg products,DIRECT,eggs,,Direct match.
+A03JZ,Hot drinks and similar (coffee cocoa tea and herbal infusions),DIRECT,beverage,,Direct match.
+A03LZ,Alcoholic beverages,DIRECT,beverage,,Direct match.
+A03PV,Food products for young population,OUT_OF_SCOPE,,,Infant formulas and weaning foods. Distinct hazard profile (Cronobacter etc); separate domain. Defer to a later sprint if needed.
+A03RR,Food for particular diets,OUT_OF_SCOPE,,,Diet-labelled products (low-sodium gluten-free etc). Diet labels are not microbiologically meaningful; the underlying foods belong to other categories.
+A03TD,Meat and dairy imitates,OUT_OF_SCOPE,,,"Plant-based meat / dairy substitutes. Different microbiology (often higher pH, different aw, different spoilage organisms). MVP defer."
+A03VA,Composite dishes,DEFER,,,"Explicitly deferred per earlier scoping (chicken soup Caesar salad scrambled eggs etc). Composite-food taxonomy needs separate design — which constituent's pH/aw applies?"
+A042N,Seasoning sauces and condiments,DIRECT,condiment,,Direct match.
+A04PE,Confectionery including chocolate,OUT_OF_SCOPE,,,"Dropped 2026-05-07. Not a typical PTM query target; existing 'dessert' row (gelatin dessert) stays as-is."
+A07XJ,Garden vegetables and primary derivatives thereof,DIRECT,vegetable,,"Direct match. NOTE: existing rows in vegetable include 'beans black' and 'beans kidney' which FoodEx2 actually classifies under A0EZG Legume seeds — see that row."
+A0BXX,Isolated purified ingredients (including mineral or synthetic),OUT_OF_SCOPE,,,Pure chemicals (vitamins minerals additives in isolation). Not foods PTM models.
+A0BXZ,Milk and milk products (dairy),DIRECT,dairy,,Direct match.
+A0EZG,Legume seeds and primary derivatives thereof,DIRECT,vegetable,,"Resolved 2026-05-07: keep existing precedent. Beans (black, kidney) are already in 'vegetable' in food_properties.csv; legumes inherit that. The 'protein' category remains a single-row orphan (tofu only) for now."
+A0EZH,Nuts and primary derivatives thereof,DIRECT,condiment,,"Resolved 2026-05-07 (revised): collapsed to existing 'condiment' category, matching the precedent that peanut butter is already there. No new category added. Side note: 'condiment' becomes more heterogeneous (sauces + herbs/spices + nuts) and 'almonds → condiment' will read oddly in audits, but this is consistent with the existing scheme."
+A0EZM,Herbs spices and similar,DIRECT,condiment,,"Best-fit 'condiment'. Alternative would be a new 'spice' category — not worth adding for MVP."
+A0EZN,Fruit and primary derivatives thereof,DIRECT,fruit,,Direct match.
+A0EZP,Fruit/vegetables/plant drinks spreads and related products,DEFER,,,"Composite category — drinks bridge to 'beverage', spreads to 'condiment', juices to 'beverage' or 'fruit'. Defer until composite-food strategy is settled (see A03VA)."
+A0EZQ,Seafood and products thereof,DIRECT,shellfish,,"FoodEx2 'Seafood' = non-fish marine animals (mollusks, crustaceans, cephalopods) which matches existing 'shellfish' rows (clams crab oysters mussels octopus etc)."
+A0EZR,Fish meat and products thereof,DIRECT,fish,,Direct match.
+A0EZS,Mammals and birds meat and products thereof,DESCEND,,A0EYF→meat;A0EYG→poultry;A0BXT→meat,"SPLIT at species level. Top-level mixes mammal and bird meat plus species-agnostic process sub-trees. For MVP, anchor at A0EYF (Mammals meat) → 'meat', A0EYG (Birds meat) → 'poultry', and A0BXT (Processed or preserved meat) → 'meat'. The A0BXT branch carries a poultry-keyword species override applied in the extractor: any term under A0BXT whose name contains a poultry species keyword (chicken/turkey/duck/goose/quail/pheasant/partridge/pigeon/guinea-fowl/ratite/poultry) is reclassified to 'poultry'. Other species-agnostic sub-trees (A01TT fat tissues, A04MQ offal, A0BY5 MSM, A0EYE carcase) remain out of scope."
+A0EZT,Terrestrial animals other than mammals and birds,OUT_OF_SCOPE,,,Reptiles amphibians insects. Not in MVP scope; queries vanishingly rare.
+A0F0J,Water water-based beverages and related ingredients,DIRECT,beverage,,Direct match.
+A0F0K,Ingredients for hot drinks and infusions,OUT_OF_SCOPE,,,"Pre-brew ingredients (coffee beans, tea leaves, dried herbs for infusion). Out of scope; rarely a PTM query target. Brewed drinks already covered by A03JZ."
+A16RE,Starchy roots and tubers and primary derivatives thereof,DIRECT,vegetable,,"Direct match. Includes potato cassava sweet potato yam taro. Note: existing food_properties has cooked rice in grain not vegetable — but rice is grain-based (A000J), not a starchy root, so this is fine."
