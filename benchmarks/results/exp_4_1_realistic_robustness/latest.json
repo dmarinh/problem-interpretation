@@ -1,0 +1,389 @@
+[
+  {
+    "model": "GPT-4o-mini",
+    "litellm_model": "gpt-4o-mini",
+    "instructor_mode": "TOOLS",
+    "queries": [
+      {
+        "query_id": "R1",
+        "query_text": "We need to model L. monocytogenes growth in vacuum-packed sliced turkey deli meat during retail display. Assume typical retail refrigeration. The product has a 35-day shelf life. What growth can we expect?",
+        "runs": [
+          {
+            "run": 0,
+            "extraction": {
+              "food_description": "sliced turkey deli meat",
+              "food_state": "vacuum-packed",
+              "pathogen_mentioned": "L. monocytogenes",
+              "is_multi_step": false,
+              "implied_model_type": "growth",
+              "temperature_value": null,
+              "temperature_description": "typical retail refrigeration",
+              "temperature_is_range": false,
+              "temperature_range_min": null,
+              "temperature_range_max": null,
+              "duration_minutes": 50400.0,
+              "duration_description": "35-day shelf life",
+              "duration_is_ambiguous": false,
+              "duration_range_min": null,
+              "duration_range_max": null,
+              "ph_value": null,
+              "water_activity": null
+            },
+            "check_results": {
+              "pathogen": true,
+              "food": true,
+              "model_type": true,
+              "duration": true,
+              "temperature": true
+            },
+            "latency_s": 9.386,
+            "input_tokens": 4713,
+            "output_tokens": 326,
+            "cost_usd": 0.0009025499999999999,
+            "error": null
+          },
+          {
+            "run": 1,
+            "extraction": {
+              "food_description": "sliced turkey deli meat",
+              "food_state": "vacuum-packed",
+              "pathogen_mentioned": "L. monocytogenes",
+              "is_multi_step": false,
+              "implied_model_type": "growth",
+              "temperature_value": null,
+              "temperature_description": "typical retail refrigeration",
+              "temperature_is_range": false,
+              "temperature_range_min": null,
+              "temperature_range_max": null,
+              "duration_minutes": 50400.0,
+              "duration_description": "35-day shelf life",
+              "duration_is_ambiguous": false,
+              "duration_range_min": null,
+              "duration_range_max": null,
+              "ph_value": null,
+              "water_activity": null
+            },
+            "check_results": {
+              "pathogen": true,
+              "food": true,
+              "model_type": true,
+              "duration": true,
+              "temperature": true
+            },
+            "latency_s": 8.602,
+            "input_tokens": 4713,
+            "output_tokens": 326,
+            "cost_usd": 0.00058575,
+            "error": null
+          },
+          {
+            "run": 2,
+            "extraction": {
+              "food_description": "sliced turkey deli meat",
+              "food_state": "vacuum-packed",
+              "pathogen_mentioned": "L. monocytogenes",
+              "is_multi_step": false,
+              "implied_model_type": "growth",
+              "temperature_value": null,
+              "temperature_description": "typical retail refrigeration",
+              "temperature_is_range": false,
+              "temperature_range_min": null,
+              "temperature_range_max": null,
+              "duration_minutes": 50400.0,
+              "duration_description": "35-day shelf life",
+              "duration_is_ambiguous": false,
+              "duration_range_min": null,
+              "duration_range_max": null,
+              "ph_value": null,
+              "water_activity": null
+            },
+            "check_results": {
+              "pathogen": true,
+              "food": true,
+              "model_type": true,
+              "duration": true,
+              "temperature": true
+            },
+            "latency_s": 11.389,
+            "input_tokens": 4713,
+            "output_tokens": 333,
+            "cost_usd": 0.00058995,
+            "error": null
+          }
+        ],
+        "n_runs": 3,
+        "n_extractions": 3,
+        "pass_rate_per_check": {
+          "pathogen": 1.0,
+          "food": 1.0,
+          "model_type": 1.0,
+          "duration": 1.0,
+          "temperature": 1.0
+        },
+        "overall_pass_rate": 1.0,
+        "mean_latency_s": 9.792,
+        "total_cost_usd": 0.002078,
+        "total_input_tokens": 14139,
+        "total_output_tokens": 985
+      }
+    ],
+    "summary": {
+      "mean_overall_pass_rate": 1.0,
+      "mean_check_pass_rate_per_check": {
+        "pathogen": 1.0,
+        "food": 1.0,
+        "model_type": 1.0,
+        "duration": 1.0,
+        "temperature": 1.0
+      },
+      "schema_compliance": 1.0,
+      "latency_p50_s": 9.39,
+      "latency_p95_s": 11.39,
+      "latency_mean_s": 9.79,
+      "total_input_tokens": 14139,
+      "total_output_tokens": 985,
+      "actual_cost_per_call_usd": 0.000693,
+      "total_cost_usd": 0.0021
+    }
+  },
+  {
+    "model": "o3-mini",
+    "litellm_model": "o3-mini",
+    "instructor_mode": "TOOLS",
+    "queries": [
+      {
+        "query_id": "R1",
+        "query_text": "We need to model L. monocytogenes growth in vacuum-packed sliced turkey deli meat during retail display. Assume typical retail refrigeration. The product has a 35-day shelf life. What growth can we expect?",
+        "runs": [
+          {
+            "run": 0,
+            "extraction": null,
+            "check_results": {
+              "pathogen": false,
+              "food": false,
+              "model_type": false,
+              "duration": false,
+              "temperature": false
+            },
+            "latency_s": 0.036,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cost_usd": 0,
+            "error": "InstructorRetryException: <failed_attempts>\n\n<generation number=\"1\">\n<exception>\n    litellm.UnsupportedParamsError: O-series models don't support temperature=0.1. Only temperature=1 is supported. To drop unsupported openai params from the call, set `litellm.drop_params = True`\n</exception>\n<completion>\n    None\n</completion>\n</generation>\n\n<generation number=\"2\">\n<exception>\n    litellm.UnsupportedParamsError: O-series models don't support temperature=0.1. Only temperature=1 is supported. To drop unsupported openai params from the call, set `litellm.drop_params = True`\n</exception>\n<completion>\n    None\n</completion>\n</generation>\n\n<generation number=\"3\">\n<exception>\n    litellm.UnsupportedParamsError: O-series models don't support temperature=0.1. Only temperature=1 is supported. To drop unsupported openai params from the call, set `litellm.drop_params = True`\n</exception>\n<completion>\n    None\n</completion>\n</generation>\n\n</failed_attempts>\n\n<last_exception>\n    litellm.UnsupportedParamsError: O-series models don't support temperature=0.1. Only temperature=1 is supported. To drop unsupported openai params from the call, set `litellm.drop_params = True`\n</last_exception>"
+          },
+          {
+            "run": 1,
+            "extraction": null,
+            "check_results": {
+              "pathogen": false,
+              "food": false,
+              "model_type": false,
+              "duration": false,
+              "temperature": false
+            },
+            "latency_s": 0.021,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cost_usd": 0,
+            "error": "InstructorRetryException: <failed_attempts>\n\n<generation number=\"1\">\n<exception>\n    litellm.UnsupportedParamsError: O-series models don't support temperature=0.1. Only temperature=1 is supported. To drop unsupported openai params from the call, set `litellm.drop_params = True`\n</exception>\n<completion>\n    None\n</completion>\n</generation>\n\n<generation number=\"2\">\n<exception>\n    litellm.UnsupportedParamsError: O-series models don't support temperature=0.1. Only temperature=1 is supported. To drop unsupported openai params from the call, set `litellm.drop_params = True`\n</exception>\n<completion>\n    None\n</completion>\n</generation>\n\n<generation number=\"3\">\n<exception>\n    litellm.UnsupportedParamsError: O-series models don't support temperature=0.1. Only temperature=1 is supported. To drop unsupported openai params from the call, set `litellm.drop_params = True`\n</exception>\n<completion>\n    None\n</completion>\n</generation>\n\n</failed_attempts>\n\n<last_exception>\n    litellm.UnsupportedParamsError: O-series models don't support temperature=0.1. Only temperature=1 is supported. To drop unsupported openai params from the call, set `litellm.drop_params = True`\n</last_exception>"
+          },
+          {
+            "run": 2,
+            "extraction": null,
+            "check_results": {
+              "pathogen": false,
+              "food": false,
+              "model_type": false,
+              "duration": false,
+              "temperature": false
+            },
+            "latency_s": 0.018,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cost_usd": 0,
+            "error": "InstructorRetryException: <failed_attempts>\n\n<generation number=\"1\">\n<exception>\n    litellm.UnsupportedParamsError: O-series models don't support temperature=0.1. Only temperature=1 is supported. To drop unsupported openai params from the call, set `litellm.drop_params = True`\n</exception>\n<completion>\n    None\n</completion>\n</generation>\n\n<generation number=\"2\">\n<exception>\n    litellm.UnsupportedParamsError: O-series models don't support temperature=0.1. Only temperature=1 is supported. To drop unsupported openai params from the call, set `litellm.drop_params = True`\n</exception>\n<completion>\n    None\n</completion>\n</generation>\n\n<generation number=\"3\">\n<exception>\n    litellm.UnsupportedParamsError: O-series models don't support temperature=0.1. Only temperature=1 is supported. To drop unsupported openai params from the call, set `litellm.drop_params = True`\n</exception>\n<completion>\n    None\n</completion>\n</generation>\n\n</failed_attempts>\n\n<last_exception>\n    litellm.UnsupportedParamsError: O-series models don't support temperature=0.1. Only temperature=1 is supported. To drop unsupported openai params from the call, set `litellm.drop_params = True`\n</last_exception>"
+          }
+        ],
+        "n_runs": 3,
+        "n_extractions": 0,
+        "pass_rate_per_check": {
+          "pathogen": 0.0,
+          "food": 0.0,
+          "model_type": 0.0,
+          "duration": 0.0,
+          "temperature": 0.0
+        },
+        "overall_pass_rate": 0.0,
+        "mean_latency_s": 0.0,
+        "total_cost_usd": 0,
+        "total_input_tokens": 0,
+        "total_output_tokens": 0
+      }
+    ],
+    "summary": {
+      "mean_overall_pass_rate": 0.0,
+      "mean_check_pass_rate_per_check": {
+        "pathogen": 0.0,
+        "food": 0.0,
+        "model_type": 0.0,
+        "duration": 0.0,
+        "temperature": 0.0
+      },
+      "schema_compliance": 0.0,
+      "latency_p50_s": 0.0,
+      "latency_p95_s": 0.0,
+      "latency_mean_s": 0.0,
+      "total_input_tokens": 0,
+      "total_output_tokens": 0,
+      "actual_cost_per_call_usd": 0.0,
+      "total_cost_usd": 0.0
+    }
+  },
+  {
+    "model": "Gemma 3 12B",
+    "litellm_model": "ollama/gemma3:12b",
+    "instructor_mode": "JSON",
+    "queries": [
+      {
+        "query_id": "R1",
+        "query_text": "We need to model L. monocytogenes growth in vacuum-packed sliced turkey deli meat during retail display. Assume typical retail refrigeration. The product has a 35-day shelf life. What growth can we expect?",
+        "runs": [
+          {
+            "run": 0,
+            "extraction": {
+              "food_description": "sliced turkey deli meat",
+              "food_state": "cooked",
+              "pathogen_mentioned": "L. monocytogenes",
+              "is_multi_step": false,
+              "implied_model_type": "growth",
+              "temperature_value": null,
+              "temperature_description": "typical retail refrigeration",
+              "temperature_is_range": false,
+              "temperature_range_min": null,
+              "temperature_range_max": null,
+              "duration_minutes": null,
+              "duration_description": "retail display",
+              "duration_is_ambiguous": false,
+              "duration_range_min": null,
+              "duration_range_max": null,
+              "ph_value": null,
+              "water_activity": null
+            },
+            "check_results": {
+              "pathogen": true,
+              "food": true,
+              "model_type": true,
+              "duration": false,
+              "temperature": true
+            },
+            "latency_s": 23.63,
+            "input_tokens": 4096,
+            "output_tokens": 291,
+            "cost_usd": 0.0,
+            "error": null
+          },
+          {
+            "run": 1,
+            "extraction": {
+              "food_description": "sliced turkey deli meat",
+              "food_state": "cooked",
+              "pathogen_mentioned": "L. monocytogenes",
+              "is_multi_step": false,
+              "implied_model_type": "growth",
+              "temperature_value": null,
+              "temperature_description": "typical retail refrigeration",
+              "temperature_is_range": false,
+              "temperature_range_min": null,
+              "temperature_range_max": null,
+              "duration_minutes": null,
+              "duration_description": "retail display",
+              "duration_is_ambiguous": false,
+              "duration_range_min": null,
+              "duration_range_max": null,
+              "ph_value": null,
+              "water_activity": null
+            },
+            "check_results": {
+              "pathogen": true,
+              "food": true,
+              "model_type": true,
+              "duration": false,
+              "temperature": true
+            },
+            "latency_s": 16.797,
+            "input_tokens": 4096,
+            "output_tokens": 291,
+            "cost_usd": 0.0,
+            "error": null
+          },
+          {
+            "run": 2,
+            "extraction": {
+              "food_description": "sliced turkey deli meat",
+              "food_state": "cooked",
+              "pathogen_mentioned": "L. monocytogenes",
+              "is_multi_step": false,
+              "implied_model_type": "growth",
+              "temperature_value": null,
+              "temperature_description": "typical retail refrigeration",
+              "temperature_is_range": false,
+              "temperature_range_min": null,
+              "temperature_range_max": null,
+              "duration_minutes": null,
+              "duration_description": "retail display",
+              "duration_is_ambiguous": false,
+              "duration_range_min": null,
+              "duration_range_max": null,
+              "ph_value": null,
+              "water_activity": null
+            },
+            "check_results": {
+              "pathogen": true,
+              "food": true,
+              "model_type": true,
+              "duration": false,
+              "temperature": true
+            },
+            "latency_s": 16.838,
+            "input_tokens": 4096,
+            "output_tokens": 291,
+            "cost_usd": 0.0,
+            "error": null
+          }
+        ],
+        "n_runs": 3,
+        "n_extractions": 3,
+        "pass_rate_per_check": {
+          "pathogen": 1.0,
+          "food": 1.0,
+          "model_type": 1.0,
+          "duration": 0.0,
+          "temperature": 1.0
+        },
+        "overall_pass_rate": 0.8,
+        "mean_latency_s": 19.088,
+        "total_cost_usd": 0.0,
+        "total_input_tokens": 12288,
+        "total_output_tokens": 873
+      }
+    ],
+    "summary": {
+      "mean_overall_pass_rate": 0.8,
+      "mean_check_pass_rate_per_check": {
+        "pathogen": 1.0,
+        "food": 1.0,
+        "model_type": 1.0,
+        "duration": 0.0,
+        "temperature": 1.0
+      },
+      "schema_compliance": 1.0,
+      "latency_p50_s": 16.84,
+      "latency_p95_s": 23.63,
+      "latency_mean_s": 19.09,
+      "total_input_tokens": 12288,
+      "total_output_tokens": 873,
+      "actual_cost_per_call_usd": 0.0,
+      "total_cost_usd": 0.0
+    }
+  }
+]
