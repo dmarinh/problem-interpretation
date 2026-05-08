@@ -386,3 +386,32 @@ Integration tests using the real vector store revealed that ph and aw for "groun
 - When an audit-trail field is populated "after success", ask immediately: "what does the audit look like if we fail at step N?" Audit events that fire only on the happy path are silent on failure — which is exactly when a complete audit trail matters most.
 - When a `_build_field_audit` function has two data sources (`metadata.provenance` for keys, `grounded_values` for final_value), both must be populated symmetrically. Adding a key to one without the other produces an entry with `final_value=null` even when a value was resolved.
 - Mapping functions between two namespaces (standardizer specs → audit keys) need exhaustiveness enforcement. A silent passthrough is a silent bug; a logged warning is the minimum acceptable fallthrough behavior.
+
+---
+
+### 2026-05-07 — FoodEx2 taxonomy bridge (Tier 3 food property resolution)
+
+**What went well:**
+
+The TDD workflow (design → tests → implementation) caught two structural invariants early that would have been invisible in exploratory coding: (1) the composite-food blocklist must short-circuit before fuzzy matching, not after — "chicken soup" scores token_set_ratio=100 against "chicken", so without the guard the bridge would falsely resolve composite dishes; (2) the alias map must run before fuzzy matching, not after — "beef" scores only ~40 against "bovine" without the alias, so it would silently match a wrong category ("stock cube beef", condiment) rather than meat.
+
+**Surfaced pattern — token_set_ratio tiebreaking:**
+
+`rapidfuzz.fuzz.token_set_ratio` for single-word queries ties at 100 against every taxonomy entry that contains that word as a token ("turkey" = 100 vs "turkey egg", "turkey fresh meat", "turkey berries"). Without a secondary scorer, CSV order decides the winner — and the correct entry rarely comes first. Fix: composite scoring `(token_set_ratio, fuzz.ratio)`. fuzz.ratio penalises length differences, so exact matches (ratio=100) beat substring matches (ratio<100). This is the correct pattern for any rapidfuzz-based resolver that needs to prefer exact or near-exact hits over broad substring hits.
+
+**Surfaced pattern — test vehicle must match data reality:**
+
+The `TestBridgeAttemptedNoData` test was written with the assumption that the `eggs` food_properties category has pH but no aw. The actual data has both (`eggs,eggs,,,,0.97,0.97,IFT-2003-T31`). The test vehicle was wrong, not the implementation. Always verify test assumptions against the live CSVs before writing "no data" tests.
+
+**Surfaced pattern — implement producer and consumer together:**
+
+`GroundedValues.bridge_attempts` is the producer; `StandardizationService._get_ph/_get_water_activity` is the consumer. Both were written in the same session, but the reviewer's check caught that the consumer was initially missing. When a new data channel is added to a grounding container (or any inter-service message), both producer and consumer must be implemented and tested end-to-end in the same change — otherwise the mechanism is invisible in the audit output and only discoverable by reading both services in parallel.
+
+**Threshold calibration procedure:**
+
+Parametrize over multiple threshold values (70/75/80/85), run unit tests against known positives and negatives, record the exact min-positive and max-negative scores, then choose a threshold in the gap with documented margin. Document the exact scores in the `__init__` docstring so the chosen threshold is justified, not magic. This procedure also serves as a regression test for future vocabulary drift in taxonomy updates.
+
+**What to do differently:**
+
+- When writing "category has no data for field X" tests, grep the CSV for that category before asserting — data files change and assumptions rot.
+- For any new dict field added to a grounding container that is meant to be read by a downstream service, create a failing test on the consumer side before implementing the producer. The producer-without-consumer failure mode is silent in testing (the producer populates correctly, nothing breaks) but invisible in the actual audit output.

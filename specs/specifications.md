@@ -130,17 +130,18 @@ The orchestrator (stage 5) is the coordination layer, not a processing stage in 
 2. `USER_INFERRED` — value derived from linguistic rules ("room temperature" → 25°C)
 3. `RAG_RETRIEVAL` — value retrieved from the primary food-properties query (specific-food doc above 0.70 threshold)
 4. `RAG_RETRIEVAL_FALLBACK` — value retrieved via per-field secondary query (category-level doc, threshold 0.62)
-5. `CONSERVATIVE_DEFAULT` — safety default (applied in StandardizationService, not here)
+5. `RAG_RETRIEVAL_CATEGORY_BRIDGE` — value retrieved via the FoodEx2 taxonomy bridge (Tier 3; see below)
+6. `CONSERVATIVE_DEFAULT` — safety default (applied in StandardizationService, not here)
 
 Higher-priority sources are never overwritten by lower-priority sources.
 
 **Processing sequence for `ground_scenario()`:**
 1. Ground environmental conditions (pH, aw, CO2, nitrite, lactic acid, acetic acid) from `ExtractedScenario.environmental_conditions` — `USER_EXPLICIT` source
 2. Ground pathogen from `scenario.pathogen_mentioned` — `USER_EXPLICIT` via `ComBaseOrganism.from_string()` alias dict lookup
-3. Two-tier RAG retrieval for food pH and aw (only if not already grounded) — see **Food property retrieval** below
+3. Three-tier RAG retrieval for food pH and aw (only if not already grounded) — see **Food property retrieval** below
 4. Two-stage RAG lookup for pathogen (only if organism not yet grounded): Stage 1 calls `query_pathogen_hazards()` to resolve the food description to a canonical `food_name` metadata key; Stage 2 calls `get_hazards_for_food(food_name)` to fetch all hazard documents for that food and selects the pathogen with the highest `annual_deaths_us` (deterministic danger ranking). Falls back to Stage 1's top embedding result if Stage 2 returns no documents (food not in `food_pathogen_hazards.csv`). `extraction_method` is `"ranked_by_annual_deaths"` on the Stage 2 path and `"direct"` on the fallback path.
 
-**Food property retrieval (`_ground_food_properties`):** Two-tier design.
+**Food property retrieval (`_ground_food_properties`):** Three-tier design.
 
 *Tier 1 — primary query* (`query_food_properties`, threshold 0.70): single query `"{food} pH water activity properties"` against `TYPE_FOOD_PROPERTIES`. If above threshold, extracts pH and aw from the top document's text using hybrid regex+LLM extraction. Source tier: `RAG_RETRIEVAL`. A specific-food row may have only one field populated (e.g., the `chicken` row has pH but no aw); in that case only the present field is grounded.
 
@@ -150,7 +151,9 @@ Higher-priority sources are never overwritten by lower-priority sources.
 
 Tier 2 can match category-level docs (e.g., `"fresh poultry water activity 0.99–1.0"`) that Tier 1 may miss or not extract from. Source tier: `RAG_RETRIEVAL_FALLBACK`. The `RetrievalResult` for a Tier 2 retrieval has `attributed_field` set to the specific field name (`"ph"` or `"water_activity"`); the Tier 1 food-properties retrieval has `attributed_field=None` (it may populate both fields from a single doc). The pathogen retrieval (`_ground_pathogen_from_rag`) sets `attributed_field="organism"` so the audit routing selects it unambiguously regardless of the query string's vocabulary.
 
-`CONSERVATIVE_DEFAULT` fires only when both tiers produce no hit above their respective thresholds.
+*Tier 3 — FoodEx2 taxonomy bridge* (`_ground_via_taxonomy_bridge`, `app/services/grounding/taxonomy_bridge.py`): fires after both Tier 1 and Tier 2 for any field still ungrounded. Performs deterministic food-name fuzzy matching against `data/rag/food_taxonomy.csv` (2,917 FoodEx2 MTX entries) to resolve a `ptm_category`, then supplies `food_properties.csv` rows for that category. Source tier: `RAG_RETRIEVAL_CATEGORY_BRIDGE`. Scoring uses composite `(token_set_ratio, fuzz.ratio)` — token_set_ratio for recall, fuzz.ratio as tiebreaker (penalises length mismatch). Threshold: 80 (calibrated: min true-positive 90.9, max true-negative 57.1, gap 33.8 points; 80 provides 23-point margin above nearest true-negative). An alias map (`data/food_taxonomy_aliases.csv`) rewrites consumer vocabulary (e.g. "beef" → "bovine") before fuzzy matching. A composite-food blocklist fires before fuzzy matching: if the description contains a multi-ingredient keyword (soup, stew, salad, etc.), the bridge returns None. When the bridge resolves a category but that category has no data for a specific field, `GroundedValues.bridge_attempts[field]` is populated with a `CategoryBridgeInfo` so StandardizationService can emit an informative reason string rather than a silent default. Provenance carries a `CategoryBridgeInfo` on `ValueProvenance.category_bridge`.
+
+`CONSERVATIVE_DEFAULT` fires only when all three tiers produce no hit.
 
 *Threshold calibration (2026-04-30):* 13 known-good food/property pairs scored ≥ 0.6587 on Tier 2 queries; 8 should-not-match cases scored ≤ 0.5991. The gap is 0.0596; 0.62 sits in it with ~0.04 margin on each side. Key validated cases: `"chicken" → water_activity` finds the `"fresh poultry"` aw doc at 0.7145; `"poultry" → ph/aw` finds category docs at 0.6896/0.7584.
 5. If `scenario.is_multi_step and scenario.time_temperature_steps` → `_ground_multi_step_profile()` (results to `grounded.steps`, not to flat key-value store)
@@ -391,6 +394,7 @@ A flat key-value store (not a Pydantic model):
 - `warnings: list[str]` — unresolvable-field messages
 - `ungrounded_fields: list[str]` — fields that could not be resolved
 - `steps: list[GroundedStep]` — multi-step time-temperature steps (separate from flat values)
+- `bridge_attempts: dict[str, CategoryBridgeInfo]` — keyed by field name ("ph", "water_activity"); populated when the taxonomy bridge resolved a category but that category has no data for the field; read by StandardizationService to emit bridge-aware reason strings in `DefaultImputed`
 
 Key names in `values`: `"temperature_celsius"`, `"duration_minutes"`, `"ph"`, `"water_activity"`, `"organism"`, `"co2_percent"`, `"nitrite_ppm"`, `"lactic_acid_ppm"`, `"acetic_acid_ppm"`.
 
@@ -432,7 +436,7 @@ Tracks origin and transformations of a single value. Key fields:
 
 | Field | Type | Description |
 |---|---|---|
-| `source` | `ValueSource` | Categorical source tier (USER_EXPLICIT, USER_INFERRED, RAG_RETRIEVAL, RAG_RETRIEVAL_FALLBACK, CONSERVATIVE_DEFAULT, etc.) |
+| `source` | `ValueSource` | Categorical source tier (USER_EXPLICIT, USER_INFERRED, RAG_RETRIEVAL, RAG_RETRIEVAL_FALLBACK, RAG_RETRIEVAL_CATEGORY_BRIDGE, CONSERVATIVE_DEFAULT, etc.) |
 | `original_text` | `str \| None` | Raw text from user or RAG |
 | `retrieval_source` | `str \| None` | RAG doc_id |
 | `transformation_applied` | `str \| None` | Free-text description of transformation (legacy, supplemented by structured `standardization` block) |
@@ -446,6 +450,7 @@ Tracks origin and transformations of a single value. Key fields:
 | `rule_notes` | `str \| None` | Human-readable rationale from rule |
 | `embedding_similarity` | `float \| None` | Cosine similarity score (embedding-fallback only) |
 | `canonical_phrase` | `str \| None` | Closest canonical phrase in embedding lookup |
+| `category_bridge` | `CategoryBridgeInfo \| None` | Taxonomy bridge resolution record; non-null only when source is `RAG_RETRIEVAL_CATEGORY_BRIDGE`. Carries: `species` (food_description input), `resolved_category`, `taxonomy_code`, `taxonomy_label`, `taxonomy_source_id` (e.g. `EFSA-FoodEx2-MTX-12.0`), `matched_food_name`, `match_score` (token_set_ratio), `property_row_food_name`, `property_row_source_ids`. |
 
 **No confidence numbers.** The `source` enum tier is the reliability signal. The only numeric reliability score is `RetrievalResult.embedding_score` (cosine similarity = 1 - ChromaDB distance).
 

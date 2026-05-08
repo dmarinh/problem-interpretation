@@ -40,8 +40,12 @@ from app.models.extraction import (
     ExtractedTemperature,
     ExtractedDuration,
 )
-from app.models.metadata import ValueProvenance, ValueSource, RetrievalResult, RunnerUpResult, SkippedDocInfo
+from app.models.metadata import (
+    ValueProvenance, ValueSource, RetrievalResult, RunnerUpResult, SkippedDocInfo,
+    CategoryBridgeInfo,
+)
 from app.rag.retrieval import RetrievalService, get_retrieval_service, RetrievalResponse
+from app.services.grounding.taxonomy_bridge import TaxonomyBridge
 from app.services.audit.citations import get_full_citations
 from app.services.llm.client import LLMClient, get_llm_client
 
@@ -217,6 +221,13 @@ class GroundedValues:
         self.warnings: list[str] = []
         self.ungrounded_fields: list[str] = []
         self.steps: list[GroundedStep] = []
+        # Populated when the taxonomy bridge resolves a category for a field
+        # but the category has NO food_properties rows supplying that field.
+        # Keys are field names ("ph", "water_activity").  The CategoryBridgeInfo
+        # records what was attempted so StandardizationService can include
+        # "bridge resolved to category X, no Y data available" in the
+        # DefaultImputed reason instead of a silent "no value found".
+        self.bridge_attempts: dict[str, CategoryBridgeInfo] = {}
 
     @property
     def has_steps(self) -> bool:
@@ -307,10 +318,12 @@ class GroundingService:
         retrieval_service: RetrievalService | None = None,
         llm_client: LLMClient | None = None,
         use_llm_extraction: bool = True,
+        taxonomy_bridge: TaxonomyBridge | None = None,
     ):
         self._retrieval = retrieval_service or get_retrieval_service()
         self._llm = llm_client or get_llm_client()
         self._use_llm_extraction = use_llm_extraction
+        self._taxonomy_bridge = taxonomy_bridge or TaxonomyBridge()
     
     async def ground_scenario(
         self,
@@ -533,6 +546,14 @@ class GroundingService:
         if not grounded.has("water_activity"):
             await self._ground_field_fallback(food_description, "water_activity", grounded)
 
+        # ── Tier 3: taxonomy bridge ───────────────────────────────────────────
+        # Fires only when at least one field is still ungrounded after both
+        # Tier 1 and Tier 2.  Resolves the food name to a FoodEx2 ptm_category
+        # via deterministic fuzzy matching, then reads food_properties rows for
+        # that category directly from the pre-loaded CSV.  No ChromaDB query.
+        if not grounded.has("ph") or not grounded.has("water_activity"):
+            self._ground_via_taxonomy_bridge(food_description, grounded)
+
     async def _ground_field_fallback(
         self,
         food_description: str,
@@ -579,6 +600,113 @@ class GroundingService:
             grounded.warnings.append(
                 f"Fallback retrieval for {field} returned a doc with no {field} data "
                 f"(food='{food_description}', doc='{top.doc_id}')"
+            )
+
+    def _ground_via_taxonomy_bridge(
+        self,
+        food_description: str,
+        grounded: GroundedValues,
+    ) -> None:
+        """
+        Tier 3 — taxonomy bridge: resolve food_description → ptm_category →
+        food_properties rows, then set any still-missing pH or aw fields.
+
+        This method is synchronous: TaxonomyBridge does all lookups in-memory
+        from pre-loaded CSV data; no async I/O is needed.
+
+        Conservative-bound selection across multiple category rows
+        ----------------------------------------------------------
+        When a category has several rows supplying the same field (e.g. meat
+        has beef-ground, ham, veal for pH and fresh-meat, cured-meat for aw),
+        the bridge picks the row whose upper bound is highest for that field.
+        This is the most conservative choice for growth models (higher pH →
+        closer to neutral → more growth; higher aw → more growth) and stores
+        the selected row's range as range_pending=True so StandardizationService
+        still performs the final conservative-bound selection for inactivation
+        models.  property_row_food_name in the audit names the selected row.
+
+        Audit-honesty for data-empty categories (§8.7)
+        -----------------------------------------------
+        When the bridge resolves a category but that category has NO rows
+        supplying a particular field, grounded.bridge_attempts[field] is
+        populated with a CategoryBridgeInfo recording the attempted resolution.
+        StandardizationService reads this when building DefaultImputed entries
+        so the reason string mentions "bridge resolved to category X, no Y data
+        available" rather than a silent "no value found".
+        """
+        resolution = self._taxonomy_bridge.resolve(food_description)
+        if resolution is None:
+            return
+
+        fields_to_try: list[tuple[str, str, str]] = []
+        if not grounded.has("ph"):
+            fields_to_try.append(("ph", "ph_min", "ph_max"))
+        if not grounded.has("water_activity"):
+            fields_to_try.append(("water_activity", "aw_min", "aw_max"))
+
+        for field_name, min_col, max_col in fields_to_try:
+            # Collect all property rows that have a value for this field
+            candidates = [
+                r for r in resolution.property_rows
+                if r.get(min_col) and r.get(max_col)
+            ]
+
+            if not candidates:
+                # Bridge resolved the category but the category has no data for
+                # this field.  Record the attempt so the downstream default's
+                # reason can be specific rather than silent.
+                grounded.bridge_attempts[field_name] = CategoryBridgeInfo(
+                    species=food_description,
+                    resolved_category=resolution.ptm_category,
+                    taxonomy_code=resolution.taxonomy_code,
+                    taxonomy_label=resolution.taxonomy_label,
+                    taxonomy_source_id=resolution.taxonomy_source_id,
+                    matched_food_name=resolution.matched_food_name,
+                    match_score=resolution.match_score,
+                    property_row_food_name="",  # no row supplied a value
+                    property_row_source_ids=[],
+                )
+                continue
+
+            # Pick the candidate row whose upper bound is highest (most
+            # conservative for growth models).  range_pending=True is set
+            # so StandardizationService still selects the correct bound for
+            # inactivation models.
+            try:
+                best_row = max(candidates, key=lambda r: float(r[max_col]))
+                val_min = float(best_row[min_col])
+                val_max = float(best_row[max_col])
+            except (ValueError, KeyError) as exc:
+                logger.warning(
+                    "Taxonomy bridge: could not parse numeric values for field %s "
+                    "in category %r: %s",
+                    field_name, resolution.ptm_category, exc,
+                )
+                continue
+            source_col = "ph_source_id" if field_name == "ph" else "aw_source_id"
+            source_ids = [s for s in [best_row.get(source_col, "")] if s]
+
+            bridge_info = CategoryBridgeInfo(
+                species=food_description,
+                resolved_category=resolution.ptm_category,
+                taxonomy_code=resolution.taxonomy_code,
+                taxonomy_label=resolution.taxonomy_label,
+                taxonomy_source_id=resolution.taxonomy_source_id,
+                matched_food_name=resolution.matched_food_name,
+                match_score=resolution.match_score,
+                property_row_food_name=best_row["food_name"],
+                property_row_source_ids=source_ids,
+            )
+
+            grounded.set(
+                field_name,
+                val_min,
+                source=ValueSource.RAG_RETRIEVAL_CATEGORY_BRIDGE,
+                transformation_applied="range extracted via taxonomy bridge, awaiting standardization",
+                extraction_method="taxonomy_bridge",
+                parsed_range=[val_min, val_max],
+                range_pending=True,
+                category_bridge=bridge_info,
             )
 
     def _set_ph_from_props(

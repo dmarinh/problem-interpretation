@@ -66,6 +66,18 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Failed to initialize retrieval service: {e}")
 
+    # Validate taxonomy bridge CSV files — fail fast rather than on first request.
+    from app.services.grounding.taxonomy_bridge import (
+        _TAXONOMY_CSV, _FOOD_PROPERTIES_CSV, _ALIASES_CSV,
+    )
+    for bridge_csv in (_TAXONOMY_CSV, _FOOD_PROPERTIES_CSV, _ALIASES_CSV):
+        if not bridge_csv.exists():
+            logger.error(f"Taxonomy bridge data file missing at startup: {bridge_csv}")
+            raise FileNotFoundError(
+                f"Taxonomy bridge data file missing at startup: {bridge_csv}"
+            )
+    logger.info("Taxonomy bridge CSV files verified")
+
     logger.info("Application startup complete")
     
     yield

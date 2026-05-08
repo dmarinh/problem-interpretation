@@ -63,6 +63,7 @@ from app.models.execution.combase import (
     ComBaseExecutionPayload,
 )
 from app.models.metadata import (
+    CategoryBridgeInfo,
     DefaultImputed,
     RangeBoundSelection,
     RangeClamp,
@@ -442,7 +443,15 @@ class StandardizationService:
 
         if ph is None:
             ph = settings.default_ph_neutral
-            if self._is_inactivation_model(model_type):
+            bridge_attempt: CategoryBridgeInfo | None = grounded.bridge_attempts.get("ph")
+            if bridge_attempt:
+                reason = (
+                    f"No pH specified. Bridge resolved food to category "
+                    f"'{bridge_attempt.resolved_category}' but no pH data is available "
+                    f"for that category. Using neutral default pH (7.0) — "
+                    f"near-optimal for pathogen growth (conservative)."
+                )
+            elif self._is_inactivation_model(model_type):
                 reason = (
                     "No pH specified. Using neutral pH (7.0) which provides "
                     "no additional thermal protection (conservative for cooking)."
@@ -513,7 +522,15 @@ class StandardizationService:
 
         if aw is None:
             aw = settings.default_water_activity
-            if self._is_inactivation_model(model_type):
+            bridge_attempt = grounded.bridge_attempts.get("water_activity")
+            if bridge_attempt:
+                reason = (
+                    f"No water activity specified. Bridge resolved food to category "
+                    f"'{bridge_attempt.resolved_category}' but no aw data is available "
+                    f"for that category. Using conservative high default (0.99) — "
+                    f"maximizes predicted growth."
+                )
+            elif self._is_inactivation_model(model_type):
                 reason = (
                     "No water activity specified. Using high default (0.99) "
                     "which doesn't assume any protective effect from low aw."

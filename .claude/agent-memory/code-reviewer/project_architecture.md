@@ -206,6 +206,23 @@ Pipeline: User Query → SemanticParser (LLM) → GroundingService (RAG + rules)
 - `@pytest.mark.live` is registered in `pyproject.toml` but NOT excluded from default runs by `addopts` — must be passed as `-m "not live"` to exclude. This is a CI configuration gap: if CI runs `pytest` without a marker filter, live tests will fail on missing API keys.
 - The Set C integration test fifth parametrize case (`"Sauce held at 4°C for 6 hours"` expecting `user_explicit / llm_extraction`) is a correct regression sentinel: it confirms numeric temperatures are not over-stripped to descriptive form.
 
+## Tier 3 FoodEx2 TaxonomyBridge (2026-05-07)
+- Pipeline: TaxonomyBridge resolves food_description → ptm_category via fuzzy matching against food_taxonomy.csv (2917 FoodEx2 MTX entries), then reads food_properties rows for that category from a pre-loaded in-memory index.
+- Composite-food blocklist runs BEFORE fuzzy match — structural order is pinned by monkeypatch test.
+- Alias map (beef→bovine, pork→pig, mutton/lamb→sheep, veal→calf) applied BEFORE fuzzy match.
+- Composite scoring: (token_set_ratio, fuzz.ratio) tuple — tiebreaker prevents short queries from matching longer taxonomy entries first in CSV order.
+- Default threshold: 80 (gap between max true-negative ~57 and min true-positive ~90.9 = 33.8 pts).
+- Conservative row selection: max(candidates, key=lambda r: float(r[max_col])) — picks highest upper bound per field. This is deliberately the most conservative for GROWTH; range_pending=True is then passed to StandardizationService for THERMAL_INACTIVATION direction.
+- Split-row case: pH and aw often come from DIFFERENT property rows in food_properties (e.g. "chicken" for pH, "fresh poultry" for aw in poultry category). Each field's CategoryBridgeInfo.property_row_food_name records the actual row that supplied the value.
+- ValueSource.RAG_RETRIEVAL_CATEGORY_BRIDGE added to metadata.py enum.
+- CategoryBridgeInfo Pydantic model + ValueProvenance.category_bridge optional field added.
+- bridge_attempts dict on GroundedValues: populated when bridge resolves a category that has NO rows for a field — lets StandardizationService mention the attempted bridge in DefaultImputed reason.
+- KEY BUG FOUND: bridge_attempts is never read by StandardizationService (lines 443-530) — the DefaultImputed reason strings are hardcoded and do NOT reference bridge_attempts. The mechanism exists in GroundedValues but the consumer was not implemented.
+- Dead code: source_col variable at line 658 is assigned inside the `if not candidates:` branch but is never used there (no source_id is available when candidates is empty, and the CategoryBridgeInfo is constructed with property_row_source_ids=[]).
+- No exception handling around float() conversions at lines 676-678 in _ground_via_taxonomy_bridge — a malformed CSV value (e.g. "" slipping past the `if r.get(min_col)` truthiness check) would raise ValueError and abort the bridge silently.
+- No startup validation for taxonomy bridge CSV files (food_taxonomy.csv, food_properties.csv, food_taxonomy_aliases.csv) — FileNotFoundError propagates to first request, not at startup.
+- No test for resolve("") — empty string input — but _normalise returns "" and _fuzzy_match will score all taxonomy entries at 100 via token_set_ratio (empty string behavior in rapidfuzz).
+
 ## food_properties.csv Migration (2026-05-04): per-field source columns
 - Migrated from single `source_id` column + notes-parsing workaround to dedicated `ph_source_id` / `aw_source_id` columns
 - `EXPECTED_FOOD_PROPERTIES_COUNT = 252` constant in food_safety.py (after 2026-04-17 audit removed 7 rows)
