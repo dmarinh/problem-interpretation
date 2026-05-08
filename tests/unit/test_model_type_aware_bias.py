@@ -774,13 +774,13 @@ class TestRangeClamping:
 
 class TestOrganismDefaultImputation:
     """
-    When no organism is specified, Salmonella is imputed.
-    The imputation must appear in both defaults_imputed (canonical audit record)
-    and warnings (user-facing notice) — they serve different purposes.
+    Pathogen is a required field — missing organism produces a structured
+    validation failure (payload=None, "organism" in missing_required).
+    Symmetric with how missing duration is handled.
     """
 
-    def test_missing_organism_emits_default_imputed(self):
-        """No organism → DefaultImputed entry for 'organism' field."""
+    def test_missing_organism_produces_validation_failure(self):
+        """No organism → payload is None and 'organism' in missing_required."""
         service = StandardizationService(model_registry=None)
         grounded = GroundedValues()
         grounded.set("temperature_celsius", 25.0, ValueSource.USER_EXPLICIT)
@@ -788,16 +788,28 @@ class TestOrganismDefaultImputation:
 
         result = service.standardize(grounded, model_type=ModelType.GROWTH)
 
-        assert result.payload is not None
-        assert result.payload.model_selection.organism == ComBaseOrganism.SALMONELLA
+        assert result.payload is None
+        assert "organism" in result.missing_required
+
+    def test_missing_organism_does_not_emit_salmonella_default(self):
+        """No organism → no DefaultImputed entry for organism (no silent default)."""
+        service = StandardizationService(model_registry=None)
+        grounded = GroundedValues()
+        grounded.set("temperature_celsius", 25.0, ValueSource.USER_EXPLICIT)
+        grounded.set("duration_minutes", 60.0, ValueSource.USER_EXPLICIT)
+
+        result = service.standardize(grounded, model_type=ModelType.GROWTH)
 
         org_defaults = [d for d in result.defaults_imputed if d.field_name == "organism"]
-        assert len(org_defaults) == 1
-        assert "salmonella" in str(org_defaults[0].imputed_value).lower()
-        assert "salmonella" in org_defaults[0].reason.lower()
+        assert org_defaults == []
 
-    def test_missing_organism_also_emits_warning(self):
-        """No organism → warning string emitted alongside DefaultImputed."""
+    def test_unset_organism_in_grounded_produces_failure(self):
+        """organism absent from grounded → missing_required failure, regardless of cause.
+
+        This invariant holds whether the cause was: user never mentioned a pathogen,
+        RAG found a hazard document but ComBaseOrganism.from_text() returned None,
+        or any other grounding failure. Standardization must not silently default.
+        """
         service = StandardizationService(model_registry=None)
         grounded = GroundedValues()
         grounded.set("temperature_celsius", 25.0, ValueSource.USER_EXPLICIT)
@@ -805,11 +817,8 @@ class TestOrganismDefaultImputation:
 
         result = service.standardize(grounded, model_type=ModelType.GROWTH)
 
-        org_warnings = [
-            w for w in result.warnings
-            if "salmonella" in w.lower() or "pathogen" in w.lower()
-        ]
-        assert len(org_warnings) >= 1
+        assert result.payload is None
+        assert "organism" in result.missing_required
 
     def test_explicit_organism_no_default_emitted(self):
         """Explicit organism → no DefaultImputed for organism field."""

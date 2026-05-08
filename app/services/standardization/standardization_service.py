@@ -129,7 +129,7 @@ class StandardizationService:
         result = StandardizationResult()
 
         # Determine organism
-        organism = self._get_organism(grounded, result)
+        organism = self._get_organism(grounded)
         if organism is None:
             result.missing_required.append("organism")
             return result
@@ -259,36 +259,9 @@ class StandardizationService:
     # VALUE STANDARDIZATION
     # =========================================================================
 
-    def _get_organism(
-        self,
-        grounded: GroundedValues,
-        result: StandardizationResult,
-    ) -> ComBaseOrganism | None:
-        """
-        Get organism, applying default if needed.
-
-        Salmonella is the default because it is a common worst-case pathogen
-        for both growth and cooking scenarios.
-        """
-        organism = grounded.get("organism")
-
-        if organism is None:
-            default_reason = (
-                "No pathogen specified. Using Salmonella as conservative default. "
-                "Salmonella is a leading cause of foodborne illness and is broadly "
-                "applicable across food categories."
-            )
-            result.defaults_imputed.append(DefaultImputed(
-                field_name="organism",
-                imputed_value="Salmonella",
-                reason=default_reason,
-            ))
-            result.warnings.append(
-                "No pathogen specified. Using Salmonella as conservative default."
-            )
-            return ComBaseOrganism.SALMONELLA
-
-        return organism
+    def _get_organism(self, grounded: GroundedValues) -> ComBaseOrganism | None:
+        """Get organism; returns None when not grounded (caller adds to missing_required)."""
+        return grounded.get("organism")
 
     def _get_factor4(
         self,

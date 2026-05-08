@@ -6,6 +6,22 @@
 
 ## Sessions
 
+### 2026-05-08 — Removing the silent Salmonella default surfaces a class of hidden assumptions
+
+**What went well:**
+- Identifying that the entire missing-organism failure path was pre-wired in the codebase (orchestrator `_missing_key_to_audit_key("organism")` pre-mapped, `if organism is None: result.missing_required.append("organism")` already existed in `standardize()`, `ValueSource.MISSING` already in enum). The actual code change was 8 line removals — TDD confirmed it before implementation.
+- The code-reviewer agent caught a dead `import patch` and misleading docstring in the edge-case test (`test_rag_hit_with_unresolvable_organism_name_produces_failure` → renamed `test_unset_organism_in_grounded_produces_failure`). The test was correct but the name described a grounding-layer mechanism the test didn't actually exercise.
+
+**What surfaced repeatedly:**
+- Conservative defaults can hide incorrect assumptions while reporting "conservative default fired" in the audit. The Salmonella default fired for chicken soup queries where C. perfringens was the scenario-relevant pathogen, and for cooked breaded product queries where Listeria recontamination was the concern. The audit honestly reported "default fired" — but for a system whose audit is designed to make every assumption visible, "default fired" is not sufficient; the user should be asked.
+- Category B test fixes (8 `create_scenario()` calls) are mechanical but easy to miss. Pattern: any test that used the shared fixture's implicit Salmonella path AND overrode `extract_scenario` without `pathogen_mentioned` needed fixing. The shared fixture comment is the right prevention mechanism — it explains the change in one place.
+
+**What to do differently:**
+- When removing a default for a required field, immediately grep for every `create_scenario(...)` call without the newly-required field, not just the tests that logically test that field. Several tests in unrelated classes (TestEdgeCases, TestAuditFieldMap, TestValidationFailureAudit) broke because of the fixture dependency.
+- The `_make_a2_scenario()` helper in `TestValidationFailureAudit` had `pathogen_mentioned=None` — it was designed to test "missing duration" but accidentally also tested "missing organism" after the default was removed, causing the "missing required values" error message to name organism rather than duration. The fix (explicit `pathogen_mentioned="Salmonella"`) is correct, but the helper's docstring didn't say "also intentionally leaves organism unset." Helpers that leave fields unset should document which absence is intentional.
+
+---
+
 ### 2026-05-01 — Polynomial boundary extrapolation and the value of output-layer caps
 
 **What went well:**

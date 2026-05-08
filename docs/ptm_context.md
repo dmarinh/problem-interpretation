@@ -1,7 +1,7 @@
 # Problem Translation Module (PTM) — Session Context
 
-**Version:** 1.2
-**Date:** 2026-04-28
+**Version:** 1.3
+**Date:** 2026-05-08
 **Purpose:** Self-contained context document for new Claude sessions working on PTM. Feed this document in at the start of any session and work from it rather than from cross-session memory.
 
 ---
@@ -334,12 +334,12 @@ When no rule matches, embedding similarity finds the closest canonical phrase (0
 Prepares `GroundedValues` for model execution by performing four operations, each recorded as a structured event on the per-field standardization block:
 
 1. **Range-bound selection.** For values that arrive with `range_pending=True` (RAG-retrieved ranges and user-supplied ranges), picks the model-type-appropriate bound: upper for GROWTH and NON_THERMAL_SURVIVAL, lower for THERMAL_INACTIVATION. Recorded as `rule = "range_bound_selection"`.
-2. **Default imputation.** When a value is still missing after grounding, applies a conservative default:
-   - Organism: Salmonella (broadly applicable, leading cause of foodborne illness)
+2. **Default imputation.** When a value is still missing after grounding, applies a conservative default for non-required fields:
    - Temperature: abuse temperature (25°C for growth, conservative cooking temperature for inactivation)
    - pH: 7.0 (neutral, near-optimal for pathogen growth)
    - Water activity: 0.99 (high, maximises predicted growth)
    Recorded as `rule = "default_imputed"` and added to the top-level `defaults_imputed` list as a structured `DefaultImputedInfo` entry.
+   **Organism is a required field — no default is applied.** If organism is absent after grounding, standardization returns `missing_required = ["organism"]` and the pipeline returns a structured failure response (see §8.13).
 3. **Range clamping.** When a value falls outside the selected ComBase model's valid range, clamps to the nearest boundary. Recorded as `rule = "range_clamp"` AND added to the top-level `range_clamps` list as a structured `RangeClampInfo` entry. A warning string is also emitted alongside.
 4. **Payload construction.** Builds the `ComBaseExecutionPayload` from the (now standardised) values.
 
@@ -356,7 +356,8 @@ Empty audit categories emit truly empty arrays (`[]`), not sentinel strings. The
 - `default_temperature_abuse_c = 25.0`
 - `default_ph_neutral = 7.0`
 - `default_aw_high = 0.99`
-- `default_organism = SALMONELLA`
+
+Organism has no default — it is a required field (see §8.13).
 
 **Structured event types** (recorded in `StandardizationResult` and on the per-field `ValueProvenance.standardization` block):
 - `range_bound_selection` — direction (upper/lower), before_value (the range), after_value (selected bound), reason. Mechanical, fires whenever a range_pending value is processed; not a safety event.
@@ -723,10 +724,16 @@ A small JSON manifest is written alongside the ChromaDB persistence directory at
 
 This provenance stamping was the safeguard that would have caught the 2026-04-27 stale-RAG-store bug (where the post-audit aw value 0.94 was correct in the CSV but the RAG store still served the pre-audit 0.93). When the manifest is absent, a warning is appended to `metadata.warnings` ("RAG manifest missing — store provenance unknown") and the system fields are emitted as null.
 
-### 8.13 Default organism imputation as structured event
-**Status:** ✅ Architectural (Phase 9.4, April 2026).
+### 8.13 Organism is a required field; missing pathogen returns a structured failure
+**Status:** ✅ Architectural (Phase 9.5, May 2026).
 
-When a query does not specify a pathogen, the system imputes Salmonella as the default. The imputation is recorded as a structured `DefaultImputed` event in the top-level `defaults_imputed` list with `field_name = "organism"`, `default_value = "Salmonella"`, and the canonical reason string. The same event is written to `field_audit["organism"].standardization` with `rule = "default_imputed"`. A warning string is also retained in `warnings` to give the missing-critical-field event extra prominence; this duplication is deliberate (the structured `defaults_imputed` entry is the canonical machine-readable record; the warning is a user-facing notice).
+Organism is treated as a user-required field, symmetric with duration. If neither the user nor the RAG retrieval supplies a pathogen, `StandardizationService._get_organism()` returns `None`, the caller appends `"organism"` to `std_result.missing_required`, and the orchestrator synthesises a null-provenance `ValueSource.MISSING` entry in `field_audit["organism"]` before returning `success=False` with `error = "Missing required values: organism"`.
+
+**Why this decision was made:** The Salmonella default fired silently for every query where the user didn't name a pathogen AND RAG found no match. For some foods (raw chicken) it was coincidentally correct; for others (chicken soup → C. perfringens; cooked breaded products → Listeria recontamination) it was actively wrong. In all cases the audit said "default fired" rather than "evidence retrieved." Removing the default forces the user to engage with the scenario-aware pathogen question, which is appropriate for a system whose audit is designed to make every assumption visible.
+
+**Previous behaviour** (Phase 9.4, now removed): The system imputed Salmonella as a `DefaultImputed` event with `rule = "default_imputed"` on `field_audit["organism"].standardization`. That behaviour has been removed. `defaults_imputed` no longer contains organism entries.
+
+**Symmetric precedent:** Duration uses the same pattern. Missing temperature is handled differently (it has a conservative default at 25°C / abuse temperature), but organism is categorically different because no single organism is a safe default across all food categories.
 
 ### 8.14 Ground truth evaluation framework (methodology)
 **Status:** ✅ Agreed.

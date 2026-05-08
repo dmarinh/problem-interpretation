@@ -126,9 +126,13 @@ def mock_semantic_parser():
         confidence=0.95,
     ))
     
+    # pathogen_mentioned is now required — the silent Salmonella default was removed.
+    # This fixture explicitly names Salmonella so tests that rely on the default
+    # fixture (and aren't specifically testing pathogen behavior) continue to work.
     parser.extract_scenario = AsyncMock(return_value=create_scenario(
         food_description="raw chicken",
         food_state="raw",
+        pathogen_mentioned="Salmonella",
         temperature=ExtractedTemperature(description="room temperature"),
         duration=ExtractedDuration(value_minutes=180.0),
         is_storage_scenario=True,
@@ -164,6 +168,7 @@ class TestFullPipeline:
         """Should process chicken at room temperature query."""
         mock_semantic_parser.extract_scenario = AsyncMock(return_value=create_scenario(
             food_description="raw chicken",
+            pathogen_mentioned="Salmonella",
             temperature=ExtractedTemperature(description="room temperature"),
             duration=ExtractedDuration(value_minutes=180.0),
             is_storage_scenario=True,
@@ -183,6 +188,7 @@ class TestFullPipeline:
         """Should use explicit temperature when provided."""
         mock_semantic_parser.extract_scenario = AsyncMock(return_value=create_scenario(
             food_description="raw chicken",
+            pathogen_mentioned="Salmonella",
             temperature=ExtractedTemperature(value_celsius=30.0),
             duration=ExtractedDuration(value_minutes=120.0),
             is_storage_scenario=True,
@@ -214,29 +220,30 @@ class TestFullPipeline:
         assert result.state.execution_payload.model_selection.organism == ComBaseOrganism.LISTERIA_MONOCYTOGENES
     
     @pytest.mark.asyncio
-    async def test_rag_grounds_pathogen(self, orchestrator, mock_semantic_parser):
-        """Should retrieve pathogen from RAG when not explicit."""
+    async def test_explicitly_named_pathogen_flows_through(self, orchestrator, mock_semantic_parser):
+        """Explicitly named pathogen flows through grounding into the execution payload."""
         mock_semantic_parser.extract_scenario = AsyncMock(return_value=create_scenario(
             food_description="raw chicken",
+            pathogen_mentioned="Salmonella",
             temperature=ExtractedTemperature(value_celsius=25.0),
             duration=ExtractedDuration(value_minutes=180.0),
             is_storage_scenario=True,
         ))
-        
+
         result = await orchestrator.translate(
             "Raw chicken at 25°C for 3 hours"
         )
-        
+
         assert result.success is True, f"Failed with error: {result.error}"
-        # Should find Salmonella from RAG for chicken or use default
         organism = result.state.execution_payload.model_selection.organism
-        assert organism is not None
+        assert organism == ComBaseOrganism.SALMONELLA
     
     @pytest.mark.asyncio
     async def test_duration_interpretation(self, orchestrator, mock_semantic_parser):
         """Should interpret vague duration descriptions."""
         mock_semantic_parser.extract_scenario = AsyncMock(return_value=create_scenario(
             food_description="cooked rice",
+            pathogen_mentioned="Salmonella",
             temperature=ExtractedTemperature(value_celsius=25.0),
             duration=ExtractedDuration(description="overnight"),
             is_storage_scenario=True,
@@ -256,6 +263,7 @@ class TestFullPipeline:
         """Should track provenance of all grounded values."""
         mock_semantic_parser.extract_scenario = AsyncMock(return_value=create_scenario(
             food_description="raw chicken",
+            pathogen_mentioned="Salmonella",
             temperature=ExtractedTemperature(description="room temperature"),
             duration=ExtractedDuration(value_minutes=180.0),
             is_storage_scenario=True,
@@ -350,6 +358,7 @@ class TestFullPipeline:
         """Should infer growth for storage scenarios."""
         mock_semantic_parser.extract_scenario = AsyncMock(return_value=create_scenario(
             food_description="raw chicken",
+            pathogen_mentioned="Salmonella",
             temperature=ExtractedTemperature(value_celsius=25.0),
             duration=ExtractedDuration(value_minutes=180.0),
             is_storage_scenario=True,
@@ -373,6 +382,7 @@ class TestEdgeCases:
         """Should fail when duration cannot be determined."""
         mock_semantic_parser.extract_scenario = AsyncMock(return_value=create_scenario(
             food_description="chicken",
+            pathogen_mentioned="Salmonella",
             temperature=ExtractedTemperature(value_celsius=25.0),
             duration=ExtractedDuration(),  # No duration info
             is_storage_scenario=True,
@@ -390,6 +400,7 @@ class TestEdgeCases:
         """Should apply defaults and track warnings."""
         mock_semantic_parser.extract_scenario = AsyncMock(return_value=create_scenario(
             food_description="unknown food",
+            pathogen_mentioned="Salmonella",
             temperature=ExtractedTemperature(value_celsius=25.0),
             duration=ExtractedDuration(value_minutes=180.0),
             is_storage_scenario=True,
@@ -470,6 +481,7 @@ class TestAuditFieldMap:
         """
         mock_semantic_parser.extract_scenario = AsyncMock(return_value=create_scenario(
             food_description="cooked rice",
+            pathogen_mentioned="Salmonella",
             temperature=ExtractedTemperature(description="sitting out"),
             duration=ExtractedDuration(description="a while"),
             is_storage_scenario=True,
@@ -619,18 +631,18 @@ class TestRangeClampingEndToEnd:
 
 class TestDefaultOrganismFieldAudit:
     """
-    B.2: When no pathogen is named, Salmonella is imputed.
-    The imputation must appear in field_audit AND defaults_imputed — not only
-    as a warning string.
+    B.2: Pathogen is a required field. When no pathogen is named and RAG
+    does not ground one, the pipeline returns success=False with organism
+    listed as a missing required field — symmetric with missing duration.
     """
 
     @pytest.mark.asyncio
-    async def test_default_organism_in_field_audit(
+    async def test_missing_pathogen_produces_failure(
         self, orchestrator, mock_semantic_parser
     ):
         """
-        Query with no pathogen_mentioned: 'organism' must appear in field_audit
-        with source == "conservative_default" and standardization.rule == "default_imputed".
+        Query with no pathogen_mentioned and no RAG grounding: result must be
+        success=False with field_audit["organism"].source == "missing".
         """
         mock_semantic_parser.extract_scenario = AsyncMock(return_value=create_scenario(
             food_description="chicken",
@@ -644,38 +656,24 @@ class TestDefaultOrganismFieldAudit:
             "How long before chicken left out at 25°C becomes unsafe?"
         )
 
-        assert result.success is True, f"Failed with error: {result.error}"
-        assert result.metadata is not None
+        assert result.success is False
 
-        # defaults_imputed must contain the organism entry
-        org_defaults = [
-            d for d in result.metadata.defaults_imputed
-            if d.field_name == "organism"
-        ]
-        assert len(org_defaults) == 1, (
-            f"Expected 1 organism DefaultImputed, got {len(org_defaults)}"
-        )
-        assert "salmonella" in str(org_defaults[0].imputed_value).lower()
-
-        # field_audit must include organism
         from app.api.routes.translation import _build_field_audit
         field_audit = _build_field_audit(result)
 
         assert "organism" in field_audit, (
-            "organism must appear in field_audit when defaulted"
+            "organism must appear in field_audit as a missing required field"
         )
         org_entry = field_audit["organism"]
-        assert org_entry.source == "conservative_default"
-        assert org_entry.standardization is not None
-        assert org_entry.standardization.rule == "default_imputed"
+        assert org_entry.source == "missing"
 
     @pytest.mark.asyncio
-    async def test_default_organism_in_audit_defaults_imputed(
+    async def test_missing_pathogen_no_salmonella_in_defaults_imputed(
         self, orchestrator, mock_semantic_parser
     ):
         """
-        audit.audit.defaults_imputed must contain an entry for 'organism'
-        when no pathogen was specified.
+        When pathogen is missing, defaults_imputed must NOT contain a Salmonella
+        entry — the silent default was removed.
         """
         mock_semantic_parser.extract_scenario = AsyncMock(return_value=create_scenario(
             food_description="rice",
@@ -689,18 +687,13 @@ class TestDefaultOrganismFieldAudit:
             "Is rice left out at 25°C for 4 hours safe?"
         )
 
-        assert result.success is True
+        assert result.success is False
 
-        from app.api.routes.translation import _build_field_audit, _build_audit_detail
-        field_audit = _build_field_audit(result)
-        audit_detail = _build_audit_detail(result, field_audit)
-
-        org_imputed = [
-            d for d in audit_detail.audit.defaults_imputed
+        org_defaults = [
+            d for d in (result.metadata.defaults_imputed if result.metadata else [])
             if d.field_name == "organism"
         ]
-        assert len(org_imputed) == 1
-        assert "salmonella" in str(org_imputed[0].default_value).lower()
+        assert org_defaults == []
 
 
 class TestThermalInactivationEndToEnd:
@@ -816,7 +809,7 @@ class TestValidationFailureAudit:
         return ExtractedScenario(
             food_description="ground beef",
             food_state="raw",
-            pathogen_mentioned=None,
+            pathogen_mentioned="Salmonella",
             is_multi_step=True,
             single_step_temperature=ExtractedTemperature(),
             single_step_duration=ExtractedDuration(),
