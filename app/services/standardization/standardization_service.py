@@ -63,6 +63,7 @@ from app.models.execution.combase import (
     ComBaseExecutionPayload,
 )
 from app.models.metadata import (
+    CategoryBridgeInfo,
     DefaultImputed,
     RangeBoundSelection,
     RangeClamp,
@@ -442,7 +443,19 @@ class StandardizationService:
 
         if ph is None:
             ph = settings.default_ph_neutral
-            if self._is_inactivation_model(model_type):
+            bridge_attempt: CategoryBridgeInfo | None = grounded.bridge_attempts.get("ph")
+            if bridge_attempt:
+                state_clause = (
+                    f" (state: '{bridge_attempt.query_state}')"
+                    if bridge_attempt.query_state else ""
+                )
+                reason = (
+                    f"No pH specified. Bridge resolved food to category "
+                    f"'{bridge_attempt.resolved_category}'{state_clause} but no curated "
+                    f"pH data is available for that category/state. Using neutral default "
+                    f"pH (7.0) — near-optimal for pathogen growth (conservative)."
+                )
+            elif self._is_inactivation_model(model_type):
                 reason = (
                     "No pH specified. Using neutral pH (7.0) which provides "
                     "no additional thermal protection (conservative for cooking)."
@@ -513,7 +526,19 @@ class StandardizationService:
 
         if aw is None:
             aw = settings.default_water_activity
-            if self._is_inactivation_model(model_type):
+            bridge_attempt = grounded.bridge_attempts.get("water_activity")
+            if bridge_attempt:
+                state_clause = (
+                    f" (state: '{bridge_attempt.query_state}')"
+                    if bridge_attempt.query_state else ""
+                )
+                reason = (
+                    f"No water activity specified. Bridge resolved food to category "
+                    f"'{bridge_attempt.resolved_category}'{state_clause} but no curated "
+                    f"aw data is available for that category/state. Using conservative "
+                    f"high default (0.99) — maximizes predicted growth."
+                )
+            elif self._is_inactivation_model(model_type):
                 reason = (
                     "No water activity specified. Using high default (0.99) "
                     "which doesn't assume any protective effect from low aw."

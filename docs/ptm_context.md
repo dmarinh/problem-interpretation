@@ -292,7 +292,8 @@ Resolves `ExtractedScenario` fields into a `GroundedValues` container with full 
 | 2 | USER_INFERRED | Value from interpretation rules ("room temperature" → 25 °C). The rule's structured details (matched_pattern, conservative flag, notes, method) are captured on the provenance entry. |
 | 3 | RAG_RETRIEVAL | Value retrieved from the primary food-properties query (specific-food doc, threshold 0.70). Ranges pass through with `parsed_range` populated and a `range_pending` flag; bound selection happens downstream in standardization. |
 | 4 | RAG_RETRIEVAL_FALLBACK | Value retrieved via a per-field secondary query (threshold 0.62). Fires when the primary query either misses threshold or the top doc lacks that field. Can match category-level docs (e.g., "fresh poultry water activity 0.99–1.0"). The `RetrievalResult` has `attributed_field` set to the specific field name for unambiguous audit routing. |
-| 5 | CONSERVATIVE_DEFAULT | Safety-first fallback (applied in standardization, not grounding). Fires only when both retrieval tiers fail. |
+| 5 | RAG_RETRIEVAL_CATEGORY_BRIDGE | Value retrieved via the FoodEx2 taxonomy bridge (Tier 3). Fires after both Tier 1 and Tier 2 for any field still ungrounded. Performs deterministic fuzzy matching against `data/rag/food_taxonomy.csv` (2,917 FoodEx2 MTX entries) to resolve a `ptm_category`, then supplies `food_properties.csv` rows for that category. Provenance carries a `CategoryBridgeInfo` on `ValueProvenance.category_bridge`. |
+| 6 | CONSERVATIVE_DEFAULT | Safety-first fallback (applied in standardization, not grounding). Fires only when all three retrieval tiers fail. |
 
 **Invariant:** higher-priority sources are never overwritten by lower-priority ones.
 
@@ -302,7 +303,7 @@ Resolves `ExtractedScenario` fields into a `GroundedValues` container with full 
 
 **Numeric extraction from text:** regex handles single values (`pH 6.0`), ranges with hyphen (`pH 5.9-6.2`), ranges with "to" (`pH 5.5 to 6.0`), ranges with "and" (`pH between 5.5 and 6.0`). When ranges are extracted, BOTH bounds are preserved on the provenance (`parsed_range = [min, max]`); the standardization service later picks the model-type-appropriate bound (see §8.1, §8.8). Grounding does NOT collapse ranges to a single value.
 
-**Food property retrieval — two-tier design (`_ground_food_properties`):**
+**Food property retrieval — three-tier design (`_ground_food_properties`):**
 
 *Tier 1 primary* (`query_food_properties`, threshold 0.70): query `"{food} pH water activity properties"`. Extracts both pH and aw from the top doc if present. A specific-food row may have only one field (e.g., `chicken` has pH but no aw); in that case only the present field is grounded.
 
@@ -310,8 +311,10 @@ Resolves `ExtractedScenario` fields into a `GroundedValues` container with full 
 
 Audit tagging: Tier 2 `RetrievalResult` objects have `attributed_field = "ph"` or `"water_activity"`, ensuring the audit routing in `translation.py` links the retrieval block to the correct field via exact match rather than query-string keyword heuristic.
 
+*Tier 3 FoodEx2 taxonomy bridge* (`_ground_via_taxonomy_bridge`, `app/services/grounding/taxonomy_bridge.py`): fires after Tier 2 for any field still ungrounded. Disabled when env var `PTM_TAXONOMY_BRIDGE_ENABLED=false` (default enabled; logged at startup). Performs deterministic fuzzy matching against `data/rag/food_taxonomy.csv` (2,917 FoodEx2 MTX entries) to resolve a `ptm_category` and `matched_state`. Key design decisions: (1) composite-food blocklist fires before fuzzy matching; (2) alias map (`data/food_taxonomy_aliases.csv`) rewrites consumer vocabulary before fuzzy matching; (3) composite scoring `(token_set_ratio, fuzz.ratio)` with tiebreaker; (4) **state-aware curated lookup** — `lookup_category_level_row(category, state, field)` looks up a single explicitly curated row from `data/rag/category_level_rows.csv` (5 rows: fresh-poultry aw, fresh-meat aw, cured-meat aw, fresh-fish pH, eggs aw); the bridge inherits ONLY from rows the source authority published as category-wide claims, never from individual-food rows. `_apply_state_default("unspecified"/"" → "fresh")` normalises taxonomy state before the lookup; the conversion is recorded as `CategoryBridgeInfo.assumed_state`. When no curated row exists for `(category, state, field)`, `GroundedValues.bridge_attempts[field]` is populated for informative defaulting downstream. Calibration (2026-05-07): threshold 80; min true-positive 90.9 ("tukey"), max true-negative 57.1 ("tornado"), gap 33.8 points.
+
 **Reliability signals:**
-- The `source` enum tier (USER_EXPLICIT / USER_INFERRED / RAG_RETRIEVAL / RAG_RETRIEVAL_FALLBACK / CONSERVATIVE_DEFAULT) is the categorical reliability signal.
+- The `source` enum tier (USER_EXPLICIT / USER_INFERRED / RAG_RETRIEVAL / RAG_RETRIEVAL_FALLBACK / RAG_RETRIEVAL_CATEGORY_BRIDGE / CONSERVATIVE_DEFAULT) is the categorical reliability signal.
 - For RAG retrievals, the embedding cosine similarity is the only mathematically-grounded numeric signal (`embedding_score`). Reranker scores are reported separately when the reranker is in use.
 - For rule-based interpretations, the rule's `conservative: bool` flag indicates whether the rule already errs on the conservative side of the underlying interval. No per-rule confidence number is reported (see §8.7).
 
@@ -392,7 +395,7 @@ Session state transitions go through `SessionStatus` (PENDING → EXTRACTING →
 ### 5.6 Metadata & provenance
 **Location:** `app/models/metadata.py`
 
-- `ValueProvenance` — `source` (categorical: USER_EXPLICIT / USER_INFERRED / RAG_RETRIEVAL / RAG_RETRIEVAL_FALLBACK / CONSERVATIVE_DEFAULT / MISSING), `parsed_range`, `range_pending` (internal flag, cleared by standardization), `extraction` (method, raw_match, parsed_range, plus rule-specific fields: matched_pattern, conservative, notes, similarity, canonical_phrase), `retrieval` (query, top_match with embedding_score and rerank_score, runners_up, full_citations), and `standardization` (the structured event block; null when no standardization fired). The `MISSING` source tier is used exclusively on validation-failure paths: when a required field was not provided by the user and grounding returned no value, the orchestrator synthesises a null `ValueProvenance(source=MISSING)` so the field appears in `field_audit` with `final_value=null` rather than being silently absent.
+- `ValueProvenance` — `source` (categorical: USER_EXPLICIT / USER_INFERRED / RAG_RETRIEVAL / RAG_RETRIEVAL_FALLBACK / RAG_RETRIEVAL_CATEGORY_BRIDGE / CONSERVATIVE_DEFAULT / MISSING), `parsed_range`, `range_pending` (internal flag, cleared by standardization), `extraction` (method, raw_match, parsed_range, plus rule-specific fields: matched_pattern, conservative, notes, similarity, canonical_phrase), `retrieval` (query, top_match with embedding_score and rerank_score, runners_up, full_citations), `category_bridge` (`CategoryBridgeInfo | None` — populated only on `RAG_RETRIEVAL_CATEGORY_BRIDGE` values; carries species, resolved_category, taxonomy_code, taxonomy_label, taxonomy_source_id, matched_food_name, match_score, property_row_food_name, property_row_source_ids, `query_state` (state used for curated lookup), `assumed_state` (non-empty when the taxonomy state was "unspecified"/"" and we assumed "fresh")), and `standardization` (the structured event block; null when no standardization fired). The `MISSING` source tier is used exclusively on validation-failure paths: when a required field was not provided by the user and grounding returned no value, the orchestrator synthesises a null `ValueProvenance(source=MISSING)` so the field appears in `field_audit` with `final_value=null` rather than being silently absent.
 
   **`extraction.method` label enumeration** — each label describes the mechanism, not the source tier:
   - `"regex"` — value extracted from retrieved RAG text by pattern matching
@@ -657,7 +660,7 @@ The system does not emit per-field confidence numbers, an overall confidence num
 - LLM intent confidence was an LLM self-report, not calibrated.
 - The "overall confidence" was a min over heterogeneous numbers, mixing real cosine similarities with hardcoded constants.
 
-The categorical `source` tier (USER_EXPLICIT / USER_INFERRED / RAG_RETRIEVAL / RAG_RETRIEVAL_FALLBACK / CONSERVATIVE_DEFAULT) carries the auditability signal. For RAG retrievals, the embedding cosine similarity is the only mathematically-grounded numeric signal and is reported as `embedding_score`. For rule-based interpretations, the rule's `conservative: bool` flag indicates whether the rule already errs on the conservative side.
+The categorical `source` tier (USER_EXPLICIT / USER_INFERRED / RAG_RETRIEVAL / RAG_RETRIEVAL_FALLBACK / RAG_RETRIEVAL_CATEGORY_BRIDGE / CONSERVATIVE_DEFAULT) carries the auditability signal. For RAG retrievals, the embedding cosine similarity is the only mathematically-grounded numeric signal and is reported as `embedding_score`. For rule-based interpretations, the rule's `conservative: bool` flag indicates whether the rule already errs on the conservative side.
 
 The system also does not apply a bias-correction layer to inferred values. The earlier ×1.2 / ×0.8 duration margin and the (never implemented) ±5°C temperature bump were removed because they double-counted conservatism: rules already commit to conservative points within their underlying intervals, and adding a margin on top produced values past the rule's own range. Conservatism is now committed in two well-defined places: default values, and range-bound selection.
 

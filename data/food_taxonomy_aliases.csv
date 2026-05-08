@@ -1,0 +1,6 @@
+user_term,foodex2_term,source,notes
+beef,bovine,USDA FoodData Central,Cattle meat sold as 'beef' in consumer vocabulary; FoodEx2 uses 'bovine' as the species-level term
+pork,pig,USDA FoodData Central,Pig meat sold as 'pork' in consumer vocabulary; FoodEx2 uses 'pig' as the species-level term
+mutton,sheep,USDA FoodData Central,Mature sheep meat sold as 'mutton'; FoodEx2 uses 'sheep' as the species-level term
+lamb,sheep,USDA FoodData Central,Young sheep meat sold as 'lamb'; mapped to same FoodEx2 species term as mutton
+veal,calf,USDA FoodData Central,Young bovine meat sold as 'veal'; FoodEx2 uses 'calf' as the species-level term

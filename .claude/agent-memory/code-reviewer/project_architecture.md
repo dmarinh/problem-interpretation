@@ -29,8 +29,8 @@ Pipeline: User Query → SemanticParser (LLM) → GroundingService (RAG + rules)
 - Both layers must be consistent
 
 ## Provenance Tracking
-- ValueSource enum (current, post Phase 3 two-tier RAG): USER_EXPLICIT, USER_INFERRED, FUZZY_MATCH, RAG_RETRIEVAL, RAG_RETRIEVAL_FALLBACK, CONSERVATIVE_DEFAULT, CLARIFICATION_RESPONSE, CLAMPED_TO_RANGE, CALCULATED
-- NOTE: FUZZY_MATCH now present in metadata.py ValueSource enum (was previously missing); RAG_RETRIEVAL_FALLBACK added for Tier 2 per-field queries
+- ValueSource enum (current, post Phase 3 two-tier RAG): USER_EXPLICIT, USER_INFERRED, FUZZY_MATCH, RAG_RETRIEVAL, RAG_RETRIEVAL_FALLBACK, RAG_RETRIEVAL_CATEGORY_BRIDGE, CONSERVATIVE_DEFAULT, CLARIFICATION_RESPONSE, CLAMPED_TO_RANGE, CALCULATED, MISSING
+- NOTE: FUZZY_MATCH now present in metadata.py ValueSource enum (was previously missing); RAG_RETRIEVAL_FALLBACK added for Tier 2 per-field queries; RAG_RETRIEVAL_CATEGORY_BRIDGE added for Tier 3 taxonomy bridge
 - attributed_field on RetrievalResult (metadata.py): None for primary queries, set to field name ("ph"/"water_activity") for Tier 2 fallback queries; drives audit routing in translation.py Priority 1 path
 - No confidence numbers emitted in audit response; embedding_score (cosine similarity) is the only numeric score — categorical source tier is the reliability signal
 - BiasCorrection model tracks: bias_type, field_name, original_value, corrected_value, correction_reason, correction_magnitude
@@ -205,6 +205,22 @@ Pipeline: User Query → SemanticParser (LLM) → GroundingService (RAG + rules)
 - Comment at rules.py line 175 states `"typical retail refrigeration"` is 29 chars — actual length is 28. Minor doc inaccuracy only, no functional impact.
 - `@pytest.mark.live` is registered in `pyproject.toml` but NOT excluded from default runs by `addopts` — must be passed as `-m "not live"` to exclude. This is a CI configuration gap: if CI runs `pytest` without a marker filter, live tests will fail on missing API keys.
 - The Set C integration test fifth parametrize case (`"Sauce held at 4°C for 6 hours"` expecting `user_explicit / llm_extraction`) is a correct regression sentinel: it confirms numeric temperatures are not over-stripped to descriptive form.
+
+## Tier 3 FoodEx2 TaxonomyBridge (2026-05-07 initial + 2026-05-08 curated-row restriction)
+- Pipeline: TaxonomyBridge resolves food_description → ptm_category via fuzzy matching against food_taxonomy.csv (2917 FoodEx2 MTX entries), then reads category_level_rows.csv (5 curated rows) for that category — no longer envelopes all food_properties rows.
+- Composite-food blocklist runs BEFORE fuzzy match — structural order is pinned by monkeypatch test.
+- Alias map (beef→bovine, pork→pig, mutton/lamb→sheep, veal→calf) applied BEFORE fuzzy match.
+- Composite scoring: (token_set_ratio, fuzz.ratio) tuple — tiebreaker prevents short queries from matching longer taxonomy entries first in CSV order.
+- Default threshold: 80 (gap between max true-negative ~57 and min true-positive ~90.9 = 33.8 pts).
+- Post-2026-05-08: Tier 3 now uses `lookup_category_level_row(category, state, field)` keyed by (ptm_category, state, "ph"/"aw") — no envelope across all property_rows. Only 5 explicitly curated rows in data/rag/category_level_rows.csv are eligible.
+- `TaxonomyResolution.matched_state` carries raw 'state' column from winning taxonomy row. `_apply_state_default` converts "unspecified"/"" → "fresh". `CategoryBridgeInfo.assumed_state` is non-empty only when conversion happened.
+- `bridge_attempts` populated when lookup_category_level_row returns None; StandardizationService reads bridge_attempts["ph"] and bridge_attempts["water_activity"] for DefaultImputed reason text — this consumer IS now implemented (standardization_service.py lines 446-454 and 529-537).
+- Sentinel pattern: `_BRIDGE_SENTINEL = object()` at module level; `taxonomy_bridge=_BRIDGE_SENTINEL` default reads env var; explicit `None` disables unconditionally; explicit instance uses it unconditionally.
+- ENV VAR: `PTM_TAXONOMY_BRIDGE_ENABLED` — unset or truthy → enabled; "0"/"false"/"no" → disabled; empty string → disabled (distinct from unset — intentional).
+- Startup validation in main.py raises FileNotFoundError for ALL four bridge CSVs regardless of env-var state. This means setting PTM_TAXONOMY_BRIDGE_ENABLED=false does NOT allow a deployment without category_level_rows.csv.
+- `_index_category_level_rows` correctly handles rows with only aw (empty ph_min → no "ph" key) and rows with only ph (empty aw_min → no "aw" key). No false index entries.
+- curated_row["food_name"] access at grounding_service.py:725 is safe — _index_category_level_rows preserves all CSV columns via `{k: v.strip() for k, v in row.items()}`.
+- eggs row: aw_min=aw_max=0.97 (point estimate, not a range). val_min == val_max → range [0.97, 0.97] stored with range_pending=True. StandardizationService will select 0.97 as the upper bound for GROWTH — correct.
 
 ## food_properties.csv Migration (2026-05-04): per-field source columns
 - Migrated from single `source_id` column + notes-parsing workaround to dedicated `ph_source_id` / `aw_source_id` columns

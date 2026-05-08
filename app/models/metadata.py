@@ -27,17 +27,80 @@ from app.models.enums import (
 # =============================================================================
 
 class ValueSource(str, Enum):
-    """Where a value came from."""
+    """Where a value came from.
+
+    Priority hierarchy (highest to lowest — enforced by grounded.has() guards,
+    not by enum ordering):
+      USER_EXPLICIT / USER_INFERRED > RAG_RETRIEVAL > RAG_RETRIEVAL_FALLBACK
+      > RAG_RETRIEVAL_CATEGORY_BRIDGE > CONSERVATIVE_DEFAULT
+    """
     USER_EXPLICIT = "user_explicit"           # User stated directly
     USER_INFERRED = "user_inferred"           # Inferred from user input
     FUZZY_MATCH = "fuzzy_match"               # Resolved via alias/fuzzy lookup
     RAG_RETRIEVAL = "rag_retrieval"           # Retrieved from knowledge base (primary query, specific-food doc)
     RAG_RETRIEVAL_FALLBACK = "rag_retrieval_fallback"  # Retrieved via per-field secondary query (category-level doc or lower threshold)
+    RAG_RETRIEVAL_CATEGORY_BRIDGE = "rag_retrieval_category_bridge"  # Tier 3: food name resolved to FoodEx2 ptm_category via taxonomy bridge; food_properties row retrieved by category filter
     CONSERVATIVE_DEFAULT = "conservative_default"  # Safety default applied
     CLARIFICATION_RESPONSE = "clarification_response"  # From user clarification
     CLAMPED_TO_RANGE = "clamped_to_range"     # Adjusted to valid range
     CALCULATED = "calculated"                  # Derived from other values
     MISSING = "missing"                        # Field was required but neither user nor grounding supplied a value; appears in field_audit with final_value=null on validation failure
+
+
+class CategoryBridgeInfo(BaseModel):
+    """Audit record for a Tier 3 taxonomy-bridge resolution.
+
+    Records the full chain: user food description → FoodEx2 taxonomy entry
+    → ptm_category → the specific food_properties row that supplied the value.
+
+    One instance is attached per field on ValueProvenance.category_bridge.
+    pH and aw often come from DIFFERENT property rows (e.g. 'chicken' for pH,
+    'fresh poultry' for aw within the poultry category), so each field's
+    category_bridge independently names its property_row_food_name.
+    """
+    species: str = Field(
+        description="Food description that was looked up, e.g. 'turkey portions'"
+    )
+    resolved_category: str = Field(
+        description="FoodEx2 ptm_category resolved by the bridge, e.g. 'poultry'"
+    )
+    taxonomy_code: str = Field(
+        description="FoodEx2 code of the matched taxonomy entry, e.g. 'A01SQ'"
+    )
+    taxonomy_label: str = Field(
+        description="FoodEx2 verbose label, e.g. 'Turkey fresh meat'"
+    )
+    taxonomy_source_id: str = Field(
+        description="Source ID of the taxonomy catalogue, e.g. 'EFSA-FoodEx2-MTX-12.0'"
+    )
+    matched_food_name: str = Field(
+        description="food_name column value that won the fuzzy match, e.g. 'turkey'"
+    )
+    match_score: float = Field(
+        description="token_set_ratio score (0–100) of the winning match"
+    )
+    property_row_food_name: str = Field(
+        description="food_name of the food_properties row that supplied this field's value"
+    )
+    property_row_source_ids: list[str] = Field(
+        default_factory=list,
+        description="Source ID(s) from the ph_source_id or aw_source_id column of the property row"
+    )
+    query_state: str = Field(
+        default="",
+        description=(
+            "State used for the curated-row lookup (post-_apply_state_default), "
+            "e.g. 'fresh', 'cured'.  Empty string when the lookup was not state-aware."
+        ),
+    )
+    assumed_state: str = Field(
+        default="",
+        description=(
+            "Non-empty when _apply_state_default converted the taxonomy state to 'fresh' "
+            "(i.e. the original taxonomy state was 'unspecified' or '').  "
+            "Empty string when the taxonomy already had a concrete state and no assumption was made."
+        ),
+    )
 
 
 class RangeBoundSelection(BaseModel):
@@ -119,6 +182,12 @@ class ValueProvenance(BaseModel):
     standardization: RangeBoundSelection | None = Field(
         default=None,
         description="Structured record of the bound selection applied by standardization"
+    )
+    # Populated by GroundingService when the value was resolved via Tier 3 taxonomy bridge.
+    # None for all other source tiers (USER_EXPLICIT, RAG_RETRIEVAL, etc.).
+    category_bridge: CategoryBridgeInfo | None = Field(
+        default=None,
+        description="Taxonomy-bridge provenance when source=RAG_RETRIEVAL_CATEGORY_BRIDGE"
     )
     # Rule-match details — populated by GroundingService for USER_INFERRED values.
     # These carry the InterpretationRule's structured fields so the audit can show
