@@ -74,6 +74,23 @@ a final-phase task.
 
 ---
 
+### 2026-05-08 — Approach B: embedding-text enrichment cannot bridge species-to-category
+
+**Experiment:** Tested whether appending species-name lists to category-level `food_properties.csv` rows (at ingestion time, CSV unchanged) would allow species-name queries ("turkey portions", "duck", "lamb", "pheasant breast") to clear the Tier 1 (0.70) or Tier 2 (0.62) similarity thresholds and retrieve the correct category row, eliminating the need for the Tier 3 FoodEx2 taxonomy bridge.
+
+**Result: Failed.** No enriched species query cleared Tier 2 for the pH field. Pheasant aw reached 0.6134 (threshold 0.62 — missed). All other failures were well below threshold (0.47–0.58). More importantly, enriching `fresh poultry` caused a **regression**: the "fresh chicken portions" aw query dropped from 0.7289 → 0.6651 (Δ = 0.064, exceeding the ±0.05 tolerance set for the experiment), because the enrichment text diluted the tighter semantic match between "chicken" and the `chicken` row.
+
+**Root cause:** `all-MiniLM-L6-v2` (384-dim) does not produce strong cosine alignment between a species-name + food-property query and a category-level document whose species list appears only in a suffix. The base document text dominates the embedding; the species signal is diluted. Additionally, the pH Tier 2 queries for non-chicken poultry and non-beef mammals consistently landed on wrong documents entirely (`beets canned acidified`, `eggs`) — the "pH acidity" signal in the query dominated food-type similarity.
+
+**What this proves:** The species → category mapping cannot be handled at embedding time for this embedding model and document length. It requires a deterministic lookup layer (taxonomy bridge) that operates before the similarity query.
+
+**Prevention:**
+- Before investing implementation effort in an embedding-enrichment approach, calculate an expected similarity upper bound: if the target species name appears once in 50+ words of base document text plus a species-list suffix, the embedding dilution is predictable. A quick cosine-similarity spot-check on 2–3 cases before the full build would have revealed this in minutes.
+- Enrichment that improves one query type (aw) while degrading another (aw for the specific-food sibling) is a reliability regression even if individual scores improve. Always test sibling documents when enriching.
+- The Tier 3 taxonomy bridge (deterministic fuzzy match via `food_taxonomy.csv`) on `feature/foodex2-bridge-tier3` remains the correct solution path.
+
+---
+
 ### 2026-04-15 - Safety-critical defaults must fail closed
 
 **Context:** `benchmarks/visualizations/lib/charts.py::model_type_matrix`

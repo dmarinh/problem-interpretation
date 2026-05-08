@@ -55,7 +55,6 @@ class LoadResult:
 # and log the change in data/rag/rag_audit_changelog.md.
 EXPECTED_FOOD_PROPERTIES_COUNT = 253
 
-
 def load_food_properties(pipeline: IngestionPipeline, data_dir: Path) -> LoadResult:
     """Load food pH and water activity values.
     
