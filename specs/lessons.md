@@ -415,3 +415,20 @@ Parametrize over multiple threshold values (70/75/80/85), run unit tests against
 
 - When writing "category has no data for field X" tests, grep the CSV for that category before asserting — data files change and assumptions rot.
 - For any new dict field added to a grounding container that is meant to be read by a downstream service, create a failing test on the consumer side before implementing the producer. The producer-without-consumer failure mode is silent in testing (the producer populates correctly, nothing breaks) but invisible in the actual audit output.
+
+---
+
+## 2026-05-08 — State-aware curated lookup for Tier 3 FoodEx2 bridge
+
+**What went well:**
+- The TDD sequence (failing tests → implementation) caught the pre-existing `test_shellfish_ph_resolved_via_bridge` test that was testing old behavior; updating it was necessary and the failure surfaced it immediately rather than silently passing with wrong semantics.
+- The sentinel pattern (`_BRIDGE_SENTINEL = object()`) cleanly distinguished "not provided — read env var" from "explicitly None — disable bridge" without changing the public API signature type. The one `# type: ignore[assignment]` comment is load-bearing; do not remove it.
+- The `test_falsey_values_return_false[""]` failure caught a bug in `_parse_bridge_enabled_env`: `os.environ.get(key, "")` returns `""` for both "not set" and "set to empty string". Fixing it to `os.environ.get(key)` (returns `None` when not set) made the two cases distinct.
+
+**What surfaced repeatedly:**
+- Category membership ≠ property equality. The original bridge inherited from ALL rows in a matched category, producing speculative cross-species pH borrowing (e.g., "chicken" row supplying poultry pH for turkey). The fix: only inherit from rows the source authority explicitly published as category-wide claims (`category_level_rows.csv`).
+- Fresh/cured are microbiologically distinct: 0.87–0.95 vs 0.99–1.0 aw for meat. Collapsing them into an envelope was non-conservative in the wrong direction for fresh meat (upper bound of the cured range is below the fresh range). Category membership should never imply property equality when state-subclasses exist.
+- FoodEx2 uses `state="unspecified"` widely — for many entries it means "context-dependent" not "fresh". The `_apply_state_default` function encodes the assumption (unspecified → fresh for food safety grounding); surfacing it in `CategoryBridgeInfo.assumed_state` makes the assumption auditable.
+
+**What to do differently:**
+- When updating a test class that was testing old behavior (e.g., `TestBridgeAttemptedNoData`), check whether the test vehicle (lobster → shellfish) is still the right one. Shellfish changed from "has pH but no aw" to "has neither" — the test class name and docstring needed updating, not just the assertions.

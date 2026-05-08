@@ -68,15 +68,20 @@ async def lifespan(app: FastAPI):
 
     # Validate taxonomy bridge CSV files — fail fast rather than on first request.
     from app.services.grounding.taxonomy_bridge import (
-        _TAXONOMY_CSV, _FOOD_PROPERTIES_CSV, _ALIASES_CSV,
+        _TAXONOMY_CSV, _FOOD_PROPERTIES_CSV, _ALIASES_CSV, _CATEGORY_LEVEL_ROWS_CSV,
     )
-    for bridge_csv in (_TAXONOMY_CSV, _FOOD_PROPERTIES_CSV, _ALIASES_CSV):
+    from app.services.grounding.grounding_service import _parse_bridge_enabled_env
+    # All four CSV files are always required, even when PTM_TAXONOMY_BRIDGE_ENABLED=false.
+    # The env var disables Tier 3 at runtime but does not waive the file-presence requirement —
+    # missing files indicate a misconfigured deployment that should fail fast.
+    for bridge_csv in (_TAXONOMY_CSV, _FOOD_PROPERTIES_CSV, _ALIASES_CSV, _CATEGORY_LEVEL_ROWS_CSV):
         if not bridge_csv.exists():
             logger.error(f"Taxonomy bridge data file missing at startup: {bridge_csv}")
             raise FileNotFoundError(
                 f"Taxonomy bridge data file missing at startup: {bridge_csv}"
             )
-    logger.info("Taxonomy bridge CSV files verified")
+    bridge_state = "ENABLED" if _parse_bridge_enabled_env() else "DISABLED"
+    logger.info(f"Taxonomy bridge CSV files verified (Tier 3 bridge: {bridge_state})")
 
     logger.info("Application startup complete")
     

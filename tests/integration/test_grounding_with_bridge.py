@@ -143,18 +143,12 @@ def grounding_service(mock_retrieval: MagicMock, real_bridge: TaxonomyBridge) ->
 # ---------------------------------------------------------------------------
 
 class TestTurkeyBridgeResolution:
-    """C1-like scenario: 'turkey portions' with both Tier 1 and Tier 2 missing."""
+    """C1-like scenario: 'turkey portions' with both Tier 1 and Tier 2 missing.
 
-    @pytest.mark.asyncio
-    async def test_ph_resolved_via_bridge(
-        self, grounding_service: GroundingService
-    ) -> None:
-        """pH should be set with source RAG_RETRIEVAL_CATEGORY_BRIDGE after bridge fires."""
-        grounded = GroundedValues()
-        await grounding_service._ground_food_properties("turkey portions", grounded)
-
-        assert grounded.has("ph")
-        assert grounded.provenance["ph"].source == ValueSource.RAG_RETRIEVAL_CATEGORY_BRIDGE
+    With the state-aware curated lookup, the bridge supplies aw (poultry+fresh+aw
+    row exists) but NOT pH (no curated pH row for poultry — pH tests moved to
+    TestTurkeyPhNoCuratedRow).
+    """
 
     @pytest.mark.asyncio
     async def test_aw_resolved_via_bridge(
@@ -168,35 +162,14 @@ class TestTurkeyBridgeResolution:
         assert grounded.provenance["water_activity"].source == ValueSource.RAG_RETRIEVAL_CATEGORY_BRIDGE
 
     @pytest.mark.asyncio
-    async def test_ph_category_bridge_points_to_chicken_row(
-        self, grounding_service: GroundingService
-    ) -> None:
-        """pH audit block: bridge resolved turkey → poultry → chicken row (IFT-2003-T33)."""
-        grounded = GroundedValues()
-        await grounding_service._ground_food_properties("turkey portions", grounded)
-
-        ph_bridge = grounded.provenance["ph"].category_bridge
-        assert ph_bridge is not None
-        # Species recorded as the original food description
-        assert ph_bridge.species == "turkey portions"
-        # Taxonomy resolution: turkey → poultry via A01SQ
-        assert ph_bridge.resolved_category == "poultry"
-        assert ph_bridge.taxonomy_code == "A01SQ"
-        assert ph_bridge.taxonomy_source_id == "EFSA-FoodEx2-MTX-12.0"
-        assert ph_bridge.matched_food_name == "turkey"
-        assert ph_bridge.match_score == pytest.approx(100.0)
-        # Property row: chicken supplies pH for the poultry category
-        assert ph_bridge.property_row_food_name == "chicken"
-        assert "IFT-2003-T33" in ph_bridge.property_row_source_ids
-
-    @pytest.mark.asyncio
     async def test_aw_category_bridge_points_to_fresh_poultry_row(
         self, grounding_service: GroundingService
     ) -> None:
-        """aw audit block: bridge resolved turkey → poultry → fresh poultry row (IFT-2003-T31).
+        """aw audit block: bridge resolved turkey → poultry+fresh → fresh poultry row (IFT-2003-T31).
 
-        pH and aw come from DIFFERENT property rows; each field's category_bridge
-        must record the row that actually supplied the value — not the same row.
+        query_state records the state used for the curated lookup.
+        assumed_state is empty because turkey was explicitly 'fresh' in the taxonomy
+        (A01SQ) — no state-default assumption was applied.
         """
         grounded = GroundedValues()
         await grounding_service._ground_food_properties("turkey portions", grounded)
@@ -207,45 +180,18 @@ class TestTurkeyBridgeResolution:
         assert aw_bridge.resolved_category == "poultry"
         assert aw_bridge.taxonomy_code == "A01SQ"
         assert aw_bridge.matched_food_name == "turkey"
-        # Property row: fresh poultry supplies aw for the poultry category
+        # Curated row supplying aw for poultry+fresh
         assert aw_bridge.property_row_food_name == "fresh poultry"
         assert "IFT-2003-T31" in aw_bridge.property_row_source_ids
-
-    @pytest.mark.asyncio
-    async def test_ph_and_aw_have_different_property_row_names(
-        self, grounding_service: GroundingService
-    ) -> None:
-        """pH and aw must reference different property rows — not the same row.
-
-        This is the split-row poultry invariant: chicken supplies pH, fresh
-        poultry supplies aw.  Both are attributed back through the same taxonomy
-        entry (turkey, A01SQ) but name distinct property rows.
-        """
-        grounded = GroundedValues()
-        await grounding_service._ground_food_properties("turkey portions", grounded)
-
-        ph_row = grounded.provenance["ph"].category_bridge.property_row_food_name  # type: ignore[union-attr]
-        aw_row = grounded.provenance["water_activity"].category_bridge.property_row_food_name  # type: ignore[union-attr]
-        assert ph_row != aw_row
-
-    @pytest.mark.asyncio
-    async def test_ph_value_is_in_chicken_ph_range(
-        self, grounding_service: GroundingService
-    ) -> None:
-        """pH value stored must be the lower bound of chicken's pH range [6.2, 6.4]
-        (range_pending=True; StandardizationService picks the conservative bound)."""
-        grounded = GroundedValues()
-        await grounding_service._ground_food_properties("turkey portions", grounded)
-
-        ph_prov = grounded.provenance["ph"]
-        assert ph_prov.parsed_range == pytest.approx([6.2, 6.4])
-        assert ph_prov.range_pending is True
+        # State audit: taxonomy said "fresh"; no assumption needed
+        assert aw_bridge.query_state == "fresh"
+        assert aw_bridge.assumed_state == ""  # no conversion applied
 
     @pytest.mark.asyncio
     async def test_aw_value_is_in_fresh_poultry_aw_range(
         self, grounding_service: GroundingService
     ) -> None:
-        """aw value stored must be the lower bound of fresh poultry's aw range [0.99, 1.0]."""
+        """aw stored is the lower bound of the fresh-poultry range [0.99, 1.0]."""
         grounded = GroundedValues()
         await grounding_service._ground_food_properties("turkey portions", grounded)
 
@@ -363,45 +309,58 @@ class TestChickenSoupCompositeMiss:
 # ---------------------------------------------------------------------------
 
 class TestBeefAliasResolution:
-    """'beef' resolves via alias (beef → bovine) → meat category.
+    """'beef' resolves via alias (beef → bovine) → meat category, state='fresh'.
 
-    Meat has both pH rows (beef ground, ham, etc.) and aw rows (fresh meat).
-    The bridge must supply at least pH for beef queries.
+    With state-aware curated lookup:
+    - aw: meat+fresh+aw curated row exists → bridge supplies aw
+    - pH: no curated pH row for meat → bridge records an attempt, pH falls
+      through to conservative default (see TestBeefPhNoCuratedRow in this class)
     """
-
-    @pytest.mark.asyncio
-    async def test_ph_resolved_via_bridge_for_beef(
-        self, grounding_service: GroundingService
-    ) -> None:
-        grounded = GroundedValues()
-        await grounding_service._ground_food_properties("beef", grounded)
-
-        assert grounded.has("ph")
-        assert grounded.provenance["ph"].source == ValueSource.RAG_RETRIEVAL_CATEGORY_BRIDGE
-
-    @pytest.mark.asyncio
-    async def test_ph_category_bridge_records_category_meat(
-        self, grounding_service: GroundingService
-    ) -> None:
-        grounded = GroundedValues()
-        await grounding_service._ground_food_properties("beef", grounded)
-
-        ph_bridge = grounded.provenance["ph"].category_bridge
-        assert ph_bridge is not None
-        assert ph_bridge.resolved_category == "meat"
-        assert ph_bridge.species == "beef"
 
     @pytest.mark.asyncio
     async def test_aw_resolved_via_bridge_for_beef(
         self, grounding_service: GroundingService
     ) -> None:
-        """Meat category has aw rows (fresh meat 0.99–1.0, cured meat 0.87–0.95);
-        bridge should supply aw for beef."""
+        """Meat+fresh+aw curated row (fresh meat, IFT-2003-T31) supplies aw for beef."""
         grounded = GroundedValues()
         await grounding_service._ground_food_properties("beef", grounded)
 
         assert grounded.has("water_activity")
         assert grounded.provenance["water_activity"].source == ValueSource.RAG_RETRIEVAL_CATEGORY_BRIDGE
+
+    @pytest.mark.asyncio
+    async def test_aw_category_bridge_records_category_meat(
+        self, grounding_service: GroundingService
+    ) -> None:
+        grounded = GroundedValues()
+        await grounding_service._ground_food_properties("beef", grounded)
+
+        aw_bridge = grounded.provenance["water_activity"].category_bridge
+        assert aw_bridge is not None
+        assert aw_bridge.resolved_category == "meat"
+        assert aw_bridge.species == "beef"
+
+    @pytest.mark.asyncio
+    async def test_ph_not_grounded_via_bridge_for_beef(
+        self, grounding_service: GroundingService
+    ) -> None:
+        """No curated pH row exists for meat+fresh; bridge must NOT set pH."""
+        grounded = GroundedValues()
+        await grounding_service._ground_food_properties("beef", grounded)
+
+        assert not grounded.has("ph")
+
+    @pytest.mark.asyncio
+    async def test_ph_bridge_attempt_recorded_for_beef(
+        self, grounding_service: GroundingService
+    ) -> None:
+        """Bridge resolved beef → meat but found no curated pH row; attempt recorded."""
+        grounded = GroundedValues()
+        await grounding_service._ground_food_properties("beef", grounded)
+
+        assert "ph" in grounded.bridge_attempts
+        assert grounded.bridge_attempts["ph"].resolved_category == "meat"
+        assert grounded.bridge_attempts["ph"].species == "beef"
 
 
 # ---------------------------------------------------------------------------
@@ -415,35 +374,39 @@ class TestBridgeAttemptedNoData:
     This lets StandardizationService mention the attempt in the DefaultImputed
     reason rather than emitting the silent 'no value found, default applied'.
 
-    Test vehicle: 'lobster' — taxonomy has shellfish entries, food_properties
-    has shellfish rows with pH only (no aw rows for shellfish).
-    Bridge should:
-    - successfully ground pH from the shellfish rows
-    - record a bridge_attempt on 'water_activity' so the downstream default
-      reason can say "bridge resolved to 'shellfish', no aw data available"
+    Test vehicle: 'lobster' — taxonomy resolves to shellfish.  shellfish has
+    no curated rows in category_level_rows.csv (only 5 curated rows exist,
+    none for shellfish), so neither pH nor aw is resolved and both fields
+    must appear in bridge_attempts.
     """
 
     @pytest.mark.asyncio
-    async def test_shellfish_ph_resolved_via_bridge(
+    async def test_shellfish_ph_not_grounded(
+        self, grounding_service: GroundingService
+    ) -> None:
+        """No curated pH row for shellfish; pH must remain ungrounded."""
+        grounded = GroundedValues()
+        await grounding_service._ground_food_properties("lobster", grounded)
+
+        assert not grounded.has("ph")
+
+    @pytest.mark.asyncio
+    async def test_shellfish_ph_bridge_attempt_recorded(
         self, grounding_service: GroundingService
     ) -> None:
         grounded = GroundedValues()
         await grounding_service._ground_food_properties("lobster", grounded)
 
-        assert grounded.has("ph")
-        assert grounded.provenance["ph"].source == ValueSource.RAG_RETRIEVAL_CATEGORY_BRIDGE
+        assert "ph" in grounded.bridge_attempts
+        assert grounded.bridge_attempts["ph"].resolved_category == "shellfish"
+        assert grounded.bridge_attempts["ph"].species == "lobster"
 
     @pytest.mark.asyncio
     async def test_shellfish_aw_not_grounded_but_bridge_attempt_recorded(
         self, grounding_service: GroundingService
     ) -> None:
-        """aw is absent from food_properties for the shellfish category.
-
-        grounded.has('water_activity') must be False (no value set), but
-        grounded.bridge_attempts['water_activity'] must be set to a
-        CategoryBridgeInfo recording the resolved category, so the downstream
-        default's reason string can reference the failed bridge attempt.
-        """
+        """No curated aw row for shellfish; grounded.has('water_activity') must be False,
+        and bridge_attempts['water_activity'] must record the attempted resolution."""
         grounded = GroundedValues()
         await grounding_service._ground_food_properties("lobster", grounded)
 
@@ -452,3 +415,150 @@ class TestBridgeAttemptedNoData:
         attempt = grounded.bridge_attempts["water_activity"]
         assert attempt.resolved_category == "shellfish"
         assert attempt.species == "lobster"
+
+
+# ---------------------------------------------------------------------------
+# Turkey pH — bridge fires but no curated pH row for poultry
+# ---------------------------------------------------------------------------
+
+class TestTurkeyPhNoCuratedRow:
+    """The curated rows include fresh-poultry aw but no poultry pH row.
+
+    When the bridge resolves turkey → poultry and finds no curated pH row,
+    it must:
+    - NOT set grounded.ph (pH stays ungrounded, falls to conservative default)
+    - Record a bridge_attempt on 'ph' so the downstream DefaultImputed reason
+      can say "bridge resolved to poultry, no pH data available" rather than
+      a silent "no value found".
+    """
+
+    @pytest.mark.asyncio
+    async def test_turkey_ph_not_grounded_via_bridge(
+        self, grounding_service: GroundingService
+    ) -> None:
+        grounded = GroundedValues()
+        await grounding_service._ground_food_properties("turkey portions", grounded)
+
+        assert not grounded.has("ph"), (
+            "pH must NOT be grounded via bridge: no curated pH row exists for poultry"
+        )
+
+    @pytest.mark.asyncio
+    async def test_turkey_ph_bridge_attempt_recorded(
+        self, grounding_service: GroundingService
+    ) -> None:
+        grounded = GroundedValues()
+        await grounding_service._ground_food_properties("turkey portions", grounded)
+
+        assert "ph" in grounded.bridge_attempts, (
+            "bridge_attempts['ph'] must be set when bridge resolved poultry "
+            "but found no curated pH row"
+        )
+
+    @pytest.mark.asyncio
+    async def test_turkey_ph_bridge_attempt_names_poultry_category(
+        self, grounding_service: GroundingService
+    ) -> None:
+        grounded = GroundedValues()
+        await grounding_service._ground_food_properties("turkey portions", grounded)
+
+        attempt = grounded.bridge_attempts["ph"]
+        assert attempt.resolved_category == "poultry"
+        assert attempt.species == "turkey portions"
+        assert attempt.taxonomy_code == "A01SQ"
+
+
+# ---------------------------------------------------------------------------
+# Broccoli — vegetable category has no curated rows at all
+# ---------------------------------------------------------------------------
+
+class TestBroccoliNoCuratedRows:
+    """'broccoli' resolves to vegetable (state=unspecified → assumed fresh).
+
+    The curated rows do not include any vegetable entries (held at 5 rows).
+    Both pH and aw must remain ungrounded, with a bridge_attempt recorded for
+    each field so the downstream reason text is specific rather than silent.
+    """
+
+    @pytest.mark.asyncio
+    async def test_broccoli_ph_not_grounded(
+        self, grounding_service: GroundingService
+    ) -> None:
+        grounded = GroundedValues()
+        await grounding_service._ground_food_properties("broccoli", grounded)
+
+        assert not grounded.has("ph")
+
+    @pytest.mark.asyncio
+    async def test_broccoli_aw_not_grounded(
+        self, grounding_service: GroundingService
+    ) -> None:
+        grounded = GroundedValues()
+        await grounding_service._ground_food_properties("broccoli", grounded)
+
+        assert not grounded.has("water_activity")
+
+    @pytest.mark.asyncio
+    async def test_broccoli_ph_bridge_attempt_recorded(
+        self, grounding_service: GroundingService
+    ) -> None:
+        grounded = GroundedValues()
+        await grounding_service._ground_food_properties("broccoli", grounded)
+
+        assert "ph" in grounded.bridge_attempts
+        assert grounded.bridge_attempts["ph"].resolved_category == "vegetable"
+
+    @pytest.mark.asyncio
+    async def test_broccoli_aw_bridge_attempt_recorded(
+        self, grounding_service: GroundingService
+    ) -> None:
+        grounded = GroundedValues()
+        await grounding_service._ground_food_properties("broccoli", grounded)
+
+        assert "water_activity" in grounded.bridge_attempts
+        assert grounded.bridge_attempts["water_activity"].resolved_category == "vegetable"
+
+
+# ---------------------------------------------------------------------------
+# Env-var disabled bridge — Tier 3 does not fire at all
+# ---------------------------------------------------------------------------
+
+class TestEnvVarDisabledBridge:
+    """When PTM_TAXONOMY_BRIDGE_ENABLED=false the bridge is None; Tier 3 is skipped.
+
+    Uses a service constructed with taxonomy_bridge=None (explicit override)
+    rather than env-var patching so the test does not depend on monkeypatch
+    propagating through the asyncio event loop.
+    """
+
+    @pytest.fixture
+    def disabled_service(
+        self, mock_retrieval: MagicMock
+    ) -> GroundingService:
+        """GroundingService with bridge explicitly disabled."""
+        return GroundingService(
+            retrieval_service=mock_retrieval,
+            llm_client=AsyncMock(),
+            use_llm_extraction=False,
+            taxonomy_bridge=None,
+        )
+
+    @pytest.mark.asyncio
+    async def test_turkey_aw_not_grounded_when_bridge_disabled(
+        self, disabled_service: GroundingService
+    ) -> None:
+        """aw must NOT be resolved when the bridge is disabled."""
+        grounded = GroundedValues()
+        await disabled_service._ground_food_properties("turkey portions", grounded)
+
+        assert not grounded.has("water_activity")
+
+    @pytest.mark.asyncio
+    async def test_no_bridge_attempts_when_bridge_disabled(
+        self, disabled_service: GroundingService
+    ) -> None:
+        """bridge_attempts must stay empty when the bridge is disabled."""
+        grounded = GroundedValues()
+        await disabled_service._ground_food_properties("turkey portions", grounded)
+
+        assert grounded.bridge_attempts == {}

@@ -25,6 +25,7 @@ transformation that belongs alongside bias correction and clamping, not here.
 
 import asyncio
 import logging
+import os
 import re
 from dataclasses import dataclass, field
 
@@ -50,6 +51,30 @@ from app.services.audit.citations import get_full_citations
 from app.services.llm.client import LLMClient, get_llm_client
 
 logger = logging.getLogger(__name__)
+
+# Sentinel distinguishing "caller did not pass taxonomy_bridge" (read env var)
+# from "caller explicitly passed None" (disable bridge unconditionally).
+_BRIDGE_SENTINEL = object()
+
+
+def _parse_bridge_enabled_env() -> bool:
+    """Return True when PTM_TAXONOMY_BRIDGE_ENABLED is truthy or unset."""
+    raw = os.environ.get("PTM_TAXONOMY_BRIDGE_ENABLED")
+    if raw is None:
+        return True  # unset → default enabled
+    return raw.strip().lower() in ("true", "1", "yes")
+
+
+def _apply_state_default(state: str) -> str:
+    """Convert 'unspecified' or '' to 'fresh'; pass all other states through unchanged.
+
+    FoodEx2 marks many entries as 'unspecified' when state is irrelevant.
+    For food safety grounding we assume fresh, which is the most common
+    scenario and the only state with curated rows in category_level_rows.csv.
+    The assumption is surfaced in CategoryBridgeInfo.assumed_state.
+    """
+    return "fresh" if state in ("unspecified", "") else state
+
 
 FOOD_PROPERTIES_EXTRACTION_PROMPT = """Extract pH and water activity values from the following text about food properties.
 
@@ -318,12 +343,17 @@ class GroundingService:
         retrieval_service: RetrievalService | None = None,
         llm_client: LLMClient | None = None,
         use_llm_extraction: bool = True,
-        taxonomy_bridge: TaxonomyBridge | None = None,
+        taxonomy_bridge: TaxonomyBridge | None = _BRIDGE_SENTINEL,  # type: ignore[assignment]
     ):
         self._retrieval = retrieval_service or get_retrieval_service()
         self._llm = llm_client or get_llm_client()
         self._use_llm_extraction = use_llm_extraction
-        self._taxonomy_bridge = taxonomy_bridge or TaxonomyBridge()
+        if taxonomy_bridge is _BRIDGE_SENTINEL:
+            self._taxonomy_bridge: TaxonomyBridge | None = (
+                TaxonomyBridge() if _parse_bridge_enabled_env() else None
+            )
+        else:
+            self._taxonomy_bridge = taxonomy_bridge
     
     async def ground_scenario(
         self,
@@ -609,34 +639,38 @@ class GroundingService:
     ) -> None:
         """
         Tier 3 — taxonomy bridge: resolve food_description → ptm_category →
-        food_properties rows, then set any still-missing pH or aw fields.
+        single curated row, then set any still-missing pH or aw fields.
 
         This method is synchronous: TaxonomyBridge does all lookups in-memory
         from pre-loaded CSV data; no async I/O is needed.
 
-        Conservative-bound selection across multiple category rows
-        ----------------------------------------------------------
-        When a category has several rows supplying the same field (e.g. meat
-        has beef-ground, ham, veal for pH and fresh-meat, cured-meat for aw),
-        the bridge picks the row whose upper bound is highest for that field.
-        This is the most conservative choice for growth models (higher pH →
-        closer to neutral → more growth; higher aw → more growth) and stores
-        the selected row's range as range_pending=True so StandardizationService
-        still performs the final conservative-bound selection for inactivation
-        models.  property_row_food_name in the audit names the selected row.
+        State-aware curated lookup
+        --------------------------
+        The bridge inherits only from rows explicitly published as category-wide
+        claims in category_level_rows.csv.  The lookup key is (category, state,
+        field); no envelope-across-all-rows is performed.
 
-        Audit-honesty for data-empty categories (§8.7)
+        _apply_state_default converts "unspecified"/"" to "fresh" before the
+        lookup; the conversion is surfaced in CategoryBridgeInfo.assumed_state.
+
+        Audit-honesty for missing curated rows (§8.7)
         -----------------------------------------------
-        When the bridge resolves a category but that category has NO rows
-        supplying a particular field, grounded.bridge_attempts[field] is
-        populated with a CategoryBridgeInfo recording the attempted resolution.
-        StandardizationService reads this when building DefaultImputed entries
-        so the reason string mentions "bridge resolved to category X, no Y data
-        available" rather than a silent "no value found".
+        When the bridge resolves a category but no curated row exists for
+        (category, state, field), grounded.bridge_attempts[field] is populated
+        with a CategoryBridgeInfo so StandardizationService can emit a specific
+        DefaultImputed reason rather than a silent "no value found".
         """
+        if self._taxonomy_bridge is None:
+            return
+
         resolution = self._taxonomy_bridge.resolve(food_description)
         if resolution is None:
             return
+
+        raw_state = resolution.matched_state
+        query_state = _apply_state_default(raw_state)
+        # assumed_state is non-empty only when we converted "unspecified"/"" → "fresh"
+        assumed_state = "fresh" if raw_state in ("unspecified", "") else ""
 
         fields_to_try: list[tuple[str, str, str]] = []
         if not grounded.has("ph"):
@@ -645,16 +679,12 @@ class GroundingService:
             fields_to_try.append(("water_activity", "aw_min", "aw_max"))
 
         for field_name, min_col, max_col in fields_to_try:
-            # Collect all property rows that have a value for this field
-            candidates = [
-                r for r in resolution.property_rows
-                if r.get(min_col) and r.get(max_col)
-            ]
+            field_key = "ph" if field_name == "ph" else "aw"  # matches _index_category_level_rows key convention
+            curated_row = self._taxonomy_bridge.lookup_category_level_row(
+                resolution.ptm_category, query_state, field_key
+            )
 
-            if not candidates:
-                # Bridge resolved the category but the category has no data for
-                # this field.  Record the attempt so the downstream default's
-                # reason can be specific rather than silent.
+            if curated_row is None:
                 grounded.bridge_attempts[field_name] = CategoryBridgeInfo(
                     species=food_description,
                     resolved_category=resolution.ptm_category,
@@ -663,28 +693,32 @@ class GroundingService:
                     taxonomy_source_id=resolution.taxonomy_source_id,
                     matched_food_name=resolution.matched_food_name,
                     match_score=resolution.match_score,
-                    property_row_food_name="",  # no row supplied a value
+                    property_row_food_name="",
                     property_row_source_ids=[],
+                    query_state=query_state,
+                    assumed_state=assumed_state,
                 )
                 continue
 
-            # Pick the candidate row whose upper bound is highest (most
-            # conservative for growth models).  range_pending=True is set
-            # so StandardizationService still selects the correct bound for
-            # inactivation models.
             try:
-                best_row = max(candidates, key=lambda r: float(r[max_col]))
-                val_min = float(best_row[min_col])
-                val_max = float(best_row[max_col])
+                val_min = float(curated_row[min_col])
+                val_max = float(curated_row[max_col])
+                if val_min > val_max:
+                    logger.warning(
+                        "Curated row for (%s, %s, %s) has min=%.4f > max=%.4f — "
+                        "data may be transposed in category_level_rows.csv",
+                        resolution.ptm_category, query_state, field_key, val_min, val_max,
+                    )
             except (ValueError, KeyError) as exc:
                 logger.warning(
-                    "Taxonomy bridge: could not parse numeric values for field %s "
-                    "in category %r: %s",
-                    field_name, resolution.ptm_category, exc,
+                    "Taxonomy bridge: could not parse %s/%s in curated row for "
+                    "(%s, %s, %s): %s",
+                    min_col, max_col, resolution.ptm_category, query_state, field_key, exc,
                 )
                 continue
+
             source_col = "ph_source_id" if field_name == "ph" else "aw_source_id"
-            source_ids = [s for s in [best_row.get(source_col, "")] if s]
+            source_ids = [s for s in [curated_row.get(source_col, "")] if s]
 
             bridge_info = CategoryBridgeInfo(
                 species=food_description,
@@ -694,8 +728,10 @@ class GroundingService:
                 taxonomy_source_id=resolution.taxonomy_source_id,
                 matched_food_name=resolution.matched_food_name,
                 match_score=resolution.match_score,
-                property_row_food_name=best_row["food_name"],
+                property_row_food_name=curated_row["food_name"],
                 property_row_source_ids=source_ids,
+                query_state=query_state,
+                assumed_state=assumed_state,
             )
 
             grounded.set(

@@ -86,6 +86,21 @@ class CategoryBridgeInfo(BaseModel):
         default_factory=list,
         description="Source ID(s) from the ph_source_id or aw_source_id column of the property row"
     )
+    query_state: str = Field(
+        default="",
+        description=(
+            "State used for the curated-row lookup (post-_apply_state_default), "
+            "e.g. 'fresh', 'cured'.  Empty string when the lookup was not state-aware."
+        ),
+    )
+    assumed_state: str = Field(
+        default="",
+        description=(
+            "Non-empty when _apply_state_default converted the taxonomy state to 'fresh' "
+            "(i.e. the original taxonomy state was 'unspecified' or '').  "
+            "Empty string when the taxonomy already had a concrete state and no assumption was made."
+        ),
+    )
 
 
 class RangeBoundSelection(BaseModel):

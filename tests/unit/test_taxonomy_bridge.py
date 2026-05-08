@@ -18,8 +18,6 @@ Key invariants under test
 """
 
 import pytest
-from unittest.mock import MagicMock
-
 from app.services.grounding.taxonomy_bridge import TaxonomyBridge, TaxonomyResolution
 
 
@@ -310,3 +308,48 @@ def test_threshold_calibration_negative(threshold: int, query: str) -> None:
         f"got resolution to {result.ptm_category!r} (matched {result.matched_food_name!r} "
         f"at score {result.match_score:.1f}) — false positive at this threshold"
     )
+
+
+# ---------------------------------------------------------------------------
+# matched_state field on TaxonomyResolution
+# ---------------------------------------------------------------------------
+
+class TestMatchedStateOnResolution:
+    """TaxonomyResolution now carries matched_state: str from the FoodEx2
+    'state' column of the winning taxonomy row.
+
+    The grounding service reads this field and passes it through
+    _apply_state_default() before calling lookup_category_level_row.
+    """
+
+    def test_turkey_has_fresh_state(self, bridge: TaxonomyBridge) -> None:
+        """Turkey fresh meat (A01SQ) has state='fresh' in the FoodEx2 taxonomy CSV."""
+        result = bridge.resolve("turkey")
+        assert result is not None
+        assert result.matched_state == "fresh"
+
+    def test_chicken_has_fresh_state(self, bridge: TaxonomyBridge) -> None:
+        """Chicken fresh meat (A01SP) has state='fresh' in the FoodEx2 taxonomy CSV."""
+        result = bridge.resolve("chicken")
+        assert result is not None
+        assert result.matched_state == "fresh"
+
+    def test_turkey_minced_has_unspecified_state(self, bridge: TaxonomyBridge) -> None:
+        """'turkey minced' scores token_set_ratio=100 against both 'turkey' and
+        'turkey minced' entries; fuzz.ratio tiebreaker favours the exact match
+        'turkey minced' (A04EC, state='unspecified') over the shorter 'turkey'."""
+        result = bridge.resolve("turkey minced")
+        assert result is not None
+        assert result.matched_state == "unspecified"
+
+    @pytest.mark.parametrize("query", ["turkey", "chicken", "beef", "lettuce"])
+    def test_matched_state_type_is_always_str(
+        self, bridge: TaxonomyBridge, query: str
+    ) -> None:
+        """matched_state must be str (not None) for every resolved food description."""
+        result = bridge.resolve(query)
+        if result is not None:
+            assert isinstance(result.matched_state, str), (
+                f"matched_state for {query!r} should be str, "
+                f"got {type(result.matched_state).__name__}"
+            )

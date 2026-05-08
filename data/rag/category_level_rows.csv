@@ -1,0 +1,6 @@
+food_name,ptm_category,state,ph_min,ph_max,ph_source_id,aw_min,aw_max,aw_source_id
+fresh poultry,poultry,fresh,,,,0.99,1.0,IFT-2003-T31
+fresh meat,meat,fresh,,,,0.99,1.0,IFT-2003-T31
+cured meat,meat,cured,,,,0.87,0.95,IFT-2003-T31
+fish fresh most,fish,fresh,6.6,6.8,IFT-2003-T33,,,
+eggs,eggs,fresh,,,,0.97,0.97,IFT-2003-T31

@@ -52,11 +52,15 @@ string when absent, never None):
   aw_max          — water activity upper bound (empty if no aw data)
   aw_source_id    — registered source ID for aw (e.g. 'IFT-2003-T31')
 
-State-awareness: not implemented.  The bridge matches on food_name only and
-ignores the state column in food_taxonomy.csv.  When multiple taxonomy rows
-share the same food_name (e.g. 'turkey' fresh/dried/cooked), the first row in
-CSV order is selected (fresh comes first for turkey).  State-aware matching
-is a known future enhancement.
+State-aware curated lookup
+--------------------------
+TaxonomyResolution.matched_state carries the raw 'state' column value of the
+winning taxonomy row ("fresh", "cured", "unspecified", etc.).  GroundingService
+normalises this via _apply_state_default ("unspecified"/"" → "fresh") and then
+calls lookup_category_level_row(category, state, field) which consults the
+five explicitly curated rows in data/rag/category_level_rows.csv.  The bridge
+inherits ONLY from those rows — never from individual-food rows in
+food_properties.csv.
 """
 
 import csv
@@ -76,6 +80,7 @@ _REPO_ROOT = Path(__file__).parent.parent.parent.parent
 _TAXONOMY_CSV = _REPO_ROOT / "data" / "rag" / "food_taxonomy.csv"
 _FOOD_PROPERTIES_CSV = _REPO_ROOT / "data" / "rag" / "food_properties.csv"
 _ALIASES_CSV = _REPO_ROOT / "data" / "food_taxonomy_aliases.csv"
+_CATEGORY_LEVEL_ROWS_CSV = _REPO_ROOT / "data" / "rag" / "category_level_rows.csv"
 
 # Composite-food keywords whose presence signals a multi-ingredient dish.
 # These are semantic descriptors, not ingredients.  "chicken soup" has
@@ -96,6 +101,11 @@ class TaxonomyResolution:
     so the grounding service can extract pH and aw without an extra CSV read.
 
     See module docstring for the exact key set on each property_rows dict.
+
+    matched_state is the raw 'state' column value of the winning taxonomy row
+    ("fresh", "cured", "dried", "unspecified", etc.).  The grounding service
+    passes it through _apply_state_default() before calling
+    lookup_category_level_row().
     """
     ptm_category: str
     taxonomy_code: str
@@ -103,6 +113,7 @@ class TaxonomyResolution:
     taxonomy_source_id: str
     matched_food_name: str      # the food_name column value that won the match
     match_score: float          # token_set_ratio score 0–100
+    matched_state: str = ""     # raw 'state' column value of the winning row
     property_rows: list[dict] = field(default_factory=list)
 
 
@@ -123,6 +134,7 @@ class TaxonomyBridge:
         taxonomy_csv: Path = _TAXONOMY_CSV,
         food_properties_csv: Path = _FOOD_PROPERTIES_CSV,
         aliases_csv: Path = _ALIASES_CSV,
+        category_level_rows_csv: Path = _CATEGORY_LEVEL_ROWS_CSV,
     ) -> None:
         """
         Args:
@@ -136,11 +148,14 @@ class TaxonomyBridge:
             taxonomy_csv: Path to food_taxonomy.csv.
             food_properties_csv: Path to food_properties.csv.
             aliases_csv: Path to food_taxonomy_aliases.csv.
+            category_level_rows_csv: Path to category_level_rows.csv — the 5
+                explicitly curated rows that the bridge may inherit from.
         """
         self.threshold = threshold
         self._taxonomy_rows = self._load_csv(taxonomy_csv)
         self._aliases = self._load_aliases(aliases_csv)
         self._properties_by_category = self._index_properties(food_properties_csv)
+        self._category_level_index = self._index_category_level_rows(category_level_rows_csv)
 
     # -------------------------------------------------------------------------
     # Public interface
@@ -235,8 +250,23 @@ class TaxonomyBridge:
             taxonomy_source_id=best_row["source_id"],
             matched_food_name=best_row["food_name"],
             match_score=best_scores[0],
+            matched_state=best_row.get("state", "").strip(),
             property_rows=property_rows,
         )
+
+    def lookup_category_level_row(
+        self, category: str, state: str, field: str
+    ) -> dict | None:
+        """Return the single curated row for (category, state, field), or None.
+
+        The curated index is keyed by (ptm_category, state, field) where field
+        is 'ph' or 'aw'.  A row qualifies for 'ph' when ph_min is non-empty,
+        and for 'aw' when aw_min is non-empty.
+
+        Returns None when no curated row matches — the caller must fall through
+        to the conservative default and record a bridge_attempt.
+        """
+        return self._category_level_index.get((category, state, field))
 
     # -------------------------------------------------------------------------
     # CSV loaders (called once at construction)
@@ -258,6 +288,29 @@ class TaxonomyBridge:
                 if user and target:
                     aliases[user] = target
         return aliases
+
+    @staticmethod
+    def _index_category_level_rows(path: Path) -> dict[tuple[str, str, str], dict]:
+        """Build {(ptm_category, state, field): row} index from category_level_rows.csv.
+
+        Each row is indexed under up to two keys: one for 'ph' (when ph_min is
+        non-empty) and one for 'aw' (when aw_min is non-empty).  A row may be
+        indexed under both if it carries both pH and aw data, or under neither
+        if it carries neither (which should not occur in the curated file).
+        """
+        index: dict[tuple[str, str, str], dict] = {}
+        with path.open(encoding="utf-8") as fh:
+            for row in csv.DictReader(fh):
+                cat = row.get("ptm_category", "").strip()
+                state = row.get("state", "").strip()
+                if not cat or not state:
+                    continue
+                entry = {k: v.strip() for k, v in row.items()}
+                if entry.get("ph_min"):
+                    index[(cat, state, "ph")] = entry
+                if entry.get("aw_min"):
+                    index[(cat, state, "aw")] = entry
+        return index
 
     @staticmethod
     def _index_properties(path: Path) -> dict[str, list[dict]]:
