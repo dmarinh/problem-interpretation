@@ -148,7 +148,7 @@ class ComBaseModelResult(BaseModelResult):
     
     # Growth rate output
     mu_max: float = Field(
-        description="Maximum specific growth rate (log10 CFU/h for growth, negative for inactivation)"
+        description="Maximum specific growth rate (ln/h, natural log base; negative for inactivation)"
     )
     doubling_time_hours: float | None = Field(
         default=None,

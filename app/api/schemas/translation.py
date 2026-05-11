@@ -87,7 +87,7 @@ class StepPrediction(BaseModel):
     step_order: int = Field(description="Step order (1-indexed)")
     temperature_celsius: float = Field(description="Temperature during this step (°C)")
     duration_minutes: float = Field(description="Duration of this step (minutes)")
-    mu_max: float = Field(description="Growth rate at this step's temperature (1/h)")
+    mu_max: float = Field(description="Growth rate at this step's temperature (ln/h, natural log base)")
     log_increase: float = Field(description="log10 CFU change during this step")
 
 
@@ -105,7 +105,7 @@ class PredictionResult(BaseModel):
     water_activity: float = Field(description="Water activity used")
 
     # Results (scalar summary)
-    mu_max: float = Field(description="Maximum growth rate (1/h) — first-step value for multi-step scenarios")
+    mu_max: float = Field(description="Maximum growth rate (ln/h, natural log base) — first-step value for multi-step scenarios")
     doubling_time_hours: float | None = Field(description="Doubling time (hours) — first-step value for multi-step scenarios")
     total_log_increase: float = Field(description="Total log10 CFU change across all steps")
     initial_log_cfu: float = Field(description="Initial bacterial count (log10 CFU/g)")

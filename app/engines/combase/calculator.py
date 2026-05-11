@@ -32,7 +32,7 @@ from app.models.enums import ModelType, Factor4Type
 @dataclass
 class CalculationResult:
     """Result of a ComBase calculation."""
-    mu_max: float  # Maximum specific growth rate (1/h or log10 CFU/h)
+    mu_max: float  # Maximum specific growth rate (ln/h, natural log base)
     doubling_time_hours: float | None  # Doubling time (hours), None for inactivation
     ln_mu: float  # Natural log of mu (intermediate value)
     
