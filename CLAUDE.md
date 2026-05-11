@@ -52,6 +52,7 @@ Model type is determined inside the orchestrator (priority chain below), not as 
 
 The prediction includes:
 - Scalar summary: `temperature_celsius`, `mu_max`, `doubling_time_hours` (first-step values for multi-step scenarios — kept for back-compat)
+- Absolute population: `initial_log_cfu` (user-supplied or model default from `DefaultInoc` CSV column), `final_log_cfu = initial_log_cfu + total_log_increase`
 - Multi-step breakdown: `is_multi_step: bool`, `steps: list[StepInput]`, `step_predictions: list[StepPrediction]` — always populated (length 1 for single-step).
 
 ### Model type determination priority (orchestrator.py)

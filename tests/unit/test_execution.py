@@ -124,8 +124,9 @@ class TestComBaseParameters:
             temperature_celsius=25.0,
             ph=7.0,
             water_activity=0.99,
+            initial_inoculum_log_cfu=3.0,
         )
-        
+
         assert params.temperature_celsius == 25.0
         assert params.ph == 7.0
         assert params.water_activity == 0.99
@@ -136,6 +137,7 @@ class TestComBaseParameters:
             temperature_celsius=25.0,
             ph=7.0,
             water_activity=0.99,
+            initial_inoculum_log_cfu=3.0,
             factor4_type=Factor4Type.CO2,
             factor4_value=10.0,
         )
@@ -150,6 +152,7 @@ class TestComBaseParameters:
                 temperature_celsius=25.0,
                 ph=7.0,
                 water_activity=0.99,
+                initial_inoculum_log_cfu=3.0,
                 factor4_type=Factor4Type.CO2,
             )
         
@@ -188,6 +191,7 @@ class TestComBaseExecutionPayload:
                 temperature_celsius=25.0,
                 ph=7.0,
                 water_activity=0.99,
+                initial_inoculum_log_cfu=3.0,
             ),
             time_temperature_profile=TimeTemperatureProfile(
                 is_multi_step=False,

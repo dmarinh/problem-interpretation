@@ -152,6 +152,9 @@ class ComBaseEngine(BaseEngine):
             
             total_log_increase += log_increase
         
+        initial_log_cfu = payload.parameters.initial_inoculum_log_cfu
+        final_log_cfu = initial_log_cfu + total_log_increase
+
         # Build model result from first calculation
         model_result = ComBaseModelResult(
             mu_max=first_calc_result.mu_max,
@@ -172,6 +175,8 @@ class ComBaseEngine(BaseEngine):
             model_result=model_result,
             step_predictions=step_predictions,
             total_log_increase=total_log_increase,
+            initial_log_cfu=initial_log_cfu,
+            final_log_cfu=final_log_cfu,
             engine_type=EngineType.COMBASE_LOCAL,
             warnings=warnings,
         )

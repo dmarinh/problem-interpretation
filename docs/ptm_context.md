@@ -278,6 +278,7 @@ Three system prompts: `SCENARIO_EXTRACTION_PROMPT`, `INTENT_CLASSIFICATION_PROMP
 - `is_multi_step` (bool) + either `single_step_temperature`/`single_step_duration` or `time_temperature_steps[]`
 - `environmental_conditions` (ph_value, ph_min, ph_max, water_activity, water_activity_min, water_activity_max) — single values and user-supplied ranges; ranges are preserved as `parsed_range` with `range_pending=True` and flow through `range_bound_selection` in standardization, identical to RAG-retrieved ranges
 - `implied_model_type` — growth / thermal_inactivation / non_thermal_survival
+- `initial_inoculum_log_cfu` — extracted only if the user explicitly states a starting bacterial count; converted to log₁₀ CFU/g (e.g., 10^4 CFU/g → 4.0); null if not mentioned
 
 ### 5.2 Grounding Service
 **Location:** `app/services/grounding/grounding_service.py`
@@ -355,6 +356,8 @@ Prepares `GroundedValues` for model execution by performing four operations, eac
 
 Empty audit categories emit truly empty arrays (`[]`), not sentinel strings. The "(none applied)" rendering is a UI concern, not a data-layer concern.
 
+**Initial inoculum resolution:** `_get_initial_inoculum(grounded, result, model)` resolves `initial_inoculum_log_cfu` with a three-priority hierarchy: (1) user-supplied value from `grounded.get("initial_inoculum_log_cfu")` (USER_EXPLICIT, grounded in step 7 of `ground_scenario()`); (2) `model.defaults.inoculum` from the `DefaultInoc` column of the ComBase registry; (3) fallback `3.0` log CFU/g when the registry has no matching model. A plausibility guard discards user values outside `(-2.0, 16.0)` log CFU/g with a warning before applying the fallback. A `DefaultImputed` event is recorded for cases 2 and 3. No range-bound selection applies to inoculum. The resolved value is passed to `ComBaseParameters.initial_inoculum_log_cfu` (required field — no default without this call).
+
 **Conservative defaults (current):**
 - `default_temperature_abuse_c = 25.0`
 - `default_ph_neutral = 7.0`
@@ -384,6 +387,8 @@ Organism has no default — it is a required field (see §8.13).
 **Supported organisms (15):** Salmonella, Listeria monocytogenes, E. coli, Staphylococcus aureus, Bacillus cereus, C. botulinum (proteolytic + non-proteolytic), C. perfringens, Yersinia enterocolitica, Pseudomonas, and others in `ComBaseOrganism`.
 
 **Multi-step execution:** accepts a `TimeTemperatureProfile` with ordered `TimeTemperatureStep`s; accumulates log change across steps. Validated in `TimeTemperatureProfile` Pydantic model (step order contiguous, sum of step durations matches `total_duration_minutes`).
+
+**Absolute population tracking:** After summing `total_log_increase`, the engine computes `initial_log_cfu = payload.parameters.initial_inoculum_log_cfu` and `final_log_cfu = initial_log_cfu + total_log_increase`. Both fields are included in `ComBaseExecutionResult` and exposed in the API response `PredictionResult`.
 
 **Implementation note — model form (❓ to verify):** The main technical documentation and some code paths describe the engine as Baranyi primary with a second-order polynomial secondary. An advisory-board critique (see §11, concern #8) referred to it as "a standalone Ratkowsky implementation". Per the April advisory-review record, the authoritative implementation is Baranyi + 2nd-order polynomial secondary; a documentation/code inconsistency around Ratkowsky was surfaced and is being tracked.
 

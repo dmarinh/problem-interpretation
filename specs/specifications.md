@@ -96,7 +96,7 @@ The orchestrator (stage 5) is the coordination layer, not a processing stage in 
 - `extract_clarification_response(user_response, original_question, options=None) → ExtractedClarificationResponse`
 - `extract_generic(response_model, user_input, system_prompt) → T` (generic extraction)
 
-**LLM call:** `SCENARIO_EXTRACTION_PROMPT` instructs the model to extract food description, state, pathogen, temperatures, durations, environmental conditions, scenario-type flags (`is_cooking_scenario`, `is_storage_scenario`, `is_non_thermal_treatment`), and `implied_model_type`. Temperature is converted to Celsius; duration to minutes. Ranges are captured if given.
+**LLM call:** `SCENARIO_EXTRACTION_PROMPT` instructs the model to extract food description, state, pathogen, temperatures, durations, environmental conditions, scenario-type flags (`is_cooking_scenario`, `is_storage_scenario`, `is_non_thermal_treatment`), `implied_model_type`, and `initial_inoculum_log_cfu`. Temperature is converted to Celsius; duration to minutes. Ranges are captured if given. Initial inoculum is converted from raw CFU/g to log₁₀ CFU/g (e.g., 1000 CFU/g → 3.0); left null if not explicitly stated.
 
 **`implied_model_type` inference rules (in system prompt):**
 - Temperature > 50°C for cooking → `thermal_inactivation`
@@ -161,6 +161,7 @@ Tier 2 can match category-level docs (e.g., `"fresh poultry water activity 0.99�
 *Threshold calibration (2026-04-30):* 13 known-good food/property pairs scored ≥ 0.6587 on Tier 2 queries; 8 should-not-match cases scored ≤ 0.5991. The gap is 0.0596; 0.62 sits in it with ~0.04 margin on each side. Key validated cases: `"chicken" → water_activity` finds the `"fresh poultry"` aw doc at 0.7145; `"poultry" → ph/aw` finds category docs at 0.6896/0.7584.
 5. If `scenario.is_multi_step and scenario.time_temperature_steps` → `_ground_multi_step_profile()` (results to `grounded.steps`, not to flat key-value store)
 6. Otherwise → single-step `_ground_temperature()` and `_ground_duration()`
+7. Ground initial inoculum — if `scenario.initial_inoculum_log_cfu is not None`, sets `"initial_inoculum_log_cfu"` in the flat key-value store with `ValueSource.USER_EXPLICIT`, `extraction_method="llm_extraction"`. No default is applied here; the default is applied downstream in StandardizationService.
 
 **Range handling:** When a range is extracted from user input or from RAG text, the lower bound is stored as the placeholder value in `grounded.values`, and `ValueProvenance.range_pending=True` and `parsed_range=[min, max]` are populated. Bound selection happens in StandardizationService. Grounding never collapses a range to a single value.
 
@@ -240,6 +241,7 @@ When a required value is absent from `GroundedValues`:
 | `temperature_celsius` (THERMAL_INACTIVATION) | `60.0°C` (`settings.default_temperature_inactivation_conservative_c`) | Below typical pasteurization — conservative for less kill |
 | `ph` | `7.0` (`settings.default_ph_neutral`) | Neutral; near-optimal for pathogen growth; no protective acidity |
 | `water_activity` | `0.99` (`settings.default_water_activity`) | High; maximizes predicted growth |
+| `initial_inoculum_log_cfu` | `model.defaults.inoculum` from `DefaultInoc` CSV column; fallback `3.0` when registry unavailable | Model-specific experimental inoculum; fallback used only when the ComBase registry lookup fails |
 
 Each imputation produces a `DefaultImputed(field_name, imputed_value, reason)` appended to `StandardizationResult.defaults_imputed`. A warning string is also emitted for missing critical fields (organism, temperature).
 
@@ -255,8 +257,11 @@ When range-bound selection AND clamping both fire on the same field, `prov.stand
 **Operation 4 — Payload construction:**  
 Assembles `ComBaseExecutionPayload` with:
 - `ComBaseModelSelection(organism, model_type, factor4_type)`
-- `ComBaseParameters(temperature_celsius, ph, water_activity, factor4_type, factor4_value)`
+- `ComBaseParameters(temperature_celsius, ph, water_activity, initial_inoculum_log_cfu, factor4_type, factor4_value)`
 - `TimeTemperatureProfile` (multi-step or single-step)
+
+**Initial inoculum resolution (`_get_initial_inoculum`):**  
+Called during operation 2. Priority: (1) user-supplied value from `grounded.get("initial_inoculum_log_cfu")`; (2) `model.defaults.inoculum` from the ComBase registry; (3) fallback `3.0` when no registry match. A plausibility guard discards user-supplied values outside `(-2.0, 16.0)` log CFU/g with a warning, then falls through to the default. No range-bound selection applies to inoculum.
 
 For multi-step scenarios, `_build_multi_step_profile()` iterates `grounded.steps`, applies per-step defaults and clamping, re-numbers steps sequentially (filling LLM-generated gaps like [1,2,4]), and validates that `step_order` is contiguous starting from 1.
 
@@ -311,6 +316,12 @@ where:
 **Physical plausibility cap:** After computing the per-step log change, the engine (`engine.py`) enforces a `_PHYSICAL_LOG_LIMIT = 15.0` threshold. If `|log_increase| > 15.0`, the value is clamped to `±15.0` and a warning is appended to `ComBaseExecutionResult.warnings` with the raw uncapped value. The warning propagates to `state.metadata.warnings` and surfaces in the API response `warnings` array. The cap does not alter any other audit field (provenance, range_clamps, defaults_imputed, or coefficients). The capped value is what appears in `step_predictions[*].log_increase` and `total_log_increase`.
 
 **Multi-step execution:** Iterates `payload.time_temperature_profile.steps` in order. pH and aw are shared across all steps (from `payload.parameters`). Per-step temperature and duration come from each `TimeTemperatureStep`. `total_log_increase` is the sum across all steps. The `model_result` (scalar summary) uses the first step's calculation for `mu_max` and `doubling_time_hours` (back-compat for single-step consumers).
+
+**Absolute population tracking:** After computing `total_log_increase`, the engine computes:
+- `initial_log_cfu = payload.parameters.initial_inoculum_log_cfu`
+- `final_log_cfu = initial_log_cfu + total_log_increase`
+
+Both are returned in `ComBaseExecutionResult` and exposed in the API response.
 
 **Note on model form:** The secondary model is a second-order polynomial. The `app/engines/combase/engine.py` comment describes this as "ComBase broth models". The ptm_context.md (§8.2) states the model is "Baranyi primary with second-order polynomial secondary". The calculator code implements the secondary model polynomial but does not implement a primary model (lag-phase dynamics). The `h0` and `y_max` values are present in the CSV and loaded into `ComBaseModel` but are not used in any calculation in `calculator.py`. This is a discrepancy between the model's metadata and the current calculator implementation.
 
@@ -385,6 +396,7 @@ The determination reason is propagated into `ComBaseModelAudit.selection_reason`
 | `is_storage_scenario` | `bool` | LLM-inferred flag |
 | `is_non_thermal_treatment` | `bool` | LLM-inferred flag |
 | `implied_model_type` | `ModelType \| None` | LLM-inferred model type |
+| `initial_inoculum_log_cfu` | `float \| None` | Initial bacterial count in log₁₀ CFU/g if stated by user; null if not mentioned |
 
 `ExtractedTemperature` carries `value_celsius`, `description`, `is_range`, `range_min_celsius`, `range_max_celsius`. `ExtractedDuration` carries `value_minutes`, `description`, `is_ambiguous`, `range_min_minutes`, `range_max_minutes`.
 
@@ -408,7 +420,7 @@ Key names in `values`: `"temperature_celsius"`, `"duration_minutes"`, `"ph"`, `"
 | Field | Type |
 |---|---|
 | `model_selection` | `ComBaseModelSelection` (organism, model_type, factor4_type) |
-| `parameters` | `ComBaseParameters` (temperature_celsius, ph, water_activity, factor4_type, factor4_value) |
+| `parameters` | `ComBaseParameters` (temperature_celsius, ph, water_activity, initial_inoculum_log_cfu, factor4_type, factor4_value) |
 | `time_temperature_profile` | `TimeTemperatureProfile` (is_multi_step, steps[], total_duration_minutes) |
 | `engine_type` | `EngineType` (default: `COMBASE_LOCAL`) |
 | `model_type` | `ModelType` (synced from model_selection via validator) |
@@ -802,6 +814,8 @@ When an embedding match fires, `ValueProvenance.extraction_method = "embedding_f
 | `mu_max` | `float` | First-step μ_max (negative for inactivation) |
 | `doubling_time_hours` | `float \| None` | First-step value; null for inactivation |
 | `total_log_increase` | `float` | Sum across all steps (negative = log reduction) |
+| `initial_log_cfu` | `float` | Initial bacterial count (log₁₀ CFU/g) — user-supplied or model default |
+| `final_log_cfu` | `float` | Final bacterial count (log₁₀ CFU/g) = `initial_log_cfu + total_log_increase` |
 | `is_multi_step` | `bool` | Whether scenario had multiple steps |
 | `steps` | `list[StepInput]` | Always populated (length 1 for single-step) |
 | `step_predictions` | `list[StepPrediction]` | Always populated (length 1 for single-step) |

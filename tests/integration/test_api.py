@@ -131,6 +131,7 @@ def _build_translation_result(steps_data: list[tuple[float, float]]) -> Translat
             temperature_celsius=first.temperature_celsius,
             ph=6.5,
             water_activity=0.99,
+            initial_inoculum_log_cfu=3.0,
         ),
         time_temperature_profile=profile,
     )
@@ -140,6 +141,8 @@ def _build_translation_result(steps_data: list[tuple[float, float]]) -> Translat
         model_result=model_result,
         step_predictions=step_predictions,
         total_log_increase=total_log_increase,
+        initial_log_cfu=3.0,
+        final_log_cfu=3.0 + total_log_increase,
     )
 
     state = SessionState(

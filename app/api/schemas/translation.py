@@ -108,6 +108,8 @@ class PredictionResult(BaseModel):
     mu_max: float = Field(description="Maximum growth rate (1/h) — first-step value for multi-step scenarios")
     doubling_time_hours: float | None = Field(description="Doubling time (hours) — first-step value for multi-step scenarios")
     total_log_increase: float = Field(description="Total log10 CFU change across all steps")
+    initial_log_cfu: float = Field(description="Initial bacterial count (log10 CFU/g)")
+    final_log_cfu: float = Field(description="Final bacterial count (log10 CFU/g) = initial + total_log_increase")
     y_max: float = Field(description="Maximum population density (Baranyi model parameter)")
     h0: float = Field(description="Initial physiological state (Baranyi model parameter)")
 
@@ -334,6 +336,8 @@ class TranslationResponse(BaseModel):
                         "mu_max": 0.42,
                         "doubling_time_hours": 1.65,
                         "total_log_increase": 0.78,
+                        "initial_log_cfu": 3.0,
+                        "final_log_cfu": 3.78,
                         "is_multi_step": False,
                         "steps": [
                             {"step_order": 1, "temperature_celsius": 25.0, "duration_minutes": 180.0}
@@ -368,6 +372,8 @@ class TranslationResponse(BaseModel):
                         "mu_max": 0.55,
                         "doubling_time_hours": 1.26,
                         "total_log_increase": 1.10,
+                        "initial_log_cfu": 3.0,
+                        "final_log_cfu": 4.10,
                         "is_multi_step": True,
                         "steps": [
                             {"step_order": 1, "temperature_celsius": 28.0, "duration_minutes": 45.0},

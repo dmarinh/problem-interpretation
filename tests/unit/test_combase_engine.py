@@ -38,6 +38,7 @@ def simple_payload() -> ComBaseExecutionPayload:
             temperature_celsius=25.0,
             ph=7.0,
             water_activity=0.99,
+            initial_inoculum_log_cfu=3.0,
         ),
         time_temperature_profile=TimeTemperatureProfile(
             is_multi_step=False,
@@ -99,6 +100,7 @@ class TestComBaseEngine:
                 temperature_celsius=25.0,
                 ph=7.0,
                 water_activity=0.99,
+                initial_inoculum_log_cfu=3.0,
             ),
             time_temperature_profile=TimeTemperatureProfile(
                 is_multi_step=True,
@@ -144,6 +146,7 @@ class TestComBaseEngine:
                 temperature_celsius=60.0,
                 ph=7.0,
                 water_activity=0.99,
+                initial_inoculum_log_cfu=3.0,
             ),
             time_temperature_profile=TimeTemperatureProfile(
                 is_multi_step=False,
@@ -179,6 +182,7 @@ class TestComBaseEngine:
                 temperature_celsius=60.0,
                 ph=7.0,
                 water_activity=0.99,
+                initial_inoculum_log_cfu=3.0,
             ),
             time_temperature_profile=TimeTemperatureProfile(
                 is_multi_step=False,
@@ -236,6 +240,7 @@ class TestPhysicalLogCap:
                 temperature_celsius=65.0,
                 ph=6.2,
                 water_activity=0.997,
+                initial_inoculum_log_cfu=3.0,
             ),
             time_temperature_profile=TimeTemperatureProfile(
                 is_multi_step=False,
@@ -285,6 +290,7 @@ class TestPhysicalLogCap:
                     temperature_celsius=temp,
                     ph=ph,
                     water_activity=aw,
+                    initial_inoculum_log_cfu=3.0,
                 ),
                 time_temperature_profile=TimeTemperatureProfile(
                     is_multi_step=False,

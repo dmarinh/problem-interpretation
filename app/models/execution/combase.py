@@ -47,6 +47,11 @@ class ComBaseParameters(BaseModel):
         description="Water activity (aw)"
     )
     
+    # Initial inoculum
+    initial_inoculum_log_cfu: float = Field(
+        description="Initial bacterial count in log10 CFU/g"
+    )
+
     # Optional fourth factor
     factor4_type: Factor4Type = Field(
         default=Factor4Type.NONE,
@@ -192,6 +197,14 @@ class ComBaseExecutionResult(BaseExecutionResult):
         description="Raw model calculation result"
     )
     
+    # Absolute population counts derived from initial inoculum
+    initial_log_cfu: float = Field(
+        description="Initial bacterial count (log10 CFU/g)"
+    )
+    final_log_cfu: float = Field(
+        description="Final bacterial count (log10 CFU/g) = initial + total_log_increase"
+    )
+
     # Inherited from base:
     # - step_predictions
     # - total_log_increase

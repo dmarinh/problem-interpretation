@@ -474,6 +474,16 @@ class GroundingService:
             self._ground_temperature(scenario, grounded)
             self._ground_duration(scenario, grounded)
 
+        # Step 7: Initial inoculum (user-supplied only; default applied later in StandardizationService)
+        if scenario.initial_inoculum_log_cfu is not None:
+            grounded.set(
+                "initial_inoculum_log_cfu",
+                scenario.initial_inoculum_log_cfu,
+                ValueSource.USER_EXPLICIT,
+                extraction_method="llm_extraction",
+                original_text=str(scenario.initial_inoculum_log_cfu),
+            )
+
         return grounded
     
     # =========================================================================
@@ -566,7 +576,7 @@ class GroundingService:
         if conditions.acetic_acid_ppm is not None:
             grounded.set("acetic_acid_ppm", conditions.acetic_acid_ppm, ValueSource.USER_EXPLICIT,
                          extraction_method="llm_extraction")
-    
+
     # =========================================================================
     # RAG RETRIEVAL WITH HYBRID EXTRACTION
     # =========================================================================

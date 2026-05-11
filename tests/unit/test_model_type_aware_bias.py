@@ -607,7 +607,11 @@ class TestBreadQueryEndToEnd:
         assert result.payload.parameters.water_activity == pytest.approx(0.97)
 
         # Range-bound selection must NOT appear in audit event lists
-        assert result.defaults_imputed == []
+        # (inoculum default is expected when user does not supply one)
+        inoculum_defaults = [d for d in result.defaults_imputed if d.field_name == "initial_inoculum_log_cfu"]
+        non_inoculum_defaults = [d for d in result.defaults_imputed if d.field_name != "initial_inoculum_log_cfu"]
+        assert len(inoculum_defaults) == 1
+        assert non_inoculum_defaults == []
         assert result.range_clamps == []
         assert result.warnings == []
 
@@ -626,7 +630,10 @@ class TestBreadQueryEndToEnd:
         assert aw_sel.direction == "lower"
         assert aw_sel.after_value == pytest.approx(0.94)
 
-        assert result.defaults_imputed == []
+        inoculum_defaults = [d for d in result.defaults_imputed if d.field_name == "initial_inoculum_log_cfu"]
+        non_inoculum_defaults = [d for d in result.defaults_imputed if d.field_name != "initial_inoculum_log_cfu"]
+        assert len(inoculum_defaults) == 1
+        assert non_inoculum_defaults == []
         assert result.range_clamps == []
         assert result.warnings == []
 

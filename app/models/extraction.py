@@ -295,6 +295,14 @@ class ExtractedScenario(BaseModel):
         default=None,
         description="Model type implied by scenario context"
     )
+    initial_inoculum_log_cfu: float | None = Field(
+        default=None,
+        description=(
+            "Initial bacterial count in log10 CFU/g if stated by the user. "
+            "Convert raw CFU/g to log10 (e.g. 1000 CFU/g → 3.0, 10^4 CFU/g → 4.0). "
+            "Leave null if not mentioned."
+        ),
+    )
 
 # =============================================================================
 # INTENT CLASSIFICATION

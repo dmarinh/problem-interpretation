@@ -69,7 +69,7 @@ from app.models.metadata import (
     RangeClamp,
 )
 from app.services.grounding.grounding_service import GroundedValues
-from app.engines.combase.models import ComBaseModelConstraints, ComBaseModelRegistry
+from app.engines.combase.models import ComBaseModel, ComBaseModelConstraints, ComBaseModelRegistry
 from pydantic import ValidationError
 
 # Imported at the bottom of this module to break the circular-import chain:
@@ -138,6 +138,7 @@ class StandardizationService:
         factor4_type, factor4_value = self._get_factor4(grounded)
 
         # Get model constraints if registry available
+        model = None
         constraints = None
         if self._registry:
             model = self._registry.get_model(organism, model_type, factor4_type)
@@ -147,6 +148,7 @@ class StandardizationService:
         # Get and standardize pH and water activity (shared across all steps)
         ph = self._get_ph(grounded, result, constraints, model_type)
         aw = self._get_water_activity(grounded, result, constraints, model_type)
+        initial_inoculum = self._get_initial_inoculum(grounded, result, model)
 
         if grounded.has_steps:
             # Multi-step path: build profile from per-step grounded data
@@ -191,6 +193,7 @@ class StandardizationService:
                     temperature_celsius=representative_temp,
                     ph=ph,
                     water_activity=aw,
+                    initial_inoculum_log_cfu=initial_inoculum,
                     factor4_type=factor4_type,
                     factor4_value=factor4_value,
                 ),
@@ -561,6 +564,46 @@ class StandardizationService:
             )
 
         return aw
+
+    def _get_initial_inoculum(
+        self,
+        grounded: GroundedValues,
+        result: StandardizationResult,
+        model: "ComBaseModel | None",
+    ) -> float:
+        """
+        Get initial inoculum (log10 CFU/g), applying model-specific default if absent.
+
+        If the user supplied a value, use it directly (USER_EXPLICIT provenance
+        is already recorded in grounded).  If absent, default to the model's
+        DefaultInoc value, which reflects the experimental conditions under which
+        the ComBase model was fitted.  Fallback is 3.0 when no model is available.
+        """
+        value = grounded.get("initial_inoculum_log_cfu")
+
+        # Guard: discard physically implausible values (LLM field confusion)
+        if value is not None and not (-2.0 <= value <= 16.0):
+            result.warnings.append(
+                f"Extracted initial_inoculum_log_cfu={value} is outside plausible "
+                f"log CFU range [-2, 16]; discarding and using model default."
+            )
+            value = None
+
+        if value is not None:
+            return value
+
+        inoculum = model.defaults.inoculum if model is not None else 3.0
+        result.defaults_imputed.append(DefaultImputed(
+            field_name="initial_inoculum_log_cfu",
+            imputed_value=inoculum,
+            reason=(
+                f"No initial inoculum specified. Using model default "
+                f"({inoculum} log CFU/g) from ComBase DefaultInoc."
+                if model is not None else
+                "No initial inoculum specified. Using fallback default (3.0 log CFU/g)."
+            ),
+        ))
+        return inoculum
 
     def _build_multi_step_profile(
         self,

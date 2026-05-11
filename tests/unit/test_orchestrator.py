@@ -76,6 +76,8 @@ def mock_engine():
         ),
         step_predictions=[],
         total_log_increase=0.65,
+        initial_log_cfu=3.0,
+        final_log_cfu=3.65,
         engine_type=EngineType.COMBASE_LOCAL,
         warnings=[],
     ))

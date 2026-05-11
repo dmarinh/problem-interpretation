@@ -61,6 +61,7 @@ def mock_translation_result():
             temperature_celsius=25.0,
             ph=6.0,
             water_activity=0.99,
+            initial_inoculum_log_cfu=3.0,
         ),
         time_temperature_profile=TimeTemperatureProfile(
             is_multi_step=False,
@@ -77,6 +78,8 @@ def mock_translation_result():
         model_result=model_result,
         step_predictions=[],
         total_log_increase=0.78,
+        initial_log_cfu=3.0,
+        final_log_cfu=3.78,
         engine_type=EngineType.COMBASE_LOCAL,
         warnings=[],
     )
@@ -344,6 +347,7 @@ class TestVerboseAudit:
                 temperature_celsius=25.0,
                 ph=5.5,
                 water_activity=0.97,
+                initial_inoculum_log_cfu=3.0,
             ),
             time_temperature_profile=TimeTemperatureProfile(
                 is_multi_step=False,
@@ -356,6 +360,8 @@ class TestVerboseAudit:
             model_result=model_result,
             step_predictions=[],
             total_log_increase=0.21,
+            initial_log_cfu=3.0,
+            final_log_cfu=3.21,
             engine_type=EngineType.COMBASE_LOCAL,
             warnings=[],
         )
@@ -633,6 +639,7 @@ class TestVerboseAudit:
                 temperature_celsius=25.0,
                 ph=6.2,
                 water_activity=0.98,
+                initial_inoculum_log_cfu=3.0,
             ),
             time_temperature_profile=TimeTemperatureProfile(
                 is_multi_step=False,
@@ -644,6 +651,8 @@ class TestVerboseAudit:
             model_result=model_result,
             step_predictions=[],
             total_log_increase=1.61,
+            initial_log_cfu=3.0,
+            final_log_cfu=4.61,
             engine_type=EngineType.COMBASE_LOCAL,
             warnings=[],
         )
@@ -786,7 +795,7 @@ class TestVerboseAudit:
             model_selection=ComBaseModelSelection(
                 organism=ComBaseOrganism.SALMONELLA, model_type=ModelType.GROWTH,
             ),
-            parameters=ComBaseParameters(temperature_celsius=25.0, ph=6.4, water_activity=0.98),
+            parameters=ComBaseParameters(temperature_celsius=25.0, ph=6.4, water_activity=0.98, initial_inoculum_log_cfu=3.0),
             time_temperature_profile=TimeTemperatureProfile(
                 is_multi_step=False,
                 steps=[TimeTemperatureStep(temperature_celsius=25.0, duration_minutes=180.0, step_order=1)],
@@ -795,7 +804,8 @@ class TestVerboseAudit:
         )
         state.execution_result = ComBaseExecutionResult(
             model_result=model_result, step_predictions=[],
-            total_log_increase=1.2, engine_type=EngineType.COMBASE_LOCAL, warnings=[],
+            total_log_increase=1.2, initial_log_cfu=3.0, final_log_cfu=4.2,
+            engine_type=EngineType.COMBASE_LOCAL, warnings=[],
         )
         mock_result = MagicMock(spec=TranslationResult)
         mock_result.success = True
@@ -891,7 +901,7 @@ class TestVerboseAudit:
             model_selection=ComBaseModelSelection(
                 organism=ComBaseOrganism.SALMONELLA, model_type=ModelType.GROWTH,
             ),
-            parameters=ComBaseParameters(temperature_celsius=25.0, ph=7.0, water_activity=0.99),
+            parameters=ComBaseParameters(temperature_celsius=25.0, ph=7.0, water_activity=0.99, initial_inoculum_log_cfu=3.0),
             time_temperature_profile=TimeTemperatureProfile(
                 is_multi_step=False,
                 steps=[TimeTemperatureStep(temperature_celsius=25.0, duration_minutes=60.0, step_order=1)],
@@ -900,7 +910,8 @@ class TestVerboseAudit:
         )
         state.execution_result = ComBaseExecutionResult(
             model_result=model_result, step_predictions=[],
-            total_log_increase=0.5, engine_type=EngineType.COMBASE_LOCAL, warnings=[],
+            total_log_increase=0.5, initial_log_cfu=3.0, final_log_cfu=3.5,
+            engine_type=EngineType.COMBASE_LOCAL, warnings=[],
         )
         mock_result = MagicMock(spec=TranslationResult)
         mock_result.success = True
@@ -1073,7 +1084,7 @@ class TestAuditPostStandardization:
                 organism=ComBaseOrganism.SALMONELLA, model_type=ModelType.GROWTH,
             ),
             parameters=ComBaseParameters(
-                temperature_celsius=25.0, ph=6.2, water_activity=0.97,
+                temperature_celsius=25.0, ph=6.2, water_activity=0.97, initial_inoculum_log_cfu=3.0,
             ),
             time_temperature_profile=TimeTemperatureProfile(
                 is_multi_step=False,
@@ -1089,6 +1100,7 @@ class TestAuditPostStandardization:
                 ph_used=6.2, aw_used=0.97, engine_type=EngineType.COMBASE_LOCAL,
             ),
             step_predictions=[], total_log_increase=0.21,
+            initial_log_cfu=3.0, final_log_cfu=3.21,
             engine_type=EngineType.COMBASE_LOCAL, warnings=[],
         )
 
@@ -1160,7 +1172,7 @@ class TestAuditPostStandardization:
                 organism=ComBaseOrganism.SALMONELLA, model_type=ModelType.GROWTH,
             ),
             parameters=ComBaseParameters(
-                temperature_celsius=25.0, ph=7.0, water_activity=0.99,
+                temperature_celsius=25.0, ph=7.0, water_activity=0.99, initial_inoculum_log_cfu=3.0,
             ),
             time_temperature_profile=TimeTemperatureProfile(
                 is_multi_step=False,
@@ -1176,6 +1188,7 @@ class TestAuditPostStandardization:
                 ph_used=7.0, aw_used=0.99, engine_type=EngineType.COMBASE_LOCAL,
             ),
             step_predictions=[], total_log_increase=0.15,
+            initial_log_cfu=3.0, final_log_cfu=3.15,
             engine_type=EngineType.COMBASE_LOCAL, warnings=[],
         )
 
@@ -1446,7 +1459,7 @@ class TestDefaultedWithRetrieval:
                 organism=ComBaseOrganism.SALMONELLA,
                 model_type=ModelType.GROWTH,
             ),
-            parameters=ComBaseParameters(temperature_celsius=25.0, ph=7.0, water_activity=0.99),
+            parameters=ComBaseParameters(temperature_celsius=25.0, ph=7.0, water_activity=0.99, initial_inoculum_log_cfu=3.0),
             time_temperature_profile=TimeTemperatureProfile(
                 is_multi_step=False,
                 steps=[TimeTemperatureStep(temperature_celsius=25.0, duration_minutes=240.0, step_order=1)],
@@ -1457,6 +1470,8 @@ class TestDefaultedWithRetrieval:
             model_result=model_result,
             step_predictions=[],
             total_log_increase=1.8,
+            initial_log_cfu=3.0,
+            final_log_cfu=4.8,
             engine_type=EngineType.COMBASE_LOCAL,
             warnings=[],
         )
@@ -1558,7 +1573,7 @@ class TestDefaultedWithRetrieval:
             model_selection=ComBaseModelSelection(
                 organism=ComBaseOrganism.SALMONELLA, model_type=ModelType.GROWTH,
             ),
-            parameters=ComBaseParameters(temperature_celsius=25.0, ph=7.0, water_activity=0.99),
+            parameters=ComBaseParameters(temperature_celsius=25.0, ph=7.0, water_activity=0.99, initial_inoculum_log_cfu=3.0),
             time_temperature_profile=TimeTemperatureProfile(
                 is_multi_step=False,
                 steps=[TimeTemperatureStep(temperature_celsius=25.0, duration_minutes=60.0, step_order=1)],
@@ -1573,6 +1588,7 @@ class TestDefaultedWithRetrieval:
                 ph_used=7.0, aw_used=0.99, engine_type=EngineType.COMBASE_LOCAL,
             ),
             step_predictions=[], total_log_increase=0.5,
+            initial_log_cfu=3.0, final_log_cfu=3.5,
             engine_type=EngineType.COMBASE_LOCAL, warnings=[],
         )
         mock_result = MagicMock(spec=TranslationResult)

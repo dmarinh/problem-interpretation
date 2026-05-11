@@ -160,6 +160,21 @@ Temperature extraction — numeric vs. descriptive phrases:
       is also populated (e.g., "around 4°C" → both fields; plain "4°C" → value_celsius only).
     - Do not infer temperature from container type, appliance name, season, or location alone unless
       the user states a number alongside it.
+
+Initial inoculum extraction:
+
+  Rules:
+    - Extract only if the user explicitly states a starting bacterial count.
+    - Convert raw CFU/g to log10 CFU/g: 1000 CFU/g → 3.0, 10^4 CFU/g → 4.0, 100 CFU/g → 2.0.
+    - Leave initial_inoculum_log_cfu null if not mentioned. Do NOT infer or guess.
+
+  Worked examples:
+    "starting with 10^4 CFU/g"        → initial_inoculum_log_cfu=4.0
+    "inoculated at 10^3 CFU/g"        → initial_inoculum_log_cfu=3.0
+    "1000 CFU/g initial count"         → initial_inoculum_log_cfu=3.0
+    "3 log CFU/g initial"              → initial_inoculum_log_cfu=3.0
+    "initial load of 100 CFU/g"        → initial_inoculum_log_cfu=2.0
+    "raw chicken left out for 3 hours" → initial_inoculum_log_cfu=null  (not mentioned)
 """
 
 INTENT_CLASSIFICATION_PROMPT = """You are a food safety expert assistant. Classify the user's intent.

@@ -465,3 +465,24 @@ Parametrize over multiple threshold values (70/75/80/85), run unit tests against
 
 **What to do differently:**
 - When updating a test class that was testing old behavior (e.g., `TestBridgeAttemptedNoData`), check whether the test vehicle (lobster → shellfish) is still the right one. Shellfish changed from "has pH but no aw" to "has neither" — the test class name and docstring needed updating, not just the assertions.
+
+---
+
+### 2026-05-11 — Initial inoculum: required-field cascade and method-scoping pitfalls
+
+**Context:** Added `initial_inoculum_log_cfu` throughout the pipeline: SemanticParser extraction, GroundingService step 7, StandardizationService `_get_initial_inoculum`, ComBase engine (`initial_log_cfu`/`final_log_cfu`), and API `PredictionResult`.
+
+**What went well:**
+- Attribute path disambiguation early. The Plan agent identified that the correct path is `model.defaults.inoculum` (on nested `ComBaseModelDefaults`), not `model.inoculum`. Verified by reading `models.py` before implementation — saved one round of silent wrong defaults.
+- The three-priority resolution hierarchy (user value → model default from `DefaultInoc` → fallback 3.0) mirrors the existing pH/aw pattern exactly, making the implementation straightforward and the audit trail self-consistent.
+
+**What surfaced repeatedly:**
+- **Wrong method scope.** The inoculum grounding code was initially placed inside `_ground_environmental_conditions()`, which only receives `conditions: ExtractedEnvironmentalConditions` and `grounded` — `scenario` is not in scope. The IDE flagged "Could not find name `scenario`". Fix: move to `ground_scenario()` where `scenario` is in scope. Rule: when adding code that reads from `ExtractedScenario`, it must live in a method that receives the full scenario object.
+- **Required field without default breaks all existing test fixtures at once.** `ComBaseParameters.initial_inoculum_log_cfu` is required (no Pydantic default). Every test file that constructed `ComBaseParameters` without the new field failed simultaneously — 20+ breakages across 5 files. Before making any field required, grep every constructor call in the test suite: `grep -r "ComBaseParameters(" tests/`. Fix all in one pass before running tests.
+- **`model` variable scoped inside `if self._registry:` block.** `_get_initial_inoculum(grounded, result, model)` is called after the registry block, but `model` was only assigned inside it — `UnboundLocalError` on the no-registry path. Fix: hoist `model = None` before the `if` block. Same pattern as any optional-registry lookup.
+- **`defaults_imputed == []` assertions break when a new universal default is added.** Two `TestBreadQueryEndToEnd` tests asserted `result.defaults_imputed == []`. Inoculum always adds a `DefaultImputed` event, so these assertions started failing. Fix: filter by field name — separate inoculum defaults from non-inoculum defaults and assert on each group independently. Lesson: `== []` assertions on audit lists are fragile; prefer field-filtered assertions that survive future additions.
+
+**What to do differently:**
+- When a new grounding step reads from `scenario`, check which method the code will live in and confirm `scenario` is actually in scope before writing.
+- When a new Pydantic field is required (no default), always grep all constructors for that model across the entire codebase (tests and app) before running tests — not just the files you know about.
+- When a test asserts `some_list == []`, consider whether it is asserting "nothing fired" or "this specific thing didn't fire." Prefer the latter when the list can grow with future features.

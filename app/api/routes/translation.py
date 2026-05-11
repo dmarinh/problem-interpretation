@@ -499,6 +499,8 @@ async def translate_query(
                 mu_max=model_result.mu_max,
                 doubling_time_hours=model_result.doubling_time_hours,
                 total_log_increase=exec_result.total_log_increase,
+                initial_log_cfu=exec_result.initial_log_cfu,
+                final_log_cfu=exec_result.final_log_cfu,
                 y_max=model_result.y_max,
                 h0=model_result.h0,
                 is_multi_step=profile.is_multi_step,
