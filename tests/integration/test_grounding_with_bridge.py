@@ -40,7 +40,9 @@ from unittest.mock import MagicMock, AsyncMock
 
 from app.services.grounding.grounding_service import GroundingService, GroundedValues
 from app.services.grounding.taxonomy_bridge import TaxonomyBridge
-from app.models.metadata import ValueSource
+from app.services.standardization.standardization_service import StandardizationService
+from app.models.enums import ComBaseOrganism, ModelType
+from app.models.metadata import ValueSource, InterpretationMetadata
 from app.models.extraction import (
     ExtractedScenario,
     ExtractedTemperature,
@@ -562,3 +564,240 @@ class TestEnvVarDisabledBridge:
         await disabled_service._ground_food_properties("turkey portions", grounded)
 
         assert grounded.bridge_attempts == {}
+
+
+# ---------------------------------------------------------------------------
+# B3: "chili" composite-food rejection — full grounding + standardization path
+# ---------------------------------------------------------------------------
+
+class TestChiliCompositeRejection:
+    """B3 scenario: 'chili' triggers the orchestrator-level composite-food guard.
+
+    Without the guard, 'chili' matched 'chili sauce acidified' at embedding
+    0.7115 / reranker +5.90, silently grounding pH to 2.77.
+
+    The guard fires before any retrieval call, populates composite_skip, and
+    downstream consumers produce COMPOSITE_FOOD_DEFAULT source with a reason
+    string that names the matched keyword.
+
+    Assertions mirror the spec:
+    1. Neither pH nor aw is grounded from retrieval.
+    2. grounded.retrievals contains no entry attributed to ph or water_activity.
+    3. After standardization, field_audit.ph.source == composite_food_default.
+    4. provenance[] matches field_audit on source for the same field (cross-array).
+    5. The DefaultImputed reason string mentions the matched keyword 'chili'.
+    6. The DefaultImputed rule is 'default_imputed' (no new rule introduced).
+    7. Standardization does not emit missing_required for ph or aw (prediction not blocked).
+    """
+
+    @pytest.fixture
+    def chili_grounded(
+        self, grounding_service: GroundingService
+    ) -> GroundedValues:
+        """GroundedValues after grounding 'chili' (synchronous helper via pytest-asyncio)."""
+        import asyncio
+        grounded = GroundedValues()
+        asyncio.get_event_loop().run_until_complete(
+            grounding_service._ground_food_properties("chili", grounded)
+        )
+        return grounded
+
+    @pytest.mark.asyncio
+    async def test_ph_not_grounded_from_retrieval(
+        self, grounding_service: GroundingService
+    ) -> None:
+        """1. pH must not be set after grounding — composite guard skipped retrieval."""
+        grounded = GroundedValues()
+        await grounding_service._ground_food_properties("chili", grounded)
+        assert not grounded.has("ph")
+
+    @pytest.mark.asyncio
+    async def test_aw_not_grounded_from_retrieval(
+        self, grounding_service: GroundingService
+    ) -> None:
+        """1. aw must not be set after grounding — composite guard skipped retrieval."""
+        grounded = GroundedValues()
+        await grounding_service._ground_food_properties("chili", grounded)
+        assert not grounded.has("water_activity")
+
+    @pytest.mark.asyncio
+    async def test_no_retrieval_attributed_to_ph_or_aw(
+        self, grounding_service: GroundingService
+    ) -> None:
+        """2. grounded.retrievals must contain no entry attributed to ph or water_activity."""
+        grounded = GroundedValues()
+        await grounding_service._ground_food_properties("chili", grounded)
+
+        ph_attributed = [r for r in grounded.retrievals if r.attributed_field == "ph"]
+        aw_attributed = [r for r in grounded.retrievals if r.attributed_field == "water_activity"]
+        assert ph_attributed == [], "No retrieval should be attributed to ph for a composite food"
+        assert aw_attributed == [], "No retrieval should be attributed to water_activity for a composite food"
+
+    @pytest.mark.asyncio
+    async def test_field_audit_ph_source_is_composite_food_default(
+        self, grounding_service: GroundingService
+    ) -> None:
+        """3. field_audit.ph.source must be composite_food_default after the full grounding+std path."""
+        from app.api.routes.translation import _build_field_audit
+        from app.core.orchestrator import TranslationResult
+        from app.core.state import SessionState
+        from app.models.enums import SessionStatus
+
+        grounded = GroundedValues()
+        await grounding_service._ground_food_properties("chili", grounded)
+
+        # Set organism + temperature + duration so standardization can proceed
+        grounded.set("organism", ComBaseOrganism.SALMONELLA, ValueSource.USER_EXPLICIT)
+        grounded.set("temperature_celsius", 25.0, ValueSource.USER_EXPLICIT)
+        grounded.set("duration_minutes", 180.0, ValueSource.USER_EXPLICIT)
+
+        std_svc = StandardizationService(model_registry=None)
+        std_result = std_svc.standardize(grounded, ModelType.GROWTH)
+
+        # Build a minimal SessionState/TranslationResult that mirrors what the orchestrator produces
+        state = SessionState(user_input="chili at room temperature for 3 hours")
+        state.initialize_metadata()
+        state.status = SessionStatus.COMPLETED
+        state.grounded_values = grounded.values
+        for field, prov in grounded.provenance.items():
+            state.metadata.add_provenance(field, prov)
+        for retrieval in grounded.retrievals:
+            state.metadata.add_retrieval(retrieval)
+        if grounded.composite_skip:
+            state.metadata.composite_skip.update(grounded.composite_skip)
+        state.metadata.defaults_imputed.extend(std_result.defaults_imputed)
+
+        result = TranslationResult(state)
+        field_audit = _build_field_audit(result)
+
+        assert "ph" in field_audit
+        assert field_audit["ph"].source == ValueSource.COMPOSITE_FOOD_DEFAULT.value, (
+            f"Expected composite_food_default, got {field_audit['ph'].source}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_provenance_list_agrees_with_field_audit_on_ph_source(
+        self, grounding_service: GroundingService
+    ) -> None:
+        """4. provenance[] must show composite_food_default for ph — consistent with field_audit."""
+        from app.api.routes.translation import _build_field_audit, _build_provenance_list
+        from app.core.orchestrator import TranslationResult
+        from app.core.state import SessionState
+        from app.models.enums import SessionStatus
+
+        grounded = GroundedValues()
+        await grounding_service._ground_food_properties("chili", grounded)
+        grounded.set("organism", ComBaseOrganism.SALMONELLA, ValueSource.USER_EXPLICIT)
+        grounded.set("temperature_celsius", 25.0, ValueSource.USER_EXPLICIT)
+        grounded.set("duration_minutes", 180.0, ValueSource.USER_EXPLICIT)
+
+        std_svc = StandardizationService(model_registry=None)
+        std_result = std_svc.standardize(grounded, ModelType.GROWTH)
+
+        state = SessionState(user_input="chili")
+        state.initialize_metadata()
+        state.status = SessionStatus.COMPLETED
+        state.grounded_values = grounded.values
+        for field, prov in grounded.provenance.items():
+            state.metadata.add_provenance(field, prov)
+        for retrieval in grounded.retrievals:
+            state.metadata.add_retrieval(retrieval)
+        if grounded.composite_skip:
+            state.metadata.composite_skip.update(grounded.composite_skip)
+        state.metadata.defaults_imputed.extend(std_result.defaults_imputed)
+
+        result = TranslationResult(state)
+        field_audit = _build_field_audit(result)
+        provenance_list = _build_provenance_list(result, field_audit)
+
+        # Cross-array agreement: provenance[] source for ph must match field_audit
+        ph_fa = field_audit.get("ph")
+        ph_prov = next((p for p in provenance_list if p.field == "ph"), None)
+
+        assert ph_fa is not None, "ph must appear in field_audit"
+        assert ph_prov is not None, "ph must appear in provenance[]"
+        assert ph_prov.source == ph_fa.source, (
+            f"Cross-array mismatch: field_audit.ph.source={ph_fa.source!r}, "
+            f"provenance[ph].source={ph_prov.source!r}"
+        )
+        assert ph_prov.source == ValueSource.COMPOSITE_FOOD_DEFAULT.value
+
+    @pytest.mark.asyncio
+    async def test_default_imputed_reason_mentions_chili_keyword(
+        self, grounding_service: GroundingService
+    ) -> None:
+        """5. The DefaultImputed reason for pH must name the matched keyword 'chili'."""
+        grounded = GroundedValues()
+        await grounding_service._ground_food_properties("chili", grounded)
+        grounded.set("organism", ComBaseOrganism.SALMONELLA, ValueSource.USER_EXPLICIT)
+        grounded.set("temperature_celsius", 25.0, ValueSource.USER_EXPLICIT)
+        grounded.set("duration_minutes", 180.0, ValueSource.USER_EXPLICIT)
+
+        std_svc = StandardizationService(model_registry=None)
+        std_result = std_svc.standardize(grounded, ModelType.GROWTH)
+
+        ph_default = next((d for d in std_result.defaults_imputed if d.field_name == "ph"), None)
+        assert ph_default is not None, "pH must be in defaults_imputed for a composite food"
+        assert "chili" in ph_default.reason, (
+            f"Reason must name matched keyword 'chili'; got: {ph_default.reason!r}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_default_imputed_rule_is_default_imputed(
+        self, grounding_service: GroundingService
+    ) -> None:
+        """6. The standardization rule must remain 'default_imputed' — no new rule introduced."""
+        from app.api.routes.translation import _build_field_audit
+        from app.core.orchestrator import TranslationResult
+        from app.core.state import SessionState
+        from app.models.enums import SessionStatus
+
+        grounded = GroundedValues()
+        await grounding_service._ground_food_properties("chili", grounded)
+        grounded.set("organism", ComBaseOrganism.SALMONELLA, ValueSource.USER_EXPLICIT)
+        grounded.set("temperature_celsius", 25.0, ValueSource.USER_EXPLICIT)
+        grounded.set("duration_minutes", 180.0, ValueSource.USER_EXPLICIT)
+
+        std_svc = StandardizationService(model_registry=None)
+        std_result = std_svc.standardize(grounded, ModelType.GROWTH)
+
+        state = SessionState(user_input="chili")
+        state.initialize_metadata()
+        state.status = SessionStatus.COMPLETED
+        state.grounded_values = grounded.values
+        for field, prov in grounded.provenance.items():
+            state.metadata.add_provenance(field, prov)
+        state.metadata.defaults_imputed.extend(std_result.defaults_imputed)
+        if grounded.composite_skip:
+            state.metadata.composite_skip.update(grounded.composite_skip)
+
+        result = TranslationResult(state)
+        field_audit = _build_field_audit(result)
+
+        ph_entry = field_audit.get("ph")
+        assert ph_entry is not None
+        assert ph_entry.standardization is not None
+        assert ph_entry.standardization.rule == "default_imputed"
+
+    @pytest.mark.asyncio
+    async def test_standardization_does_not_block_prediction(
+        self, grounding_service: GroundingService
+    ) -> None:
+        """7. Composite-food guard must not block the prediction (success=True).
+
+        Verified by confirming std_result.missing_required is empty when the
+        required fields (organism, temperature, duration) are set.  ph and aw
+        get conservative defaults — not missing_required — so the pipeline proceeds.
+        """
+        grounded = GroundedValues()
+        await grounding_service._ground_food_properties("chili", grounded)
+        grounded.set("organism", ComBaseOrganism.SALMONELLA, ValueSource.USER_EXPLICIT)
+        grounded.set("temperature_celsius", 25.0, ValueSource.USER_EXPLICIT)
+        grounded.set("duration_minutes", 180.0, ValueSource.USER_EXPLICIT)
+
+        std_svc = StandardizationService(model_registry=None)
+        std_result = std_svc.standardize(grounded, ModelType.GROWTH)
+
+        assert std_result.missing_required == [], (
+            f"Composite food must not block prediction; missing_required={std_result.missing_required}"
+        )

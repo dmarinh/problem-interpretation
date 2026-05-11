@@ -22,6 +22,23 @@
 
 ---
 
+### 2026-05-08 — Composite-food guard lifted to orchestrator level
+
+**What went well:**
+- The bug (chili matching "chili sauce acidified" at Tier 1 with embedding 0.7115, silently grounding pH to 2.77) was diagnosed directly from the audit output: the retrieval result was present, the score was above threshold, and the composite guard had never fired. The failure path was unambiguous.
+- Moving the guard to `_ground_food_properties()` — the single method that orchestrates all three tiers — was the correct minimal fix. The guard now fires before any retrieval call regardless of tier, and the change required no new abstraction layers.
+- The producer-consumer pattern (`composite_skip` produced by GroundingService, consumed by standardization service + route builder) was implemented in one change. No dangling producer with no consumer.
+
+**What surfaced repeatedly:**
+- **Guards belong at the layer where the property they check is determined, not at the layer where they were first discovered to be needed.** The composite guard was originally placed in `TaxonomyBridge.resolve()` because that was where it was first written. When Tier 1 was added later, the guard didn't move up. The correct home is the orchestrating method (`_ground_food_properties`), not the lowest-tier implementation.
+- **Audit signal gaps are epistemically different from missing values.** "Retrieval deliberately skipped (composite dish)" and "retrieval attempted, no evidence found (conservative default)" are two different epistemic states. Collapsing both to `CONSERVATIVE_DEFAULT` in the audit was misleading — the `COMPOSITE_FOOD_DEFAULT` variant was necessary for audit honesty, not just cosmetic.
+
+**What to do differently:**
+- When a guard is placed inside a specific tier's implementation, always ask: "if a higher-priority tier is added later, does this guard still fire?" If not, the guard belongs upstream.
+- Name source variants permanently, not as placeholders. `COMPOSITE_FOOD_DEFAULT` is a stable enum member, not a temporary workaround. The name in the audit response should be self-explanatory to a downstream consumer who didn't read the implementation.
+
+---
+
 ### 2026-05-01 — Polynomial boundary extrapolation and the value of output-layer caps
 
 **What went well:**

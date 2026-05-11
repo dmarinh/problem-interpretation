@@ -27,6 +27,7 @@ import asyncio
 import logging
 import os
 import re
+import string
 from dataclasses import dataclass, field
 
 from app.config.rules import (
@@ -51,6 +52,49 @@ from app.services.audit.citations import get_full_citations
 from app.services.llm.client import LLMClient, get_llm_client
 
 logger = logging.getLogger(__name__)
+
+# Composite-food keywords.  When the normalised food description contains one of
+# these tokens (or the multi-word "stir-fry"/"stir fry"), the orchestrator-level
+# guard fires and all three tiers of food-property retrieval are skipped.  The
+# guard sits here — at the food-property orchestration layer — so it gates Tier 1
+# and Tier 2 as well as Tier 3, not just the taxonomy bridge.
+#
+# Expansion history:
+#   Initial set (2026-05-07): soup, salad, stew, pie, sandwich, roll, wrap,
+#       casserole, curry, mixed, platter, dish
+#   2026-05-08: chili, custard, chowder, gumbo, bisque, lasagna, lasagne
+_COMPOSITE_KEYWORDS: frozenset[str] = frozenset({
+    "soup", "salad", "stew", "pie", "sandwich", "roll", "wrap",
+    "casserole", "curry", "mixed", "platter", "dish",
+    "chili", "custard", "chowder", "gumbo", "bisque", "lasagna", "lasagne",
+})
+
+
+def _normalise_food_description(text: str) -> str:
+    """Lowercase, strip punctuation (except hyphen), collapse whitespace."""
+    text = text.lower()
+    text = text.translate(str.maketrans("", "", string.punctuation.replace("-", "")))
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+def _composite_keyword_match(food_description: str) -> str | None:
+    """Return the matched composite keyword, or None if the food is not composite.
+
+    Uses token intersection on whitespace-split tokens plus substring match for
+    the multi-word entries "stir-fry" and "stir fry".  Input must be normalised
+    (lowercase, punctuation-stripped, whitespace-collapsed) before calling.
+    """
+    normalised = _normalise_food_description(food_description)
+    tokens = set(normalised.split())
+    matched = tokens & _COMPOSITE_KEYWORDS
+    if matched:
+        return next(iter(matched))
+    for multi in ("stir-fry", "stir fry"):
+        if multi in normalised:
+            return multi
+    return None
+
 
 # Sentinel distinguishing "caller did not pass taxonomy_bridge" (read env var)
 # from "caller explicitly passed None" (disable bridge unconditionally).
@@ -253,6 +297,11 @@ class GroundedValues:
         # "bridge resolved to category X, no Y data available" in the
         # DefaultImputed reason instead of a silent "no value found".
         self.bridge_attempts: dict[str, CategoryBridgeInfo] = {}
+        # Populated when the orchestrator-level composite-food guard fires and
+        # skips retrieval for a field.  Keys are field names; values are the
+        # matched keyword (e.g. {"ph": "chili", "water_activity": "chili"}).
+        # The route builder reads this to assign COMPOSITE_FOOD_DEFAULT source.
+        self.composite_skip: dict[str, str] = {}
 
     @property
     def has_steps(self) -> bool:
@@ -530,6 +579,13 @@ class GroundingService:
         """
         Ground food pH and water activity via two-tier RAG retrieval.
 
+        Composite-food guard (pre-Tier-1):
+          If the food description matches a composite keyword, all three tiers
+          are skipped.  grounded.composite_skip is populated for each field that
+          still needs grounding (ph / water_activity), recording the matched
+          keyword so downstream services can produce an informative audit entry
+          with source COMPOSITE_FOOD_DEFAULT rather than CONSERVATIVE_DEFAULT.
+
         Tier 1 — primary query (threshold food_properties_confidence = 0.70):
           Single query retrieving the best-matching food doc.  Both pH and aw
           are extracted from that doc if present.  Source: RAG_RETRIEVAL.
@@ -549,6 +605,18 @@ class GroundingService:
         Range handling: both bounds are preserved with range_pending=True;
         StandardizationService selects the conservative bound based on model type.
         """
+        # ── Composite-food guard ──────────────────────────────────────────────
+        # Must run before any retrieval call so composite queries cannot
+        # accidentally match a single-ingredient document at high confidence
+        # and bypass this check (e.g. "chili" → "chili sauce acidified").
+        matched_keyword = _composite_keyword_match(food_description)
+        if matched_keyword is not None:
+            if not grounded.has("ph"):
+                grounded.composite_skip["ph"] = matched_keyword
+            if not grounded.has("water_activity"):
+                grounded.composite_skip["water_activity"] = matched_keyword
+            return
+
         # ── Tier 1: primary query ─────────────────────────────────────────────
         primary_response = await asyncio.to_thread(
             self._retrieval.query_food_properties, food_description

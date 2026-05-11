@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 from app.services.grounding.grounding_service import (
     GroundingService,
     GroundedValues,
+    _composite_keyword_match,
     get_grounding_service,
     reset_grounding_service,
 )
@@ -1270,3 +1271,216 @@ class TestExtractionMethodLabels:
         value, prov = service._resolve_duration_value(dur)
         assert prov.extraction_method == "llm_extraction"
         assert prov.source == ValueSource.USER_EXPLICIT
+
+
+# =============================================================================
+# Composite-food guard — orchestrator-level (lifted from TaxonomyBridge)
+# =============================================================================
+
+class TestCompositeFoodGuardHelper:
+    """Unit tests for the _composite_keyword_match helper function."""
+
+    def test_returns_none_for_single_ingredient(self) -> None:
+        assert _composite_keyword_match("chicken") is None
+
+    def test_returns_none_for_plain_beef(self) -> None:
+        assert _composite_keyword_match("beef") is None
+
+    def test_returns_keyword_for_chicken_soup(self) -> None:
+        assert _composite_keyword_match("chicken soup") == "soup"
+
+    def test_returns_keyword_for_beef_stew(self) -> None:
+        assert _composite_keyword_match("beef stew") == "stew"
+
+    def test_returns_keyword_for_tuna_salad(self) -> None:
+        assert _composite_keyword_match("tuna salad") == "salad"
+
+    # New keywords added 2026-05-08
+    def test_chili_is_composite(self) -> None:
+        assert _composite_keyword_match("chili") == "chili"
+
+    def test_custard_is_composite(self) -> None:
+        assert _composite_keyword_match("custard") == "custard"
+
+    def test_chowder_is_composite(self) -> None:
+        assert _composite_keyword_match("chowder") == "chowder"
+
+    def test_gumbo_is_composite(self) -> None:
+        assert _composite_keyword_match("gumbo") == "gumbo"
+
+    def test_bisque_is_composite(self) -> None:
+        assert _composite_keyword_match("bisque") == "bisque"
+
+    def test_lasagna_is_composite(self) -> None:
+        assert _composite_keyword_match("lasagna") == "lasagna"
+
+    def test_lasagne_is_composite(self) -> None:
+        assert _composite_keyword_match("lasagne") == "lasagne"
+
+    def test_case_insensitive(self) -> None:
+        assert _composite_keyword_match("Chicken Soup") == "soup"
+
+    def test_stir_fry_multiword(self) -> None:
+        assert _composite_keyword_match("beef stir fry") == "stir fry"
+
+    def test_stir_fry_hyphenated(self) -> None:
+        assert _composite_keyword_match("tofu stir-fry") == "stir-fry"
+
+
+def _make_no_hit_mock() -> MagicMock:
+    """RetrievalResponse returning no confident result."""
+    r = MagicMock()
+    r.has_confident_result = False
+    r.results = []
+    r.top_result = None
+    r.query = ""
+    r.reranker_used = None
+    r.threshold = 0.62
+    return r
+
+
+class TestCompositeFoodGuard:
+    """Orchestrator-level composite-food guard in _ground_food_properties.
+
+    Migrated from TestCompositeBlocklist (test_taxonomy_bridge.py) and expanded
+    to test the new layer: the guard now fires before any retrieval call, not
+    only before fuzzy matching inside the bridge.
+    """
+
+    @pytest.fixture
+    def service_with_mock_retrieval(self) -> tuple[GroundingService, MagicMock]:
+        mock_retrieval = MagicMock()
+        mock_retrieval.query_food_properties.return_value = _make_no_hit_mock()
+        mock_retrieval.query_food_ph.return_value = _make_no_hit_mock()
+        mock_retrieval.query_food_water_activity.return_value = _make_no_hit_mock()
+        mock_retrieval.query_pathogen_hazards.return_value = _make_no_hit_mock()
+        mock_retrieval.get_hazards_for_food.return_value = []
+        svc = GroundingService(
+            retrieval_service=mock_retrieval,
+            llm_client=AsyncMock(),
+            use_llm_extraction=False,
+            taxonomy_bridge=None,  # bridge not needed for guard tests
+        )
+        return svc, mock_retrieval
+
+    @pytest.mark.asyncio
+    async def test_chicken_soup_ph_not_grounded(
+        self, service_with_mock_retrieval: tuple[GroundingService, MagicMock]
+    ) -> None:
+        svc, _ = service_with_mock_retrieval
+        grounded = GroundedValues()
+        await svc._ground_food_properties("chicken soup", grounded)
+        assert not grounded.has("ph")
+
+    @pytest.mark.asyncio
+    async def test_chicken_soup_aw_not_grounded(
+        self, service_with_mock_retrieval: tuple[GroundingService, MagicMock]
+    ) -> None:
+        svc, _ = service_with_mock_retrieval
+        grounded = GroundedValues()
+        await svc._ground_food_properties("chicken soup", grounded)
+        assert not grounded.has("water_activity")
+
+    @pytest.mark.asyncio
+    async def test_beef_stew_ph_not_grounded(
+        self, service_with_mock_retrieval: tuple[GroundingService, MagicMock]
+    ) -> None:
+        svc, _ = service_with_mock_retrieval
+        grounded = GroundedValues()
+        await svc._ground_food_properties("beef stew", grounded)
+        assert not grounded.has("ph")
+
+    @pytest.mark.asyncio
+    async def test_tuna_salad_ph_not_grounded(
+        self, service_with_mock_retrieval: tuple[GroundingService, MagicMock]
+    ) -> None:
+        svc, _ = service_with_mock_retrieval
+        grounded = GroundedValues()
+        await svc._ground_food_properties("tuna salad", grounded)
+        assert not grounded.has("ph")
+
+    @pytest.mark.asyncio
+    async def test_guard_fires_before_any_retrieval_call(
+        self, service_with_mock_retrieval: tuple[GroundingService, MagicMock]
+    ) -> None:
+        """No retrieval method must be called when the composite-food guard fires.
+
+        This verifies ordering (guard before retrieval), not just outcome.
+        Equivalent to the old test_composite_blocklist_short_circuits_before_fuzzy
+        but at the grounding-service layer.
+        """
+        svc, mock_retrieval = service_with_mock_retrieval
+        grounded = GroundedValues()
+        await svc._ground_food_properties("chicken soup", grounded)
+
+        mock_retrieval.query_food_properties.assert_not_called()
+        mock_retrieval.query_food_ph.assert_not_called()
+        mock_retrieval.query_food_water_activity.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_plain_chicken_not_blocked(
+        self, service_with_mock_retrieval: tuple[GroundingService, MagicMock]
+    ) -> None:
+        """Plain 'chicken' (no composite keyword) must attempt retrieval normally."""
+        svc, mock_retrieval = service_with_mock_retrieval
+        grounded = GroundedValues()
+        await svc._ground_food_properties("chicken", grounded)
+
+        # Guard did not fire → at least the primary query was attempted
+        mock_retrieval.query_food_properties.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_composite_skip_recorded_for_both_fields(
+        self, service_with_mock_retrieval: tuple[GroundingService, MagicMock]
+    ) -> None:
+        """grounded.composite_skip must name both ph and water_activity after guard fires."""
+        svc, _ = service_with_mock_retrieval
+        grounded = GroundedValues()
+        await svc._ground_food_properties("chicken soup", grounded)
+
+        assert "ph" in grounded.composite_skip
+        assert "water_activity" in grounded.composite_skip
+        assert grounded.composite_skip["ph"] == "soup"
+        assert grounded.composite_skip["water_activity"] == "soup"
+
+    @pytest.mark.asyncio
+    async def test_composite_skip_not_set_for_already_grounded_field(
+        self, service_with_mock_retrieval: tuple[GroundingService, MagicMock]
+    ) -> None:
+        """If the user already provided pH explicitly, composite_skip must not record ph."""
+        svc, _ = service_with_mock_retrieval
+        grounded = GroundedValues()
+        grounded.set("ph", 4.5, ValueSource.USER_EXPLICIT)
+        await svc._ground_food_properties("chicken soup", grounded)
+
+        assert "ph" not in grounded.composite_skip
+        assert "water_activity" in grounded.composite_skip
+
+    # New keyword tests (one per keyword added 2026-05-08)
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("food", ["chili", "custard", "chowder", "gumbo", "bisque", "lasagna", "lasagne"])
+    async def test_new_keywords_block_retrieval(
+        self, service_with_mock_retrieval: tuple[GroundingService, MagicMock], food: str
+    ) -> None:
+        """Each newly added composite keyword must block all retrieval calls."""
+        svc, mock_retrieval = service_with_mock_retrieval
+        grounded = GroundedValues()
+        await svc._ground_food_properties(food, grounded)
+
+        assert not grounded.has("ph")
+        assert not grounded.has("water_activity")
+        assert food in grounded.composite_skip.values()
+        mock_retrieval.query_food_properties.assert_not_called()
+
+
+class TestCompositeFoodDefaultVariant:
+    """Smoke tests for the COMPOSITE_FOOD_DEFAULT ValueSource variant."""
+
+    def test_variant_value_string(self) -> None:
+        assert ValueSource.COMPOSITE_FOOD_DEFAULT.value == "composite_food_default"
+
+    def test_variant_is_reachable_from_module(self) -> None:
+        assert hasattr(ValueSource, "COMPOSITE_FOOD_DEFAULT")
+
+    def test_variant_is_str_comparable(self) -> None:
+        assert ValueSource.COMPOSITE_FOOD_DEFAULT == "composite_food_default"

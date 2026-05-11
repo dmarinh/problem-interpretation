@@ -9,12 +9,15 @@ is in tests/integration/test_grounding_with_bridge.py.
 Key invariants under test
 -------------------------
 - Exact and near-exact food names resolve above the default threshold (80).
-- A composite-food blocklist guard short-circuits BEFORE fuzzy matching runs.
-  (Verified structurally with monkeypatch, not just by outcome.)
 - Alias map (beef → bovine, pork → pig, etc.) is applied before matching.
 - Unknown foods return None; no false positives in the test vocabulary.
 - Threshold calibration: all positive cases pass at 70/75/80/85; tornado stays
   below all four thresholds.  Chosen default: 80.
+
+Note: composite-food guard tests live in tests/unit/test_grounding_service.py
+(class TestCompositeFoodGuard).  The guard was moved from TaxonomyBridge to
+GroundingService._ground_food_properties() so it gates all three retrieval tiers,
+not only the bridge.
 """
 
 import pytest
@@ -107,53 +110,6 @@ class TestBelowThreshold:
         """Empty input: token_set_ratio against any string is 0 → below threshold."""
         result = bridge.resolve("")
         assert result is None
-
-
-# ---------------------------------------------------------------------------
-# Composite-food blocklist
-# ---------------------------------------------------------------------------
-
-class TestCompositeBlocklist:
-
-    def test_chicken_soup_returns_none(self, bridge: TaxonomyBridge) -> None:
-        """'chicken soup' is a composite food; must return None even though 'chicken'
-        alone would score 100 in fuzzy matching."""
-        result = bridge.resolve("chicken soup")
-        assert result is None
-
-    def test_beef_stew_returns_none(self, bridge: TaxonomyBridge) -> None:
-        result = bridge.resolve("beef stew")
-        assert result is None
-
-    def test_tuna_salad_returns_none(self, bridge: TaxonomyBridge) -> None:
-        result = bridge.resolve("tuna salad")
-        assert result is None
-
-    def test_composite_blocklist_short_circuits_before_fuzzy(
-        self, bridge: TaxonomyBridge, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """The blocklist guard must run BEFORE fuzzy matching.
-
-        This test verifies ordering, not merely outcome.  We replace
-        _fuzzy_match_food_name with a function that raises AssertionError if
-        called.  If the blocklist fires first, resolve() returns None without
-        ever reaching the fuzzy step.
-        """
-        def exploding_fuzzy(*args: object, **kwargs: object) -> object:
-            raise AssertionError(
-                "_fuzzy_match_food_name must not be called for composite foods; "
-                "blocklist guard should have returned None first"
-            )
-
-        monkeypatch.setattr(bridge, "_fuzzy_match_food_name", exploding_fuzzy)
-        result = bridge.resolve("chicken soup")
-        assert result is None
-
-    def test_blocklist_does_not_block_plain_chicken(self, bridge: TaxonomyBridge) -> None:
-        """Plain 'chicken' (no composite keyword) should still resolve via fuzzy match."""
-        result = bridge.resolve("chicken")
-        assert result is not None
-        assert result.ptm_category == "poultry"
 
 
 # ---------------------------------------------------------------------------

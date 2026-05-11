@@ -32,7 +32,12 @@ class ValueSource(str, Enum):
     Priority hierarchy (highest to lowest — enforced by grounded.has() guards,
     not by enum ordering):
       USER_EXPLICIT / USER_INFERRED > RAG_RETRIEVAL > RAG_RETRIEVAL_FALLBACK
-      > RAG_RETRIEVAL_CATEGORY_BRIDGE > CONSERVATIVE_DEFAULT
+      > RAG_RETRIEVAL_CATEGORY_BRIDGE > CONSERVATIVE_DEFAULT / COMPOSITE_FOOD_DEFAULT
+
+    CONSERVATIVE_DEFAULT and COMPOSITE_FOOD_DEFAULT sit at the same tier (no-evidence
+    safety floor) but are distinguished by reason: COMPOSITE_FOOD_DEFAULT means
+    retrieval was deliberately skipped because the food is a composite dish whose
+    properties cannot be reliably grounded from single-ingredient documents.
     """
     USER_EXPLICIT = "user_explicit"           # User stated directly
     USER_INFERRED = "user_inferred"           # Inferred from user input
@@ -41,6 +46,7 @@ class ValueSource(str, Enum):
     RAG_RETRIEVAL_FALLBACK = "rag_retrieval_fallback"  # Retrieved via per-field secondary query (category-level doc or lower threshold)
     RAG_RETRIEVAL_CATEGORY_BRIDGE = "rag_retrieval_category_bridge"  # Tier 3: food name resolved to FoodEx2 ptm_category via taxonomy bridge; food_properties row retrieved by category filter
     CONSERVATIVE_DEFAULT = "conservative_default"  # Safety default applied
+    COMPOSITE_FOOD_DEFAULT = "composite_food_default"  # Retrieval deliberately skipped: food identified as composite dish; single-ingredient documents do not represent the mixture's properties reliably. Conservative default applied.
     CLARIFICATION_RESPONSE = "clarification_response"  # From user clarification
     CLAMPED_TO_RANGE = "clamped_to_range"     # Adjusted to valid range
     CALCULATED = "calculated"                  # Derived from other values
@@ -519,6 +525,16 @@ class InterpretationMetadata(BaseModel):
         description="Range clamps that were applied"
     )
     
+    # Composite-food skip events: field_name → matched keyword.
+    # Populated by the orchestrator from GroundedValues.composite_skip when the
+    # orchestrator-level composite-food guard fires and skips retrieval for a field.
+    # The route builder reads this to assign COMPOSITE_FOOD_DEFAULT source instead
+    # of CONSERVATIVE_DEFAULT for these fields.
+    composite_skip: dict[str, str] = Field(
+        default_factory=dict,
+        description="Fields whose retrieval was deliberately skipped due to composite-food guard: {field_name: matched_keyword}"
+    )
+
     # Retrievals performed
     retrievals: list[RetrievalResult] = Field(
         default_factory=list,

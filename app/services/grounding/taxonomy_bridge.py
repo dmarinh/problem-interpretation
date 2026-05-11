@@ -6,21 +6,19 @@ against food_taxonomy.csv, then supplies the matching food_properties.csv rows
 for that category.  Used by GroundingService when both Tier 1 (primary RAG
 query) and Tier 2 (per-field fallback) fail to ground a property.
 
+Note: composite-food guard is NOT in this class.  It lives at the food-property
+orchestration layer in GroundingService._ground_food_properties(), which gates
+all three tiers before any retrieval is attempted.  By the time a query reaches
+this bridge, it has already passed the composite-food check.
+
 Resolution pipeline inside TaxonomyBridge.resolve()
 ----------------------------------------------------
 1. Normalise: lowercase, strip punctuation, collapse whitespace.
-2. Composite-blocklist guard — if any blocklist keyword is present, return None
-   immediately, BEFORE fuzzy matching runs.  This is a semantic decision:
-   composite foods ("chicken soup") would otherwise score 100 against their
-   primary ingredient token ("chicken") via token_set_ratio, producing a
-   confident but wrong category assignment.  The guard must short-circuit
-   before _fuzzy_match_food_name is called; test_composite_blocklist_short_circuits
-   verifies this ordering via monkeypatch.
-3. Apply alias map (e.g. "beef" → "bovine") to the normalised input.
+2. Apply alias map (e.g. "beef" → "bovine") to the normalised input.
    Aliases rewrite user vocabulary to FoodEx2 vocabulary before matching.
    The rewrite must happen BEFORE fuzzy match — "beef" scores ~36 against
    "bovine" in token_set_ratio, below any sensible threshold.
-4. _fuzzy_match_food_name: compute rapidfuzz.fuzz.token_set_ratio against
+3. _fuzzy_match_food_name: compute rapidfuzz.fuzz.token_set_ratio against
    every food_name in the taxonomy.  Top score ≥ threshold → TaxonomyResolution.
 
 Threshold selection (default 80)
@@ -81,15 +79,6 @@ _TAXONOMY_CSV = _REPO_ROOT / "data" / "rag" / "food_taxonomy.csv"
 _FOOD_PROPERTIES_CSV = _REPO_ROOT / "data" / "rag" / "food_properties.csv"
 _ALIASES_CSV = _REPO_ROOT / "data" / "food_taxonomy_aliases.csv"
 _CATEGORY_LEVEL_ROWS_CSV = _REPO_ROOT / "data" / "rag" / "category_level_rows.csv"
-
-# Composite-food keywords whose presence signals a multi-ingredient dish.
-# These are semantic descriptors, not ingredients.  "chicken soup" has
-# "chicken" but the DISH is composite; the bridge must not resolve it.
-# The guard fires on the normalised input (post-lowercase, post-punctuation-strip).
-_COMPOSITE_KEYWORDS: frozenset[str] = frozenset({
-    "soup", "salad", "stew", "pie", "sandwich", "roll", "wrap",
-    "casserole", "curry", "mixed", "platter", "dish",
-})
 
 
 @dataclass
@@ -166,17 +155,14 @@ class TaxonomyBridge:
 
         Returns TaxonomyResolution on success (property_rows may be empty if
         the category has no food_properties data — callers must handle this),
-        None when:
-        - the description contains a composite-food keyword (blocklist guard), or
-        - no taxonomy entry scores ≥ threshold after alias rewrite.
+        None when no taxonomy entry scores ≥ threshold after alias rewrite.
 
-        Pipeline: normalise → blocklist → alias → _fuzzy_match_food_name.
-        The blocklist runs BEFORE fuzzy matching; this ordering is load-bearing
-        (see module docstring) and is pinned by a structural unit test.
+        Composite-food filtering is handled upstream by GroundingService before
+        this method is called; no guard is needed here.
+
+        Pipeline: normalise → alias → _fuzzy_match_food_name.
         """
         normalised = self._normalise(food_description)
-        if self._is_composite(normalised):
-            return None
         aliased = self._apply_alias(normalised)
         return self._fuzzy_match_food_name(aliased)
 
@@ -191,13 +177,6 @@ class TaxonomyBridge:
         text = text.translate(str.maketrans("", "", string.punctuation.replace("-", "")))
         text = re.sub(r"\s+", " ", text).strip()
         return text
-
-    def _is_composite(self, normalised: str) -> bool:
-        """Return True if any composite-food keyword appears as a whole word."""
-        tokens = set(normalised.split())
-        # Also check multi-word composites that survive normalisation
-        return bool(tokens & _COMPOSITE_KEYWORDS or
-                    any(kw in normalised for kw in ("stir-fry", "stir fry")))
 
     def _apply_alias(self, normalised: str) -> str:
         """Rewrite user-vocabulary terms to FoodEx2 vocabulary.

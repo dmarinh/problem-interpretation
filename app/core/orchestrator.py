@@ -388,6 +388,11 @@ class Orchestrator:
                 state.metadata.add_provenance(field, prov)
             for retrieval in grounded.retrievals:
                 state.metadata.add_retrieval(retrieval)
+            # Composite-food skip events: field → matched keyword.
+            # Copied here so the route builder can assign COMPOSITE_FOOD_DEFAULT
+            # source without needing direct access to the GroundedValues object.
+            if grounded.composite_skip:
+                state.metadata.composite_skip.update(grounded.composite_skip)
             # Bridge per-step provenances so field_audit reflects multi-step structure.
             # grounded.provenance holds flat fields (organism/ph/aw); per-step temps
             # and durations live in grounded.steps and would otherwise be invisible

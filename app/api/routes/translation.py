@@ -231,6 +231,7 @@ def _build_field_audit(result: TranslationResult) -> dict[str, FieldAuditEntry]:
     # Add them to field_audit so it is the single complete map of every value
     # the model used, regardless of whether the value came from the user or
     # from conservative defaults.
+    composite_skip = metadata.composite_skip if metadata else {}
     for d in (metadata.defaults_imputed or []):
         if d.field_name not in field_audit:
             # Attach retrieval metadata when RAG was attempted for this field
@@ -280,9 +281,14 @@ def _build_field_audit(result: TranslationResult) -> dict[str, FieldAuditEntry]:
                     reranker_top=reranker_top,
                     attempted_top=attempted_top,
                 )
+            default_source = (
+                ValueSource.COMPOSITE_FOOD_DEFAULT.value
+                if d.field_name in composite_skip
+                else ValueSource.CONSERVATIVE_DEFAULT.value
+            )
             field_audit[d.field_name] = FieldAuditEntry(
                 final_value=d.imputed_value,
-                source=ValueSource.CONSERVATIVE_DEFAULT.value,
+                source=default_source,
                 retrieval=retrieval_info,
                 extraction=None,
                 standardization=StandardizationAuditInfo(

@@ -417,7 +417,14 @@ class StandardizationService:
         if ph is None:
             ph = settings.default_ph_neutral
             bridge_attempt: CategoryBridgeInfo | None = grounded.bridge_attempts.get("ph")
-            if bridge_attempt:
+            composite_keyword = grounded.composite_skip.get("ph")
+            if composite_keyword is not None:
+                reason = (
+                    f"Composite-food guard fired (matched: '{composite_keyword}'). "
+                    f"pH retrieval skipped — composite dishes cannot be reliably grounded "
+                    f"against single-ingredient documents. Using neutral default (conservative)."
+                )
+            elif bridge_attempt:
                 state_clause = (
                     f" (state: '{bridge_attempt.query_state}')"
                     if bridge_attempt.query_state else ""
@@ -500,7 +507,15 @@ class StandardizationService:
         if aw is None:
             aw = settings.default_water_activity
             bridge_attempt = grounded.bridge_attempts.get("water_activity")
-            if bridge_attempt:
+            composite_keyword = grounded.composite_skip.get("water_activity")
+            if composite_keyword is not None:
+                reason = (
+                    f"Composite-food guard fired (matched: '{composite_keyword}'). "
+                    f"Water activity retrieval skipped — composite dishes cannot be reliably "
+                    f"grounded against single-ingredient documents. Using conservative "
+                    f"high default (0.99) — maximizes predicted growth."
+                )
+            elif bridge_attempt:
                 state_clause = (
                     f" (state: '{bridge_attempt.query_state}')"
                     if bridge_attempt.query_state else ""
