@@ -149,6 +149,8 @@ class ComBaseModelResult(BaseModelResult):
         default=None,
         description="Doubling time in hours (for growth models only)"
     )
+    y_max: float = Field(description="Maximum population density (Baranyi model parameter)")
+    h0: float = Field(description="Initial physiological state (Baranyi model parameter)")
     
     # Organism
     organism: ComBaseOrganism = Field(

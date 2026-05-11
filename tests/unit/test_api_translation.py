@@ -39,6 +39,8 @@ def mock_translation_result():
     model_result = ComBaseModelResult(
         mu_max=0.42,
         doubling_time_hours=1.65,
+        y_max=10.0,
+        h0=0.1,
         model_type=ModelType.GROWTH,
         organism=ComBaseOrganism.SALMONELLA,
         temperature_used=25.0,
@@ -323,6 +325,8 @@ class TestVerboseAudit:
         model_result = ComBaseModelResult(
             mu_max=0.42,
             doubling_time_hours=1.65,
+            y_max=10.0,
+            h0=0.1,
             model_type=ModelType.GROWTH,
             organism=ComBaseOrganism.SALMONELLA,
             temperature_used=25.0,
@@ -611,6 +615,8 @@ class TestVerboseAudit:
         model_result = ComBaseModelResult(
             mu_max=0.926,
             doubling_time_hours=0.75,
+            y_max=10.0,
+            h0=0.1,
             model_type=ModelType.GROWTH,
             organism=ComBaseOrganism.SALMONELLA,
             temperature_used=25.0,
@@ -771,7 +777,7 @@ class TestVerboseAudit:
         state.metadata = meta
 
         model_result = ComBaseModelResult(
-            mu_max=0.926, doubling_time_hours=0.75,
+            mu_max=0.926, doubling_time_hours=0.75, y_max=10.0, h0=0.1,
             model_type=ModelType.GROWTH, organism=ComBaseOrganism.SALMONELLA,
             temperature_used=25.0, ph_used=6.4, aw_used=0.98,
             engine_type=EngineType.COMBASE_LOCAL,
@@ -876,7 +882,7 @@ class TestVerboseAudit:
         state.metadata = meta
 
         model_result = ComBaseModelResult(
-            mu_max=0.5, doubling_time_hours=1.4,
+            mu_max=0.5, doubling_time_hours=1.4, y_max=10.0, h0=0.1,
             model_type=ModelType.GROWTH, organism=ComBaseOrganism.SALMONELLA,
             temperature_used=25.0, ph_used=7.0, aw_used=0.99,
             engine_type=EngineType.COMBASE_LOCAL,
@@ -1077,7 +1083,8 @@ class TestAuditPostStandardization:
         )
         state.execution_result = ComBaseExecutionResult(
             model_result=ComBaseModelResult(
-                mu_max=0.42, doubling_time_hours=1.65, model_type=ModelType.GROWTH,
+                mu_max=0.42, doubling_time_hours=1.65, y_max=10.0, h0=0.1,
+                model_type=ModelType.GROWTH,
                 organism=ComBaseOrganism.SALMONELLA, temperature_used=25.0,
                 ph_used=6.2, aw_used=0.97, engine_type=EngineType.COMBASE_LOCAL,
             ),
@@ -1163,7 +1170,8 @@ class TestAuditPostStandardization:
         )
         state.execution_result = ComBaseExecutionResult(
             model_result=ComBaseModelResult(
-                mu_max=0.38, doubling_time_hours=1.8, model_type=ModelType.GROWTH,
+                mu_max=0.38, doubling_time_hours=1.8, y_max=10.0, h0=0.1,
+                model_type=ModelType.GROWTH,
                 organism=ComBaseOrganism.SALMONELLA, temperature_used=25.0,
                 ph_used=7.0, aw_used=0.99, engine_type=EngineType.COMBASE_LOCAL,
             ),
@@ -1424,6 +1432,8 @@ class TestDefaultedWithRetrieval:
         model_result = ComBaseModelResult(
             mu_max=0.5,
             doubling_time_hours=1.4,
+            y_max=10.0,
+            h0=0.1,
             model_type=ModelType.GROWTH,
             organism=ComBaseOrganism.SALMONELLA,
             temperature_used=25.0,
@@ -1557,7 +1567,8 @@ class TestDefaultedWithRetrieval:
         )
         state.execution_result = ComBaseExecutionResult(
             model_result=ComBaseModelResult(
-                mu_max=0.5, doubling_time_hours=1.4, model_type=ModelType.GROWTH,
+                mu_max=0.5, doubling_time_hours=1.4, y_max=10.0, h0=0.1,
+                model_type=ModelType.GROWTH,
                 organism=ComBaseOrganism.SALMONELLA, temperature_used=25.0,
                 ph_used=7.0, aw_used=0.99, engine_type=EngineType.COMBASE_LOCAL,
             ),

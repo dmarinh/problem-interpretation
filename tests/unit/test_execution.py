@@ -216,13 +216,15 @@ class TestComBaseModelResult:
         result = ComBaseModelResult(
             mu_max=0.5,
             doubling_time_hours=1.4,
+            y_max=10.0,
+            h0=0.1,
             model_type=ModelType.GROWTH,
             organism=ComBaseOrganism.SALMONELLA,
             temperature_used=25.0,
             ph_used=7.0,
             aw_used=0.99,
         )
-        
+
         assert result.mu_max == 0.5
         assert result.doubling_time_hours == 1.4
         assert result.factor4_type_used == Factor4Type.NONE
@@ -232,6 +234,8 @@ class TestComBaseModelResult:
         result = ComBaseModelResult(
             mu_max=0.4,
             doubling_time_hours=1.7,
+            y_max=10.0,
+            h0=0.1,
             model_type=ModelType.GROWTH,
             organism=ComBaseOrganism.LISTERIA_MONOCYTOGENES,
             temperature_used=25.0,
@@ -249,6 +253,8 @@ class TestComBaseModelResult:
         result = ComBaseModelResult(
             mu_max=-2.5,
             doubling_time_hours=None,
+            y_max=10.0,
+            h0=0.1,
             model_type=ModelType.THERMAL_INACTIVATION,
             organism=ComBaseOrganism.SALMONELLA,
             temperature_used=60.0,

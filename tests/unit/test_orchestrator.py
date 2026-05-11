@@ -66,6 +66,8 @@ def mock_engine():
         model_result=ComBaseModelResult(
             mu_max=0.5,
             doubling_time_hours=1.4,
+            y_max=10.0,
+            h0=0.1,
             model_type=ModelType.GROWTH,
             organism=ComBaseOrganism.SALMONELLA,
             temperature_used=25.0,

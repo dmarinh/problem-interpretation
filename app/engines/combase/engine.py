@@ -156,6 +156,8 @@ class ComBaseEngine(BaseEngine):
         model_result = ComBaseModelResult(
             mu_max=first_calc_result.mu_max,
             doubling_time_hours=first_calc_result.doubling_time_hours,
+            y_max=model.y_max,
+            h0=model.h0,
             model_type=model.model_type,
             organism=payload.model_selection.organism,
             temperature_used=first_calc_result.temperature,

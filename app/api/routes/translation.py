@@ -422,6 +422,8 @@ def _build_audit_detail(
             coefficients_str=cm.coefficients_str,
             valid_ranges=cm.valid_ranges,
             selection_reason=cm.selection_reason,
+            y_max=cm.y_max,
+            h0=cm.h0,
         )
 
     # ── System block ───────────────────────────────────────────────────────────
@@ -497,6 +499,8 @@ async def translate_query(
                 mu_max=model_result.mu_max,
                 doubling_time_hours=model_result.doubling_time_hours,
                 total_log_increase=exec_result.total_log_increase,
+                y_max=model_result.y_max,
+                h0=model_result.h0,
                 is_multi_step=profile.is_multi_step,
                 steps=[
                     StepInput(

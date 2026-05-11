@@ -327,6 +327,8 @@ class Orchestrator:
             coefficients_str=coefficients_str,
             valid_ranges=valid_ranges,
             selection_reason=selection_reason,
+            y_max=model.y_max if model else None,
+            h0=model.h0 if model else None,
         )
 
     async def _classify_intent(self, state: SessionState) -> None:

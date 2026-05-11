@@ -109,6 +109,8 @@ def _build_translation_result(steps_data: list[tuple[float, float]]) -> Translat
         engine_type=EngineType.COMBASE_LOCAL,
         mu_max=first_pred.mu_max,
         doubling_time_hours=0.693 / first_pred.mu_max if first_pred.mu_max > 0 else None,
+        y_max=10.0,
+        h0=0.1,
         organism=ComBaseOrganism.SALMONELLA,
         temperature_used=first.temperature_celsius,
         ph_used=6.5,

@@ -442,6 +442,8 @@ class ComBaseModelAudit(BaseModel):
     selection_reason: str = Field(
         description="One-line explanation of why this model type was chosen"
     )
+    y_max: float | None = Field(default=None, description="Maximum population density (Baranyi model parameter)")
+    h0: float | None = Field(default=None, description="Initial physiological state (Baranyi model parameter)")
 
 
 # =============================================================================

@@ -108,6 +108,8 @@ class PredictionResult(BaseModel):
     mu_max: float = Field(description="Maximum growth rate (1/h) — first-step value for multi-step scenarios")
     doubling_time_hours: float | None = Field(description="Doubling time (hours) — first-step value for multi-step scenarios")
     total_log_increase: float = Field(description="Total log10 CFU change across all steps")
+    y_max: float = Field(description="Maximum population density (Baranyi model parameter)")
+    h0: float = Field(description="Initial physiological state (Baranyi model parameter)")
 
     # Multi-step breakdown (always populated; length 1 for single-step scenarios)
     is_multi_step: bool = Field(
@@ -220,6 +222,8 @@ class ComBaseModelAuditInfo(BaseModel):
     coefficients_str: str | None
     valid_ranges: dict[str, tuple[float, float]] | None
     selection_reason: str
+    y_max: float | None = None
+    h0: float | None = None
 
 
 class SystemAuditInfo(BaseModel):
