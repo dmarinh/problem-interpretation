@@ -14,6 +14,9 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
+from dotenv import load_dotenv
+load_dotenv(_PROJECT_ROOT / ".env")
+
 import streamlit as st
 
 from benchmarks.visualizations.lib.data_loader import (
