@@ -19,6 +19,9 @@ import pandas as pd
 import streamlit as st
 
 from benchmarks.config import MODELS
+from benchmarks.visualizations.ui.style import inject_css
+
+inject_css()
 from benchmarks.visualizations.lib.data_loader import (
     list_available_runs,
     load_latest_results,
@@ -260,7 +263,7 @@ if st.button("Run Experiment", disabled=run_disabled, type="primary"):
                 selected_experiment["id"],
                 ("pages/2_model_comparison.py", "View Results"),
             )
-            st.page_link(results_page, label=results_label, icon="🔍")
+            st.page_link(results_page, label=results_label, icon=":material/bar_chart:")
         else:
             status.update(label="Experiment failed", state="error", expanded=True)
             st.error(

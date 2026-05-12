@@ -12,6 +12,9 @@ from benchmarks.visualizations.lib.data_loader import (
     list_experiments_with_results,
     load_latest_results,
 )
+from benchmarks.visualizations.ui.style import inject_css
+
+inject_css()
 
 
 # ---------------------------------------------------------------------------
@@ -168,4 +171,4 @@ else:
 # --- Quick links ---
 st.header("Quick Links")
 
-st.page_link("pages/2_model_comparison.py", label="Model Comparison (Exp 3.3)", icon="🔍")
+st.page_link("pages/2_model_comparison.py", label="Model Comparison (Exp 3.3)", icon=":material/bar_chart:")

@@ -30,6 +30,7 @@ from benchmarks.visualizations.lib.data_loader import (
     load_latest_results,
     load_run_by_timestamp,
 )
+from benchmarks.visualizations.ui.style import apply_ptm_template, inject_css
 
 # Tier lookup for recommendation logic.
 _MODEL_TIER: dict[str, int] = {m["name"]: m.get("tier", 4) for m in MODELS}
@@ -58,17 +59,17 @@ def _acc_style(val: object) -> str:
     if not isinstance(val, (int, float)):
         return ""
     if val >= _GREEN:
-        return "background-color: #d4edda"
+        return "background-color: rgba(42, 99, 71, 0.14)"
     if val >= _AMBER:
-        return "background-color: #fff3cd"
-    return "background-color: #f8d7da"
+        return "background-color: rgba(166, 123, 18, 0.12)"
+    return "background-color: rgba(184, 74, 46, 0.12)"
 
 
 def _model_type_style(val: object) -> str:
-    """Red background when model type accuracy is below 100%."""
+    """Terracotta background when model type accuracy is below 100%."""
     if not isinstance(val, (int, float)):
         return ""
-    return "background-color: #f8d7da" if val < 1.0 else ""
+    return "background-color: rgba(184, 74, 46, 0.12)" if val < 1.0 else ""
 
 
 def _compute_recommendation(df: pd.DataFrame) -> dict:
@@ -116,6 +117,8 @@ def _compute_recommendation(df: pd.DataFrame) -> dict:
 # Page
 # ---------------------------------------------------------------------------
 
+inject_css()
+
 _EXPERIMENT_ID = "exp_3_3_model_comparison"
 
 st.title("Experiment 3.3 — LLM Model Comparison")
@@ -153,7 +156,7 @@ if results is None:
         "No results found for Experiment 3.3. "
         "Run the experiment first from the **Run Experiments** page."
     )
-    st.page_link("pages/3_run_experiments.py", label="Go to Run Experiments", icon="▶")
+    st.page_link("pages/3_run_experiments.py", label="Go to Run Experiments", icon=":material/play_circle:")
     st.stop()
 
 # ── 4b: Run information bar ──────────────────────────────────────────────────
@@ -238,7 +241,7 @@ st.caption(
     "are production candidates. Point size encodes consistency."
 )
 if df is not None and not df.empty:
-    st.plotly_chart(cost_vs_accuracy_scatter(df), use_container_width=True)
+    st.plotly_chart(apply_ptm_template(cost_vs_accuracy_scatter(df)), use_container_width=True)
 
 st.divider()
 
@@ -250,7 +253,7 @@ st.caption(
 )
 if df is not None and not df.empty:
     if {"tier_easy", "tier_medium", "tier_hard"}.issubset(df.columns):
-        st.plotly_chart(accuracy_by_tier_bars(df), use_container_width=True)
+        st.plotly_chart(apply_ptm_template(accuracy_by_tier_bars(df)), use_container_width=True)
     else:
         st.info("Tier accuracy data not available in this run's CSV.")
 
@@ -262,7 +265,7 @@ st.caption(
     "Rows = models, columns = extraction fields. "
     "Green = 100% · Amber = 70–90% · Red < 70%."
 )
-st.plotly_chart(field_accuracy_heatmap(results), use_container_width=True)
+st.plotly_chart(apply_ptm_template(field_accuracy_heatmap(results)), use_container_width=True)
 
 st.divider()
 
@@ -273,7 +276,7 @@ st.caption(
     "for queries where model type is in the ground truth? "
     "**Any red cell means that model must not be used for production food safety decisions.**"
 )
-st.plotly_chart(model_type_matrix(results), use_container_width=True)
+st.plotly_chart(apply_ptm_template(model_type_matrix(results)), use_container_width=True)
 
 st.divider()
 
@@ -281,7 +284,7 @@ st.divider()
 st.header("Latency Comparison")
 st.caption("P50 = median response time. P95 = tail latency. Interactive threshold: 3 s. Batch: 10 s.")
 if df is not None and not df.empty:
-    st.plotly_chart(latency_comparison_bars(df), use_container_width=True)
+    st.plotly_chart(apply_ptm_template(latency_comparison_bars(df)), use_container_width=True)
 
 st.divider()
 
@@ -292,7 +295,7 @@ st.caption(
     "because of verbosity (many output tokens) or per-token pricing."
 )
 if df is not None and not df.empty:
-    st.plotly_chart(token_usage_bars(df), use_container_width=True)
+    st.plotly_chart(apply_ptm_template(token_usage_bars(df)), use_container_width=True)
 
 st.divider()
 

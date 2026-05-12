@@ -34,6 +34,9 @@ from benchmarks.visualizations.lib.data_loader import (
     load_latest_results,
     load_run_by_timestamp,
 )
+from benchmarks.visualizations.ui.style import apply_ptm_template, inject_css
+
+inject_css()
 
 _EXPERIMENT_ID = "exp_1_1_ph_stochasticity"
 
@@ -298,7 +301,7 @@ else:
     model_foods = results[0].get("foods") or []
 
 if model_foods:
-    st.plotly_chart(ph_violin_chart(model_foods), use_container_width=True)
+    st.plotly_chart(apply_ptm_template(ph_violin_chart(model_foods)), use_container_width=True)
 else:
     st.info("No food data available for the selected model.")
 
@@ -312,7 +315,7 @@ st.caption(
     "The dashed line marks the 0.5 threshold above which pH error becomes food-safety relevant."
 )
 
-st.plotly_chart(mae_by_food_chart(results), use_container_width=True)
+st.plotly_chart(apply_ptm_template(mae_by_food_chart(results)), use_container_width=True)
 
 # ---------------------------------------------------------------------------
 # Section 5: Growth propagation impact chart
@@ -347,7 +350,7 @@ n_impacted = sum(1 for f in gp_foods if _gp_is_impacted(f, log_threshold))
 st.metric("Safety-impacted foods", n_impacted)
 
 st.plotly_chart(
-    growth_propagation_dot_errorbar(gp_foods, log_threshold),
+    apply_ptm_template(growth_propagation_dot_errorbar(gp_foods, log_threshold)),
     use_container_width=True,
 )
 
@@ -365,12 +368,12 @@ if len(results) > 1:
     col_mae, col_stdev = st.columns(2)
     with col_mae:
         st.plotly_chart(
-            model_comparison_bars(results, "overall_mae", "MAE"),
+            apply_ptm_template(model_comparison_bars(results, "overall_mae", "MAE")),
             use_container_width=True,
         )
     with col_stdev:
         st.plotly_chart(
-            model_comparison_bars(results, "overall_stdev", "Stdev"),
+            apply_ptm_template(model_comparison_bars(results, "overall_stdev", "Stdev")),
             use_container_width=True,
         )
 
@@ -409,12 +412,12 @@ else:
         col_hist, col_box = st.columns(2)
         with col_hist:
             st.plotly_chart(
-                ph_deep_dive_histogram(ph_vals, selected_food_name, reference_ph=ref_ph),
+                apply_ptm_template(ph_deep_dive_histogram(ph_vals, selected_food_name, reference_ph=ref_ph)),
                 use_container_width=True,
             )
         with col_box:
             st.plotly_chart(
-                ph_deep_dive_boxplot(ph_vals, selected_food_name, reference_ph=ref_ph),
+                apply_ptm_template(ph_deep_dive_boxplot(ph_vals, selected_food_name, reference_ph=ref_ph)),
                 use_container_width=True,
             )
 
@@ -423,7 +426,7 @@ else:
         # Row 2: Monte Carlo trial scatter (full width).
         st.caption("**Probabilistic Analysis**")
         st.plotly_chart(
-            ph_deep_dive_scatter(ph_vals, selected_food_name, reference_ph=ref_ph),
+            apply_ptm_template(ph_deep_dive_scatter(ph_vals, selected_food_name, reference_ph=ref_ph)),
             use_container_width=True,
         )
 

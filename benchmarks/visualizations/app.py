@@ -24,6 +24,7 @@ from benchmarks.visualizations.lib.data_loader import (
     list_experiments_with_results,
 )
 from benchmarks.visualizations.lib.experiment_runner import humanize_experiment_id
+from benchmarks.visualizations.ui.style import inject_css, logo_as_pil, sidebar_logo
 
 
 def _fmt_run_ts(ts: str) -> str:
@@ -36,19 +37,57 @@ def _fmt_run_ts(ts: str) -> str:
 def main():
     st.set_page_config(
         page_title="PTM Benchmarks",
-        page_icon="🔬",
+        page_icon=logo_as_pil(),
         layout="wide",
     )
 
-    # Sidebar branding
-    st.sidebar.title("PTM Benchmarks")
+    inject_css()
+
+    # Register pages first — st.navigation() must be called before any
+    # st.sidebar.page_link() so URL pathnames are resolved. position="hidden"
+    # suppresses the auto-rendered nav block, letting us control sidebar order.
+    overview = st.Page(
+        "pages/1_overview.py", title="Overview", icon=":material/dashboard:", default=True
+    )
+    model_comparison = st.Page(
+        "pages/2_model_comparison.py", title="Model Comparison", icon=":material/bar_chart:"
+    )
+    run_experiments = st.Page(
+        "pages/3_run_experiments.py", title="Run Experiments", icon=":material/play_circle:"
+    )
+    ph_stochasticity = st.Page(
+        "pages/4_ph_stochasticity.py", title="pH Stochasticity", icon=":material/science:"
+    )
+
+    nav = st.navigation(
+        [overview, model_comparison, ph_stochasticity, run_experiments],
+        position="hidden",
+    )
+
+    # ── Sidebar: branding ────────────────────────────────────────────────────
+    sidebar_logo()
     st.sidebar.caption(
-        "Problem Translation Module\n\n"
-        "Benchmark suite for evaluating LLM models "
+        "Problem Translation Module — benchmark suite for evaluating LLM models "
         "on food safety scenario extraction."
     )
 
-    # Sidebar: per-experiment run selectors (auto-discovered)
+    st.sidebar.divider()
+
+    # ── Sidebar: navigation ──────────────────────────────────────────────────
+    st.sidebar.page_link(
+        "pages/1_overview.py", label="Overview", icon=":material/dashboard:"
+    )
+    st.sidebar.page_link(
+        "pages/2_model_comparison.py", label="Model Comparison", icon=":material/bar_chart:"
+    )
+    st.sidebar.page_link(
+        "pages/4_ph_stochasticity.py", label="pH Stochasticity", icon=":material/science:"
+    )
+    st.sidebar.page_link(
+        "pages/3_run_experiments.py", label="Run Experiments", icon=":material/play_circle:"
+    )
+
+    # ── Sidebar: per-experiment run selectors (auto-discovered) ──────────────
     try:
         experiments_with_results = list_experiments_with_results()
     except Exception:
@@ -62,7 +101,6 @@ def main():
 
         runs = list_available_runs(exp_id)
         if len(runs) < 2:
-            # Only one run — no selector needed, default to latest.
             st.session_state[f"selected_run:{exp_id}"] = None
             continue
 
@@ -80,24 +118,6 @@ def main():
             None if selected == "Latest" else selected
         )
 
-    overview = st.Page("pages/1_overview.py", title="Overview", icon="📊", default=True)
-    model_comparison = st.Page(
-        "pages/2_model_comparison.py", title="Model Comparison", icon="🔍"
-    )
-    run_experiments = st.Page(
-        "pages/3_run_experiments.py", title="Run Experiments", icon="▶"
-    )
-    ph_stochasticity = st.Page(
-        "pages/4_ph_stochasticity.py", title="pH Stochasticity", icon="⚗️"
-    )
-
-    nav = st.navigation([overview, model_comparison, ph_stochasticity, run_experiments])
-    # page_link must come after st.navigation() so the target page is registered.
-    st.sidebar.page_link(
-        "pages/3_run_experiments.py",
-        label="Run new experiment",
-        icon="▶",
-    )
     nav.run()
 
 
