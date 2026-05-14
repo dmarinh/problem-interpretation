@@ -181,6 +181,100 @@ class TestScenarioExtractionPromptRanges:
         assert result.environmental_conditions.ph_value is None
 
 
+class TestFoodDescriptionQualifierStripping:
+    """Verify SCENARIO_EXTRACTION_PROMPT instructs the LLM to strip quantity/container qualifiers."""
+
+    # ------------------------------------------------------------------
+    # Prompt-inspection tests
+    # ------------------------------------------------------------------
+
+    def test_prompt_contains_qualifier_stripping_rule(self):
+        """Prompt must contain the core qualifier-stripping instruction."""
+        from app.services.extraction.semantic_parser import SCENARIO_EXTRACTION_PROMPT
+        assert "Strip leading quantity, container, and" in SCENARIO_EXTRACTION_PROMPT
+
+    def test_prompt_contains_all_six_examples(self):
+        """All six worked examples must be present in the prompt."""
+        from app.services.extraction.semantic_parser import SCENARIO_EXTRACTION_PROMPT
+        assert '"a large batch of ham"' in SCENARIO_EXTRACTION_PROMPT
+        assert '"two pounds of ground beef"' in SCENARIO_EXTRACTION_PROMPT
+        assert '"a jar of peanut butter"' in SCENARIO_EXTRACTION_PROMPT
+        assert '"leftover chicken soup"' in SCENARIO_EXTRACTION_PROMPT
+        assert '"raw chicken breast"' in SCENARIO_EXTRACTION_PROMPT
+        assert '"smoked salmon fillet"' in SCENARIO_EXTRACTION_PROMPT
+
+    # ------------------------------------------------------------------
+    # Parser pass-through tests (mock LLM returns the cleaned value)
+    # ------------------------------------------------------------------
+
+    def _make_parser(self, food_description: str) -> "SemanticParser":
+        mock_client = MagicMock()
+        mock_client.extract = AsyncMock(return_value=ExtractedScenario(
+            food_description=food_description,
+        ))
+        return SemanticParser(llm_client=mock_client)
+
+    @pytest.mark.asyncio
+    async def test_batch_qualifier_stripped_to_ham(self):
+        """'a large batch of ham' → food_description='ham'."""
+        parser = self._make_parser("ham")
+        result = await parser.extract_scenario("a large batch of ham left to cool overnight")
+        assert result.food_description == "ham"
+
+    @pytest.mark.asyncio
+    async def test_weight_qualifier_stripped_to_ground_beef(self):
+        """'two pounds of ground beef' → food_description='ground beef'."""
+        parser = self._make_parser("ground beef")
+        result = await parser.extract_scenario("two pounds of ground beef at 25°C for 3 hours")
+        assert result.food_description == "ground beef"
+
+    @pytest.mark.asyncio
+    async def test_container_qualifier_stripped_to_peanut_butter(self):
+        """'a jar of peanut butter' → food_description='peanut butter'."""
+        parser = self._make_parser("peanut butter")
+        result = await parser.extract_scenario("a jar of peanut butter left on the counter")
+        assert result.food_description == "peanut butter"
+
+    @pytest.mark.asyncio
+    async def test_leftover_qualifier_stripped_to_chicken_soup(self):
+        """'leftover chicken soup' → food_description='chicken soup'."""
+        parser = self._make_parser("chicken soup")
+        result = await parser.extract_scenario("leftover chicken soup sitting at 20°C")
+        assert result.food_description == "chicken soup"
+
+    @pytest.mark.asyncio
+    async def test_raw_adjective_preserved_in_chicken_breast(self):
+        """'raw chicken breast' → food_description='raw chicken breast' (raw kept)."""
+        parser = self._make_parser("raw chicken breast")
+        result = await parser.extract_scenario("raw chicken breast at 25°C for 2 hours")
+        assert result.food_description == "raw chicken breast"
+
+    @pytest.mark.asyncio
+    async def test_smoked_adjective_preserved_cut_stripped_in_salmon(self):
+        """'smoked salmon fillet' → food_description='smoked salmon' (smoked kept, fillet dropped)."""
+        parser = self._make_parser("smoked salmon")
+        result = await parser.extract_scenario("smoked salmon fillet left out for 1 hour")
+        assert result.food_description == "smoked salmon"
+
+    # ------------------------------------------------------------------
+    # Negative cases
+    # ------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_bare_food_name_unchanged(self):
+        """A food name without any qualifier passes through unchanged."""
+        parser = self._make_parser("chicken")
+        result = await parser.extract_scenario("chicken at 25°C for 3 hours")
+        assert result.food_description == "chicken"
+
+    @pytest.mark.asyncio
+    async def test_food_state_adjective_preserved(self):
+        """Adjectives describing food state (cooked, cured) must not be stripped."""
+        parser = self._make_parser("cooked ham")
+        result = await parser.extract_scenario("cooked ham left at room temperature for 4 hours")
+        assert result.food_description == "cooked ham"
+
+
 class TestSemanticParserSingleton:
     """Tests for singleton management."""
     

@@ -507,3 +507,16 @@ Parametrize over multiple threshold values (70/75/80/85), run unit tests against
 **What to do differently:**
 - For any fallback that relies on ranked list traversal, verify the full ranking order (including exact death counts) before writing assertions about which candidates appear in `skipped_pathogens`. The skip list only contains *attempted failures*, not all non-winners.
 - When implementing a new recovery tier, immediately identify which existing tests were testing the "no recovery" behavior and update them to assert the new successful-recovery path, documenting the food that was previously unresolvable.
+
+---
+
+### 2026-05-14 — Qualifier stripping: fix the input before fixing the fallback
+
+**Context:** "a large batch of ham" failed the TaxonomyBridge fuzzy match (bridge returned None) because the quantity qualifier diluted the token similarity score below threshold 80. The category-level pathogen fallback couldn't fire. Root cause was upstream — the SemanticParser was passing the raw user phrasing rather than the core food noun.
+
+**What went well:**
+- The fix was one prompt section (14 lines) and no code changes. Regex post-processing would have required a separate normalization pass and would have broken multilingual queries.
+- Verifying the bridge behavior empirically first (`bridge.resolve("large batch of ham") → None`, `bridge.resolve("ham") → meat`) confirmed the diagnosis before touching anything.
+
+**What to do differently:**
+- When a grounding fallback fails for a "known food", first check whether the food_description reaching the bridge is already a clean noun phrase. Bridge threshold failures for recognizable foods often indicate upstream qualifier noise rather than a taxonomy gap.

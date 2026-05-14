@@ -175,6 +175,21 @@ Initial inoculum extraction:
     "3 log CFU/g initial"              → initial_inoculum_log_cfu=3.0
     "initial load of 100 CFU/g"        → initial_inoculum_log_cfu=2.0
     "raw chicken left out for 3 hours" → initial_inoculum_log_cfu=null  (not mentioned)
+
+Food description extraction:
+
+  Rule: Extract the core food noun phrase only. Strip leading quantity, container, and
+  packaging qualifiers such as "a large batch of", "two pounds of", "a jar of", or
+  "leftover". Keep modifiers that describe the food itself — preparation method (raw,
+  cooked, smoked, cured), processing (low-fat, whole-wheat), or state (fresh, frozen).
+
+  Worked examples:
+    "a large batch of ham"     → food_description="ham"
+    "two pounds of ground beef" → food_description="ground beef"
+    "a jar of peanut butter"   → food_description="peanut butter"
+    "leftover chicken soup"    → food_description="chicken soup"
+    "raw chicken breast"       → food_description="raw chicken breast"  (keep "raw" — preparation state)
+    "smoked salmon fillet"     → food_description="smoked salmon"       (keep "smoked"; drop cut "fillet")
 """
 
 INTENT_CLASSIFICATION_PROMPT = """You are a food safety expert assistant. Classify the user's intent.

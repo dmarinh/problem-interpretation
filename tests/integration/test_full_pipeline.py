@@ -747,6 +747,46 @@ class TestCategoryPathogenFallbackWarningPropagation:
         )
 
 
+class TestQualifierStrippingEndToEnd:
+    """B.5: Qualifier-stripped food descriptions must resolve via the category-level pathogen fallback.
+
+    The semantic parser now instructs the LLM to strip leading quantity/container qualifiers.
+    This test simulates the corrected parser output ("ham") for the canonical problem query
+    ("a large batch of ham") and verifies the full downstream chain:
+      ham → bridge(meat) → meats and poultry → Salmonella (238 deaths) → success=True
+    """
+
+    @pytest.mark.asyncio
+    async def test_large_batch_of_ham_category_fallback(
+        self, orchestrator, mock_semantic_parser
+    ):
+        """'a large batch of ham' stripped to 'ham' → category fallback → success."""
+        mock_semantic_parser.extract_scenario = AsyncMock(return_value=create_scenario(
+            food_description="ham",   # simulates qualifier-stripped parser output
+            pathogen_mentioned=None,
+            temperature=ExtractedTemperature(value_celsius=25.0),
+            duration=ExtractedDuration(value_minutes=240.0),
+            is_storage_scenario=True,
+        ))
+
+        result = await orchestrator.translate(
+            "What happens to a large batch of ham left to cool at room temperature?"
+        )
+
+        # food_description in extracted scenario
+        assert mock_semantic_parser.extract_scenario.call_count >= 1
+        extracted = mock_semantic_parser.extract_scenario.return_value
+        assert extracted.food_description == "ham"
+
+        # full pipeline succeeds and organism grounded via category fallback
+        assert result.success is True
+
+        from app.api.routes.translation import _build_field_audit
+        field_audit = _build_field_audit(result)
+        assert "organism" in field_audit
+        assert field_audit["organism"].source == "rag_pathogen_category_fallback"
+
+
 class TestThermalInactivationEndToEnd:
     """
     B.3: Thermal inactivation queries must succeed and use lower range bounds.
