@@ -130,10 +130,12 @@ class LLMClient:
         temperature: float | None = None,
         max_tokens: int | None = None,
         instructor_mode: str | None = None,
+        extra_params: dict | None = None,
+        drop_params: bool = False,
     ):
         """
         Initialize the LLM client.
-        
+
         Args:
             model: Model identifier (default: from settings)
             api_key: API key (default: from settings)
@@ -148,6 +150,15 @@ class LLMClient:
                     the LLM to respond with matching JSON. Works with local
                     models (Ollama) that don't support tool calls.
                 See: https://python.useinstructor.com/concepts/modes/
+            extra_params: Provider-specific parameters forwarded verbatim to
+                every LiteLLM call. Examples: {"thinking": {"type": "disabled"}}
+                for Anthropic, {"reasoning_effort": "none"} for OpenAI o-series,
+                {"thinking_config": {"thinking_budget": 0}} for Gemini.
+            drop_params: When True, omit ``temperature`` from every API call.
+                Use for models that have deprecated or disallowed temperature
+                (e.g. claude-opus-4-7, GPT-5.5, o-series). LiteLLM's global
+                drop_params flag handles provider-level unknowns; this flag
+                handles model-level deprecations that LiteLLM doesn't track.
         """
         self.model = model or settings.llm_model
         self.api_key = api_key or settings.llm_api_key
@@ -155,6 +166,8 @@ class LLMClient:
         self.temperature = temperature if temperature is not None else settings.llm_temperature
         self.max_tokens = max_tokens or settings.llm_max_tokens
         self.instructor_mode = instructor_mode or settings.llm_instructor_mode
+        self.extra_params: dict = extra_params or {}
+        self.drop_params: bool = drop_params
     
     async def complete(
         self,
@@ -182,15 +195,18 @@ class LLMClient:
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": prompt})
         
+        call_kwargs: dict = dict(
+            model=self.model,
+            messages=messages,
+            max_tokens=max_tokens or self.max_tokens,
+            api_key=self.api_key,
+            api_base=self.api_base,
+            **self.extra_params,
+        )
+        if not self.drop_params:
+            call_kwargs["temperature"] = temperature if temperature is not None else self.temperature
         try:
-            response = await acompletion(
-                model=self.model,
-                messages=messages,
-                temperature=temperature if temperature is not None else self.temperature,
-                max_tokens=max_tokens or self.max_tokens,
-                api_key=self.api_key,
-                api_base=self.api_base,
-            )
+            response = await acompletion(**call_kwargs)
         except Exception as exc:
             _raise_as_provider_error(exc)
             raise
@@ -260,16 +276,19 @@ class LLMClient:
             full_messages.append({"role": "system", "content": system_prompt})
         full_messages.extend(messages)
         
+        call_kwargs: dict = dict(
+            model=self.model,
+            response_model=response_model,
+            messages=full_messages,
+            max_tokens=max_tokens or self.max_tokens,
+            api_key=self.api_key,
+            api_base=self.api_base,
+            **self.extra_params,
+        )
+        if not self.drop_params:
+            call_kwargs["temperature"] = temperature if temperature is not None else self.temperature
         try:
-            return await client.chat.completions.create(
-                model=self.model,
-                response_model=response_model,
-                messages=full_messages,
-                temperature=temperature if temperature is not None else self.temperature,
-                max_tokens=max_tokens or self.max_tokens,
-                api_key=self.api_key,
-                api_base=self.api_base,
-            )
+            return await client.chat.completions.create(**call_kwargs)
         except Exception as exc:
             _raise_as_provider_error(exc)
             raise
@@ -289,7 +308,7 @@ class LLMClient:
             }
         
         try:
-            response = await self.complete(
+            await self.complete(
                 prompt="Respond with only: ok",
                 max_tokens=10,
             )

@@ -120,6 +120,7 @@ def load_queries() -> list[dict]:
 # ---------------------------------------------------------------------------
 
 def configure_model(model_config: dict):
+    import litellm
     from app.services.llm.client import LLMClient, reset_llm_client
     import app.services.llm.client as client_module
 
@@ -131,6 +132,8 @@ def configure_model(model_config: dict):
             raise ValueError(f"Environment variable '{env_var}' not set. Add it to .env")
 
     instructor_mode = model_config.get("instructor_mode")
+
+    litellm.drop_params = model_config.get("drop_params", False)
 
     reset_llm_client()
     client_module._client = LLMClient(

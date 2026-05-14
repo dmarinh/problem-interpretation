@@ -202,6 +202,7 @@ _current_model_config: dict = {}
 def configure_model(model_config: dict):
     """Set up LLMClient singleton and store config for direct calls."""
     global _current_model_config
+    import litellm
     from app.services.llm.client import LLMClient, reset_llm_client
     import app.services.llm.client as client_module
 
@@ -213,6 +214,7 @@ def configure_model(model_config: dict):
             raise ValueError(f"Environment variable '{env_var}' not set. Add it to .env")
 
     instructor_mode = model_config.get("instructor_mode")
+    litellm.drop_params = model_config.get("drop_params", False)
     reset_llm_client()
     client_module._client = LLMClient(
         model=model_config["litellm_model"],
@@ -225,6 +227,8 @@ def configure_model(model_config: dict):
         "model": model_config["litellm_model"],
         "api_key": api_key,
         "api_base": model_config.get("api_base"),
+        "extra_params": model_config.get("extra_params", {}),
+        "drop_params": model_config.get("drop_params", False),
     }
 
 
@@ -265,14 +269,17 @@ async def query_ph_n_times(food_name: str, n_runs: int,
 
         start = time.perf_counter()
         try:
-            response = await acompletion(
+            call_kwargs: dict = dict(
                 model=_current_model_config["model"],
                 messages=[{"role": "user", "content": prompt}],
-                temperature=temperature,
                 max_tokens=20,
                 api_key=_current_model_config.get("api_key"),
                 api_base=_current_model_config.get("api_base"),
+                **_current_model_config.get("extra_params", {}),
             )
+            if not _current_model_config.get("drop_params", False):
+                call_kwargs["temperature"] = temperature
+            response = await acompletion(**call_kwargs)
             raw_response = response.choices[0].message.content.strip()
             ph_value = parse_numeric_response(raw_response)
         except Exception as e:
@@ -318,14 +325,17 @@ async def query_aw_n_times(food_name: str, n_runs: int,
 
         start = time.perf_counter()
         try:
-            response = await acompletion(
+            call_kwargs: dict = dict(
                 model=_current_model_config["model"],
                 messages=[{"role": "user", "content": prompt}],
-                temperature=temperature,
                 max_tokens=20,
                 api_key=_current_model_config.get("api_key"),
                 api_base=_current_model_config.get("api_base"),
+                **_current_model_config.get("extra_params", {}),
             )
+            if not _current_model_config.get("drop_params", False):
+                call_kwargs["temperature"] = temperature
+            response = await acompletion(**call_kwargs)
             raw_response = response.choices[0].message.content.strip()
             aw_value = parse_numeric_response(raw_response)
             # Sanity check: aw must be between 0 and 1

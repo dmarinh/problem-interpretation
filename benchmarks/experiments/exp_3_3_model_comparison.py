@@ -239,6 +239,7 @@ def load_queries() -> list[dict]:
 # ---------------------------------------------------------------------------
 
 def configure_model(model_config: dict):
+    import litellm
     from app.services.llm.client import LLMClient, reset_llm_client
     import app.services.llm.client as client_module
 
@@ -256,12 +257,19 @@ def configure_model(model_config: dict):
     # which uses it in extract() to configure Instructor's mode.
     instructor_mode = model_config.get("instructor_mode")
 
+    # Some models (Claude Opus 4.7, GPT-5 series, o-series) reject custom
+    # temperature values. drop_params=True tells LiteLLM to silently drop
+    # unsupported parameters instead of raising an error.
+    litellm.drop_params = model_config.get("drop_params", False)
+
     reset_llm_client()
     client_module._client = LLMClient(
         model=model_config["litellm_model"],
         api_key=api_key,
         api_base=model_config.get("api_base"),
         instructor_mode=instructor_mode,
+        extra_params=model_config.get("extra_params"),
+        drop_params=model_config.get("drop_params", False),
     )
 
 

@@ -61,19 +61,6 @@ def estimate_calls(model_names: list[str], runs: int, query_count: int | None) -
     return str(len(model_names) * runs * query_count)
 
 
-def estimate_cost(
-    model_names: list[str],
-    runs: int,
-    query_count: int | None,
-    models_config: list[dict],
-) -> str:
-    """Estimated USD cost across selected models × runs × queries."""
-    if query_count is None:
-        return "?"
-    cost_map = {m["name"]: m.get("cost_per_call", 0.0) for m in models_config}
-    total = sum(cost_map.get(name, 0.0) * runs * query_count for name in model_names)
-    return f"~${total:.4f}"
-
 
 def estimate_time(model_names: list[str], runs: int, query_count: int | None) -> str:
     """Rough wall-clock estimate assuming ~5 s average per LLM call."""
@@ -152,17 +139,19 @@ except Exception as exc:
 available = [m for m in models_with_avail if m["available"]]
 unavailable = [m for m in models_with_avail if not m["available"]]
 
+all_labels = [model_option_label(m) for m in models_with_avail]
 available_labels = [model_option_label(m) for m in available]
-label_to_model = {model_option_label(m): m for m in available}
+label_to_model = {model_option_label(m): m for m in models_with_avail}
 
 selected_labels = st.multiselect(
     "Models to test",
-    options=available_labels,
+    options=all_labels,
     default=available_labels,
     help=(
-        "API models appear when their key env var is set. "
-        "Ollama models are always listed — they will fail at runtime if the daemon is not running. "
-        "Missing-key models are listed below."
+        "All models from config.py are listed. "
+        "Models with a missing API key are shown but not pre-selected — "
+        "selecting them will fail at runtime. "
+        "Missing-key models are also listed in the expander below."
     ),
 )
 selected_models = [label_to_model[lbl] for lbl in selected_labels]
@@ -210,7 +199,7 @@ if selected_experiment["id"] == "exp_1_1_ph_stochasticity":
 
 # Live estimate row
 query_count = get_query_count(selected_experiment["id"])
-col_calls, col_time, col_cost = st.columns(3)
+col_calls, col_time = st.columns(2)
 col_calls.metric(
     "Estimated LLM calls",
     estimate_calls(selected_model_names, runs, query_count),
@@ -220,11 +209,6 @@ col_time.metric(
     "Estimated time",
     estimate_time(selected_model_names, runs, query_count),
     help="Assumes ~5 s average latency per call",
-)
-col_cost.metric(
-    "Estimated cost",
-    estimate_cost(selected_model_names, runs, query_count, MODELS),
-    help="Based on cost_per_call values in benchmarks/config.py",
 )
 
 st.divider()
