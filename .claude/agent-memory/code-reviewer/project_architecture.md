@@ -222,6 +222,19 @@ Pipeline: User Query → SemanticParser (LLM) → GroundingService (RAG + rules)
 - curated_row["food_name"] access at grounding_service.py:725 is safe — _index_category_level_rows preserves all CSV columns via `{k: v.strip() for k, v in row.items()}`.
 - eggs row: aw_min=aw_max=0.97 (point estimate, not a range). val_min == val_max → range [0.97, 0.97] stored with range_pending=True. StandardizationService will select 0.97 as the upper bound for GROWTH — correct.
 
+## Category-Level Pathogen Fallback (2026-05-14)
+- New fallback in `_category_pathogen_fallback()` fires when two-stage RAG pathogen lookup yields no confident result (3 paths: Stage 1 below threshold, Stage 2 empty, Stage 2 from_text unmapped).
+- Pipeline: food_description → TaxonomyBridge.resolve() (threshold 80) → ift_category_alignment.csv → union of pathogens from pathogen_food_associations.csv → rank by annual_deaths_us from pathogen_characteristics.csv → top ComBaseOrganism-mappable candidate.
+- `_PATHOGEN_NAME_NORMALIZATION` dict: used ONLY for characteristics lookup (e.g., "salmonella spp." → "salmonella nontyphoidal"). `from_text()` always receives the original associations-CSV name (e.g., "Salmonella spp."), not the normalized name. Correct by design.
+- Deduplication (seen_lower set) is applied before ranking. Pathogens absent from characteristics are excluded entirely; zero-death pathogens are ranked last, not excluded.
+- `condiment` and `beverage` rows in ift_category_alignment.csv have empty ift_category — _load_ift_alignment correctly skips them (both ptm and ift must be non-empty). Fallback behavior: .get("condiment") → None → "not ift_categories" → early return. Correct.
+- Three loader methods (_load_ift_alignment, _load_pathogen_associations, _load_pathogen_characteristics) are called at __init__ unless test-injected dicts are passed. Missing CSV files log a warning and return {} — fails closed.
+- ValueSource.RAG_PATHOGEN_CATEGORY_FALLBACK: new enum member. NOT included in is_rag_source check in translation.py (line 123) — so no retrieval block is rendered for the organism when this source fires, even though a Stage 1 miss is in grounded.retrievals with attributed_field="organism". This is a medium audit gap — consistent with how RAG_RETRIEVAL_CATEGORY_BRIDGE is also excluded from is_rag_source.
+- CRITICAL GAP: grounded.warnings (including the transparency warning emitted by _category_pathogen_fallback) are NOT propagated to state.metadata.warnings in orchestrator._ground_values() — pre-existing TODO at orchestrator.py line 416. The transparency warning about category-fallback organism inference is silently dropped in the full pipeline. All tests assert grounded.warnings directly, not metadata.warnings. No API-level warning test exists.
+- ift_categories list in PathogenCategoryFallbackInfo is a direct reference to self._ift_alignment[ptm_category] — aliased, not copied. Safe in current use (read-only after grounding).
+- `test_no_ift_mapping_returns_without_grounding` in unit tests injects `{"condiment": []}` (explicit empty list) but production state is `{}` (key absent). Both paths trigger `not ift_categories` → early return. Behavior matches, but comment "explicit empty" is misleading vs production reality.
+- Unit test `test_category_fallback_when_stage2_empty` in test_grounding_service.py uses production CSVs (grounding_service fixture does not inject tables) — it is a data-dependent "unit" test that belongs logically in integration tests.
+
 ## food_properties.csv Migration (2026-05-04): per-field source columns
 - Migrated from single `source_id` column + notes-parsing workaround to dedicated `ph_source_id` / `aw_source_id` columns
 - `EXPECTED_FOOD_PROPERTIES_COUNT = 252` constant in food_safety.py (after 2026-04-17 audit removed 7 rows)
