@@ -1196,8 +1196,8 @@ Pass on capability. The system handles "food not in hazards CSV" by falling thro
 Demo-relevant: this is the cleanest case of "the system gives the honest answer when it doesn't have the right data." Pair with Q06 (rice, where §2.4 *does* find the right pathogen via deaths-ranking) to show the gradient: known-food-with-data vs known-food-without-data both produce honest-but-different-quality answers.
 
 ### Followups
-- 🟡 Architecture question: should §2.4 fall through to pathogen_food_associations.csv when food_pathogen_hazards has no matches? Pros: closes the bread-style gap, uses available data. Cons: associations data lacks deaths counts, would need a different selection heuristic. Defer past MVP.
-- ✅ §2.4 deaths-ranking and CONSERVATIVE_DEFAULT fall-through both work correctly across the foods tested (chicken: hits hazards, rice: hits hazards, bread: no hazards row → falls through cleanly).
+- ✅ Architecture question resolved (2026-05-14): the category-level pathogen fallback now fires when food_pathogen_hazards has no match. Resolves food → `ptm_category` (FoodEx2 bridge) → IFT-2003-T1 categories → union of pathogens ranked by CDC annual deaths (`data/rag/pathogen_food_associations.csv` + `pathogen_characteristics.csv`). For "bread" / "barley" → grain → cereal grains → Salmonella (238), source=`rag_pathogen_category_fallback`. The CONSERVATIVE_DEFAULT path now only fires when the bridge itself returns no category or the category has no IFT mapping (e.g., condiment, beverage, or a fully unrecognised food like "frobnitz").
+- ✅ §2.4 deaths-ranking works correctly for foods with hazard rows (chicken, rice). Category fallback now extends coverage to foods without hazard rows.
 - aw monotonicity (Salmonella μ_max peaks at 0.99, the model floor at 0.973 isn't far below) — pre-existing pattern from Q04, unchanged.
 
 ### Q12-supplementary — original failed capture

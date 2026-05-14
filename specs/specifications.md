@@ -140,7 +140,7 @@ Higher-priority sources are never overwritten by lower-priority sources.
 1. Ground environmental conditions (pH, aw, CO2, nitrite, lactic acid, acetic acid) from `ExtractedScenario.environmental_conditions` — `USER_EXPLICIT` source
 2. Ground pathogen from `scenario.pathogen_mentioned` — `USER_EXPLICIT` via `ComBaseOrganism.from_string()` alias dict lookup
 3. Three-tier RAG retrieval for food pH and aw (only if not already grounded) — see **Food property retrieval** below
-4. Two-stage RAG lookup for pathogen (only if organism not yet grounded): Stage 1 calls `query_pathogen_hazards()` to resolve the food description to a canonical `food_name` metadata key; Stage 2 calls `get_hazards_for_food(food_name)` to fetch all hazard documents for that food and selects the pathogen with the highest `annual_deaths_us` (deterministic danger ranking). Falls back to Stage 1's top embedding result if Stage 2 returns no documents (food not in `food_pathogen_hazards.csv`). `extraction_method` is `"ranked_by_annual_deaths"` on the Stage 2 path and `"direct"` on the fallback path.
+4. Two-stage RAG lookup for pathogen (only if organism not yet grounded): Stage 1 calls `query_pathogen_hazards()` to resolve the food description to a canonical `food_name` metadata key; Stage 2 calls `get_hazards_for_food(food_name)` to fetch all hazard documents for that food and selects the pathogen with the highest `annual_deaths_us` (deterministic danger ranking). `extraction_method` is `"ranked_by_annual_deaths"` on success. When Stage 1 is below threshold, Stage 2 returns empty, or Stage 2's top document has no `ComBaseOrganism` mapping, the **category-level pathogen fallback** fires instead: resolves food → `ptm_category` (FoodEx2 bridge, threshold 80) → IFT-2003-T1 categories (from `data/rag/ift_category_alignment.csv`) → union of pathogens (from `data/rag/pathogen_food_associations.csv`) → ranked by `annual_deaths_us` (from `data/rag/pathogen_characteristics.csv`) → top `ComBaseOrganism`-mappable candidate. `extraction_method` is `"category_fallback_ranked_by_annual_deaths"`; `source` is `RAG_PATHOGEN_CATEGORY_FALLBACK`. Full provenance is attached as `ValueProvenance.pathogen_category_fallback` (`PathogenCategoryFallbackInfo`). A transparency warning is appended to `GroundedValues.warnings`. The fallback fails closed at every step (bridge miss, no IFT mapping, no characteristics entry, all candidates unmapped) — the organism stays ungrounded, not defaulted. Pathogens absent from `pathogen_characteristics.csv` are excluded from ranking; pathogens with `annual_deaths_us = 0` are ranked last but not excluded.
 
 **Food property retrieval (`_ground_food_properties`):** Composite-food guard followed by a three-tier design.
 
@@ -176,7 +176,7 @@ Tier 2 can match category-level docs (e.g., `"fresh poultry water activity 0.99�
 
 **Provenance fields populated by GroundingService:**
 - `source` (ValueSource enum)
-- `extraction_method` ("direct", "regex", "llm", "regex+llm", "rule_match", "embedding_fallback", "ranked_by_annual_deaths")
+- `extraction_method` ("direct", "regex", "llm", "regex+llm", "rule_match", "embedding_fallback", "ranked_by_annual_deaths", "category_fallback_ranked_by_annual_deaths")
 - `original_text` (raw text from RAG or user)
 - `retrieval_source` (doc_id for RAG values)
 - `raw_match` (matched text fragment from regex before parsing)
@@ -938,7 +938,7 @@ LiteLLM + Instructor. Model specified via `LLM_MODEL`. Supported providers inclu
 | `TCS` | Time/Temperature Control for Safety — regulatory food classification |
 | `TranslationResult` | Top-level return from the orchestrator (.state, .success, .error, .execution_result, .metadata) |
 | `ValueProvenance` | Per-field metadata tracking source, extraction method, range bounds, and standardization events |
-| `ValueSource` | Categorical reliability tier: USER_EXPLICIT, USER_INFERRED, RAG_RETRIEVAL (primary food-properties query), RAG_RETRIEVAL_FALLBACK (per-field Tier 2 fallback query), CONSERVATIVE_DEFAULT, COMPOSITE_FOOD_DEFAULT (retrieval deliberately skipped — food identified as composite dish; matched keyword recorded in `DefaultImputed.reason`), FUZZY_MATCH, CALCULATED, CLAMPED_TO_RANGE, CLARIFICATION_RESPONSE |
+| `ValueSource` | Categorical reliability tier: USER_EXPLICIT, USER_INFERRED, RAG_RETRIEVAL (primary food-properties query), RAG_RETRIEVAL_FALLBACK (per-field Tier 2 fallback query), RAG_RETRIEVAL_CATEGORY_BRIDGE (Tier 3 FoodEx2 bridge), RAG_PATHOGEN_CATEGORY_FALLBACK (organism inferred from food category via IFT-2003-T1, ranked by CDC annual deaths), CONSERVATIVE_DEFAULT, COMPOSITE_FOOD_DEFAULT (retrieval deliberately skipped — food identified as composite dish), FUZZY_MATCH, CALCULATED, CLAMPED_TO_RANGE, CLARIFICATION_RESPONSE |
 
 ---
 

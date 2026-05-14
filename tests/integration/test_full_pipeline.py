@@ -631,9 +631,15 @@ class TestRangeClampingEndToEnd:
 
 class TestDefaultOrganismFieldAudit:
     """
-    B.2: Pathogen is a required field. When no pathogen is named and RAG
-    does not ground one, the pipeline returns success=False with organism
-    listed as a missing required field — symmetric with missing duration.
+    B.2: Pathogen is a required field. When no pathogen is named and neither RAG
+    nor the category-level fallback can ground one, the pipeline returns
+    success=False with organism listed as a missing required field.
+
+    The category-level fallback successfully grounds organisms for most common
+    foods (chicken → poultry → Salmonella, rice → grain → Salmonella).  To test
+    the true "nothing grounds" path, we use a food that the fallback cannot
+    resolve: "frobnitz" (bridge returns None) and "mustard" (bridge → condiment,
+    no IFT mapping).
     """
 
     @pytest.mark.asyncio
@@ -641,11 +647,14 @@ class TestDefaultOrganismFieldAudit:
         self, orchestrator, mock_semantic_parser
     ):
         """
-        Query with no pathogen_mentioned and no RAG grounding: result must be
-        success=False with field_audit["organism"].source == "missing".
+        Truly unresolvable food with no pathogen_mentioned must yield success=False
+        with field_audit["organism"].source == "missing".
+
+        Uses "frobnitz" — TaxonomyBridge returns None (no FoodEx2 match), so
+        the category fallback returns immediately without grounding organism.
         """
         mock_semantic_parser.extract_scenario = AsyncMock(return_value=create_scenario(
-            food_description="chicken",
+            food_description="frobnitz",
             pathogen_mentioned=None,
             temperature=ExtractedTemperature(value_celsius=25.0),
             duration=ExtractedDuration(value_minutes=240.0),
@@ -653,7 +662,7 @@ class TestDefaultOrganismFieldAudit:
         ))
 
         result = await orchestrator.translate(
-            "How long before chicken left out at 25°C becomes unsafe?"
+            "How long before frobnitz left out at 25°C becomes unsafe?"
         )
 
         assert result.success is False
@@ -672,11 +681,14 @@ class TestDefaultOrganismFieldAudit:
         self, orchestrator, mock_semantic_parser
     ):
         """
-        When pathogen is missing, defaults_imputed must NOT contain a Salmonella
-        entry — the silent default was removed.
+        When pathogen is missing AND unresolvable, defaults_imputed must NOT
+        contain a Salmonella entry — the silent default was removed.
+
+        Uses "mustard" — bridge resolves to condiment, which has no IFT-2003-T1
+        row, so the category fallback returns without grounding organism.
         """
         mock_semantic_parser.extract_scenario = AsyncMock(return_value=create_scenario(
-            food_description="rice",
+            food_description="mustard",
             pathogen_mentioned=None,
             temperature=ExtractedTemperature(value_celsius=25.0),
             duration=ExtractedDuration(value_minutes=240.0),
@@ -684,7 +696,7 @@ class TestDefaultOrganismFieldAudit:
         ))
 
         result = await orchestrator.translate(
-            "Is rice left out at 25°C for 4 hours safe?"
+            "Is mustard left out at 25°C for 4 hours safe?"
         )
 
         assert result.success is False
@@ -694,6 +706,45 @@ class TestDefaultOrganismFieldAudit:
             if d.field_name == "organism"
         ]
         assert org_defaults == []
+
+
+class TestCategoryPathogenFallbackWarningPropagation:
+    """B.4: Transparency warning from category-level pathogen fallback must reach metadata.warnings.
+
+    The orchestrator propagates grounded.warnings → state.metadata.warnings.
+    This test verifies the full propagation chain for a food whose organism is
+    resolved via the category fallback (frobnitz-adjacent: barley, which maps
+    grain → cereal grains → Salmonella).
+    """
+
+    @pytest.mark.asyncio
+    async def test_category_fallback_warning_in_metadata_warnings(
+        self, orchestrator, mock_semantic_parser
+    ):
+        """When the category fallback grounds organism, a transparency warning must appear
+        in result.metadata.warnings (not just grounded.warnings, which is internal)."""
+        mock_semantic_parser.extract_scenario = AsyncMock(return_value=create_scenario(
+            food_description="barley grain",
+            pathogen_mentioned=None,
+            temperature=ExtractedTemperature(value_celsius=25.0),
+            duration=ExtractedDuration(value_minutes=240.0),
+            is_storage_scenario=True,
+        ))
+
+        result = await orchestrator.translate(
+            "How safe is barley grain left out at 25°C for 4 hours?"
+        )
+
+        assert result.success is True
+        assert result.metadata is not None
+        fallback_warnings = [
+            w for w in result.metadata.warnings
+            if "IFT-2003-T1" in w
+        ]
+        assert len(fallback_warnings) >= 1, (
+            "Category fallback transparency warning must propagate from grounded.warnings "
+            "to result.metadata.warnings via the orchestrator"
+        )
 
 
 class TestThermalInactivationEndToEnd:

@@ -1042,8 +1042,12 @@ class TestGroundPathogenFromRag:
         assert grounded.get("organism") == ComBaseOrganism.SALMONELLA
 
     @pytest.mark.asyncio
-    async def test_fallback_to_stage1_when_stage2_empty(self, grounding_service):
-        """If get_hazards_for_food returns empty, falls back to Stage 1 top result."""
+    async def test_category_fallback_when_stage2_empty(self, grounding_service):
+        """If get_hazards_for_food returns empty, the category-level fallback fires.
+
+        For 'raw chicken': bridge → poultry → meats and poultry → Salmonella (238 deaths).
+        Source is RAG_PATHOGEN_CATEGORY_FALLBACK, not the former Stage 1 fuzzy_match.
+        """
         service, mock_retrieval, _ = grounding_service
 
         stage1_response = self._make_stage1_response(
@@ -1058,7 +1062,8 @@ class TestGroundPathogenFromRag:
 
         assert grounded.has("organism")
         assert grounded.get("organism") == ComBaseOrganism.SALMONELLA
-        assert grounded.provenance["organism"].extraction_method == "fuzzy_match"
+        assert grounded.provenance["organism"].source == ValueSource.RAG_PATHOGEN_CATEGORY_FALLBACK
+        assert grounded.provenance["organism"].extraction_method == "category_fallback_ranked_by_annual_deaths"
 
     @pytest.mark.asyncio
     async def test_nothing_grounded_when_stage1_not_confident(self, grounding_service):

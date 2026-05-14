@@ -486,3 +486,24 @@ Parametrize over multiple threshold values (70/75/80/85), run unit tests against
 - When a new grounding step reads from `scenario`, check which method the code will live in and confirm `scenario` is actually in scope before writing.
 - When a new Pydantic field is required (no default), always grep all constructors for that model across the entire codebase (tests and app) before running tests — not just the files you know about.
 - When a test asserts `some_list == []`, consider whether it is asserting "nothing fired" or "this specific thing didn't fire." Prefer the latter when the list can grow with future features.
+
+---
+
+### 2026-05-14 — Category-level pathogen fallback: empirical verification before test assertions, spec-vs-data gaps
+
+**Context:** Implemented a new fallback tier for organism grounding: when food-specific hazard lookup (Stages 1+2) yields no result, the pipeline now resolves food → `ptm_category` (FoodEx2 bridge) → IFT-2003-T1 categories → union of pathogens ranked by CDC annual deaths. Full audit provenance (`PathogenCategoryFallbackInfo`) is attached.
+
+**What went well:**
+- Empirical verification before writing integration test assertions prevented multiple wrong assertions. Bridge resolution scores, Stage 1 embedding scores, and exact death counts were all checked programmatically before any test was written. Tests that encode assumptions ("Campylobacter is skipped for dairy") were caught and corrected before they ran.
+- The "fails closed at every step" design made the implementation simple: each early return preserves the existing ungrounded state rather than substituting a partial result. No special recovery code needed.
+- Injecting lookup tables via constructor parameters (`ift_alignment`, `pathogen_associations`, `pathogen_characteristics`) made unit tests fully isolated — no filesystem reads, full control over ranking scenarios.
+
+**What surfaced repeatedly:**
+- **Spec proposed ptm_categories that don't exist in food_taxonomy.csv.** `sweetener`, `protein`, `dessert` appeared in the spec's alignment CSV proposal. Verifying against the actual CSV before creating the file prevented creating phantom categories that the bridge could never produce.
+- **Test assertion assumed loop visits all candidates before selecting.** T2 (mascarpone) was supposed to demonstrate Campylobacter in `skipped_pathogens`. But Salmonella (238 deaths) ranks above Campylobacter (197 deaths) and maps successfully — the loop breaks at rank 1 and never reaches Campylobacter. `skipped_pathogens` only accumulates candidates that the loop *attempts and rejects*. Rule: verify ranking order empirically before asserting which candidates appear in `skipped_pathogens`.
+- **Existing tests for old behavior break when the fallback replaces a former path.** `test_fallback_to_stage1_when_stage2_empty` tested a "fuzzy_match" path that was removed — Stage 2 empty now routes to the category fallback, not Stage 1 embedding. `TestDefaultOrganismFieldAudit` expected success=False for "chicken" and "rice", both of which the new fallback now resolves. Update tests to assert the new correct behavior rather than deleting them — the tests are still valid, just against the new path.
+- **Recovery rate increase is empirically large.** Many queries that previously fell through to CONSERVATIVE_DEFAULT (e.g., bread → Salmonella default with no justification) now produce a `RAG_PATHOGEN_CATEGORY_FALLBACK` result with full provenance and a specific ranked selection. This is architecturally significant: the audit trail is now honest about *why* Salmonella was chosen, not just that a default was applied.
+
+**What to do differently:**
+- For any fallback that relies on ranked list traversal, verify the full ranking order (including exact death counts) before writing assertions about which candidates appear in `skipped_pathogens`. The skip list only contains *attempted failures*, not all non-winners.
+- When implementing a new recovery tier, immediately identify which existing tests were testing the "no recovery" behavior and update them to assert the new successful-recovery path, documenting the food that was previously unresolvable.

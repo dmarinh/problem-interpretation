@@ -24,11 +24,13 @@ transformation that belongs alongside bias correction and clamping, not here.
 """
 
 import asyncio
+import csv
 import logging
 import os
 import re
 import string
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from app.config.rules import (
     find_temperature_interpretation_with_fallback,
@@ -44,7 +46,7 @@ from app.models.extraction import (
 )
 from app.models.metadata import (
     ValueProvenance, ValueSource, RetrievalResult, RunnerUpResult, SkippedDocInfo,
-    CategoryBridgeInfo,
+    CategoryBridgeInfo, PathogenCategoryFallbackInfo, PathogenCandidate,
 )
 from app.rag.retrieval import RetrievalService, get_retrieval_service, RetrievalResponse
 from app.services.grounding.taxonomy_bridge import TaxonomyBridge
@@ -52,6 +54,35 @@ from app.services.audit.citations import get_full_citations
 from app.services.llm.client import LLMClient, get_llm_client
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Category-level pathogen fallback — static data
+# ---------------------------------------------------------------------------
+
+# Maps pathogen names as they appear in pathogen_food_associations.csv (lowercase)
+# to the corresponding name in pathogen_characteristics.csv (lowercase).
+# Used only for the annual_deaths_us lookup; from_text() uses the original
+# associations-CSV name directly for ComBaseOrganism mapping.
+_PATHOGEN_NAME_NORMALIZATION: dict[str, str] = {
+    "salmonella spp.": "salmonella nontyphoidal",
+    "campylobacter jejuni": "campylobacter spp.",
+    "escherichia coli o157:h7": "stec o157",
+    "vibrio cholerae": "vibrio cholerae toxigenic",
+    # Direct matches (same name, kept explicit for completeness):
+    "clostridium botulinum": "clostridium botulinum",
+    "clostridium perfringens": "clostridium perfringens",
+    "listeria monocytogenes": "listeria monocytogenes",
+    "yersinia enterocolitica": "yersinia enterocolitica",
+    "staphylococcus aureus": "staphylococcus aureus",
+    "bacillus cereus": "bacillus cereus",
+    "shigella spp.": "shigella spp.",
+    "vibrio vulnificus": "vibrio vulnificus",
+    "vibrio parahaemolyticus": "vibrio parahaemolyticus",
+}
+
+_DEFAULT_IFT_ALIGNMENT_PATH = Path("data/rag/ift_category_alignment.csv")
+_DEFAULT_PATHOGEN_ASSOCIATIONS_PATH = Path("data/rag/pathogen_food_associations.csv")
+_DEFAULT_PATHOGEN_CHARACTERISTICS_PATH = Path("data/rag/pathogen_characteristics.csv")
 
 # Composite-food keywords.  When the normalised food description contains one of
 # these tokens (or the multi-word "stir-fry"/"stir fry"), the orchestrator-level
@@ -393,6 +424,9 @@ class GroundingService:
         llm_client: LLMClient | None = None,
         use_llm_extraction: bool = True,
         taxonomy_bridge: TaxonomyBridge | None = _BRIDGE_SENTINEL,  # type: ignore[assignment]
+        ift_alignment: dict[str, list[str]] | None = None,
+        pathogen_associations: dict[str, list[str]] | None = None,
+        pathogen_characteristics: dict[str, tuple[int, str]] | None = None,
     ):
         self._retrieval = retrieval_service or get_retrieval_service()
         self._llm = llm_client or get_llm_client()
@@ -403,6 +437,85 @@ class GroundingService:
             )
         else:
             self._taxonomy_bridge = taxonomy_bridge
+        # Category-level pathogen fallback lookup tables.
+        # When None, each is loaded from the default CSV path on first use.
+        # Tests inject pre-built dicts to avoid filesystem reads.
+        self._ift_alignment: dict[str, list[str]] = (
+            ift_alignment if ift_alignment is not None
+            else self._load_ift_alignment(_DEFAULT_IFT_ALIGNMENT_PATH)
+        )
+        self._pathogen_associations: dict[str, list[str]] = (
+            pathogen_associations if pathogen_associations is not None
+            else self._load_pathogen_associations(_DEFAULT_PATHOGEN_ASSOCIATIONS_PATH)
+        )
+        self._pathogen_characteristics: dict[str, tuple[int, str]] = (
+            pathogen_characteristics if pathogen_characteristics is not None
+            else self._load_pathogen_characteristics(_DEFAULT_PATHOGEN_CHARACTERISTICS_PATH)
+        )
+
+    # ------------------------------------------------------------------
+    # Startup loaders for category-level pathogen fallback
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _load_ift_alignment(path: Path) -> dict[str, list[str]]:
+        """Load ift_category_alignment.csv → {ptm_category: [ift_category, ...]}."""
+        result: dict[str, list[str]] = {}
+        if not path.exists():
+            logger.warning("ift_category_alignment.csv not found at %s", path)
+            return result
+        import csv as _csv
+        with open(path, newline="", encoding="utf-8") as f:
+            for row in _csv.DictReader(f):
+                ptm = row.get("ptm_category", "").strip()
+                ift = row.get("ift_category", "").strip()
+                if ptm and ift:
+                    result.setdefault(ptm, [])
+                    if ift not in result[ptm]:
+                        result[ptm].append(ift)
+        return result
+
+    @staticmethod
+    def _load_pathogen_associations(path: Path) -> dict[str, list[str]]:
+        """Load pathogen_food_associations.csv → {ift_category: [pathogen, ...]}."""
+        result: dict[str, list[str]] = {}
+        if not path.exists():
+            logger.warning("pathogen_food_associations.csv not found at %s", path)
+            return result
+        import csv as _csv
+        with open(path, newline="", encoding="utf-8") as f:
+            for row in _csv.DictReader(f):
+                cat = row.get("food_category", "").strip()
+                pathogen = row.get("pathogen", "").strip()
+                if cat and pathogen:
+                    result.setdefault(cat, [])
+                    if pathogen not in result[cat]:
+                        result[cat].append(pathogen)
+        return result
+
+    @staticmethod
+    def _load_pathogen_characteristics(path: Path) -> dict[str, tuple[int, str]]:
+        """Load pathogen_characteristics.csv → {normalized_name_lower: (annual_deaths_us, source_id)}.
+
+        annual_deaths_us values that are '<0.1' or similar strings are treated as 0.
+        """
+        result: dict[str, tuple[int, str]] = {}
+        if not path.exists():
+            logger.warning("pathogen_characteristics.csv not found at %s", path)
+            return result
+        import csv as _csv
+        with open(path, newline="", encoding="utf-8") as f:
+            for row in _csv.DictReader(f):
+                name = row.get("pathogen", "").strip().lower()
+                source_id = row.get("source_id", "").strip()
+                raw_deaths = row.get("annual_deaths", "0").strip()
+                try:
+                    deaths = int(raw_deaths)
+                except ValueError:
+                    deaths = 0
+                if name:
+                    result[name] = (deaths, source_id)
+        return result
     
     async def ground_scenario(
         self,
@@ -1075,8 +1188,7 @@ class GroundingService:
         food_description: str,
         grounded: GroundedValues,
     ) -> None:
-        """
-        Ground pathogen via two-stage RAG retrieval.
+        """Ground pathogen via two-stage RAG retrieval with category-level fallback.
 
         Stage 1 — food name resolution: semantic query identifies the canonical
         food_name metadata key (e.g. "raw chicken" → "chicken raw").
@@ -1085,8 +1197,9 @@ class GroundingService:
         food, sorted by annual_deaths_us descending so the most dangerous
         pathogen is selected deterministically, not by embedding similarity.
 
-        Falls back to Stage 1's top result if Stage 2 returns no documents
-        (food has no registered hazards).
+        When Stages 1+2 yield no confident result (three paths: Stage 1 below
+        threshold, Stage 2 empty, or Stage 2 from_text unmapped), the
+        category-level fallback fires instead of the former embedding fallback.
         """
         # Stage 1: resolve food description to canonical food_name
         response = await asyncio.to_thread(
@@ -1098,6 +1211,8 @@ class GroundingService:
         grounded.retrievals.append(retrieval_meta)
 
         if not response.has_confident_result:
+            # Stage 1 below threshold — go directly to category fallback.
+            self._category_pathogen_fallback(food_description, grounded)
             return
 
         top = response.top_result
@@ -1121,19 +1236,120 @@ class GroundingService:
                         extraction_method="ranked_by_annual_deaths",
                     )
                     return
+                # from_text returned None — fall through to category fallback
 
-        # Fallback: Stage 1 top result (food not in hazards CSV)
-        organism = ComBaseOrganism.from_text(top.content)
-        if organism:
-            grounded.set(
-                "organism",
-                organism,
-                source=ValueSource.RAG_RETRIEVAL,
-                retrieval_source=top.doc_id,
-                original_text=top.content,
-                extraction_method="fuzzy_match",
-            )
-    
+        # food_name absent, Stage 2 empty, or from_text unmapped → category fallback.
+        self._category_pathogen_fallback(food_description, grounded)
+
+    def _category_pathogen_fallback(
+        self,
+        food_description: str,
+        grounded: GroundedValues,
+    ) -> None:
+        """Category-level pathogen fallback for when food-specific hazard lookup yields no result.
+
+        Resolves food → ptm_category (FoodEx2 bridge) → IFT-2003-T1 categories
+        → union of pathogens → ranked by annual_deaths_us → top ComBaseOrganism-
+        mappable candidate.  Fails closed at every step: if any step produces no
+        result, the method returns without setting organism, preserving the
+        existing ungrounded path.
+        """
+        if not self._taxonomy_bridge:
+            return
+
+        # Step 1: Resolve food → ptm_category via FoodEx2 bridge
+        resolution = self._taxonomy_bridge.resolve(food_description)
+        if resolution is None:
+            return
+
+        ptm_category = resolution.ptm_category
+
+        # Step 2: Map ptm_category → IFT categories
+        ift_categories = self._ift_alignment.get(ptm_category)
+        if not ift_categories:
+            return
+
+        # Step 3: Gather union of pathogen names across all IFT categories;
+        # deduplicate before ranking (cheaper and semantically equivalent).
+        seen_lower: set[str] = set()
+        candidate_names: list[str] = []
+        for ift_cat in ift_categories:
+            for pathogen in self._pathogen_associations.get(ift_cat, []):
+                key = pathogen.lower()
+                if key not in seen_lower:
+                    seen_lower.add(key)
+                    candidate_names.append(pathogen)
+
+        if not candidate_names:
+            return
+
+        # Step 4: Rank by annual_deaths_us from pathogen_characteristics.csv.
+        # Pathogens absent from characteristics are excluded entirely
+        # (absence of evidence ≠ zero deaths).
+        # Pathogens present with annual_deaths=0 are ranked last (not excluded).
+        ranked: list[PathogenCandidate] = []
+        for pathogen in candidate_names:
+            norm_name = _PATHOGEN_NAME_NORMALIZATION.get(pathogen.lower(), pathogen.lower())
+            entry = self._pathogen_characteristics.get(norm_name)
+            if entry is None:
+                continue  # not in characteristics — exclude from ranking
+            deaths, source_id = entry
+            ranked.append(PathogenCandidate(
+                pathogen=pathogen,          # associations CSV form e.g. "Salmonella spp."
+                normalized_name=norm_name,  # characteristics CSV form e.g. "salmonella nontyphoidal"
+                annual_deaths_us=deaths,
+                source_id=source_id,
+            ))
+
+        ranked.sort(key=lambda c: c.annual_deaths_us, reverse=True)
+
+        if not ranked:
+            return
+
+        # Step 5: Select the top-ranked candidate that maps to a ComBaseOrganism;
+        # descend on failure and record skipped candidates.
+        selected: PathogenCandidate | None = None
+        selected_organism: ComBaseOrganism | None = None
+        skipped: list[dict] = []
+        for candidate in ranked:
+            # Use the original associations-CSV name for from_text() — it contains
+            # recognisable substrings like "Salmonella" that the alias dict matches.
+            organism = ComBaseOrganism.from_text(candidate.pathogen)
+            if organism is None:
+                skipped.append({"pathogen": candidate.pathogen, "reason": "no_combase_organism_mapping"})
+                continue
+            selected = candidate
+            selected_organism = organism
+            break
+
+        if selected is None or selected_organism is None:
+            return
+
+        fallback_info = PathogenCategoryFallbackInfo(
+            ptm_category=ptm_category,
+            ift_categories=list(ift_categories),  # defensive copy — ift_categories is a ref into _ift_alignment
+            ift_source_id="IFT-2003-T1",
+            candidate_pathogens=ranked,
+            selected_pathogen=selected,
+            skipped_pathogens=skipped,
+        )
+
+        grounded.set(
+            "organism",
+            selected_organism,
+            source=ValueSource.RAG_PATHOGEN_CATEGORY_FALLBACK,
+            original_text=selected.pathogen,
+            extraction_method="category_fallback_ranked_by_annual_deaths",
+            pathogen_category_fallback=fallback_info,
+        )
+
+        # Emit a transparency warning so the audit surface names the inference.
+        grounded.warnings.append(
+            f"Organism {selected_organism.value!r} inferred from food category "
+            f"'{ptm_category}' (IFT-2003-T1) — no specific hazard data for "
+            f"'{food_description}'. Pathogen ranked by CDC annual deaths."
+        )
+
     # =========================================================================
     # INTERPRETATION RULES
     # =========================================================================

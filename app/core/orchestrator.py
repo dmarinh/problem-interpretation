@@ -413,9 +413,8 @@ class Orchestrator:
                     state.grounded_values[temp_key] = step.temperature_celsius
                 if step.duration_minutes is not None:
                     state.grounded_values[dur_key] = step.duration_minutes
-            # TODO: grounded.warnings (e.g. "Step 1 duration: Could not interpret...") are
-            # not surfaced here. They represent grounding-side diagnostic info that belongs
-            # in audit.warnings. Filed as a separate gap — see specs/lessons.md 2026-05-07.
+            if grounded.warnings:
+                state.metadata.warnings.extend(grounded.warnings)
 
         return grounded
     

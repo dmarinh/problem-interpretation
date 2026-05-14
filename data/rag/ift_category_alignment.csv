@@ -1,0 +1,14 @@
+ptm_category,ift_category,notes
+meat,meats and poultry,IFT does not split meat from poultry
+poultry,meats and poultry,Same IFT row
+fish,fish and seafood,IFT does not split fish from shellfish
+shellfish,fish and seafood,Same IFT row
+eggs,eggs and egg products,Direct
+dairy,milk and milk products,Primary dairy class
+dairy,cheese and cheese products,Additional dairy class — distinct pathogen profile
+dairy,butter and margarine,Additional dairy class
+fruit,fruits and vegetables,IFT combines produce
+vegetable,fruits and vegetables,IFT combines produce
+grain,cereal grains,Direct
+condiment,,No IFT match — fallback returns ungrounded
+beverage,,No IFT match — fallback returns ungrounded

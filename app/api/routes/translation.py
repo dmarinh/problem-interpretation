@@ -16,6 +16,8 @@ from app.api.schemas.translation import (
     DefaultImputedInfo,
     ExtractionAuditInfo,
     FieldAuditEntry,
+    PathogenCandidateInfo,
+    PathogenCategoryFallbackAuditInfo,
     RangeClampInfo,
     RerankerSkippedDocInfo,
     RetrievalAuditInfo,
@@ -218,12 +220,39 @@ def _build_field_audit(result: TranslationResult) -> dict[str, FieldAuditEntry]:
                 reason=s.reason,
             )
 
+        # ── Category-level pathogen fallback block ────────────────────────
+        pcf_info: PathogenCategoryFallbackAuditInfo | None = None
+        pcf = prov.pathogen_category_fallback if prov else None
+        if pcf is not None:
+            pcf_info = PathogenCategoryFallbackAuditInfo(
+                ptm_category=pcf.ptm_category,
+                ift_categories=pcf.ift_categories,
+                ift_source_id=pcf.ift_source_id,
+                candidate_pathogens=[
+                    PathogenCandidateInfo(
+                        pathogen=c.pathogen,
+                        normalized_name=c.normalized_name,
+                        annual_deaths_us=c.annual_deaths_us,
+                        source_id=c.source_id,
+                    )
+                    for c in pcf.candidate_pathogens
+                ],
+                selected_pathogen=PathogenCandidateInfo(
+                    pathogen=pcf.selected_pathogen.pathogen,
+                    normalized_name=pcf.selected_pathogen.normalized_name,
+                    annual_deaths_us=pcf.selected_pathogen.annual_deaths_us,
+                    source_id=pcf.selected_pathogen.source_id,
+                ),
+                skipped_pathogens=pcf.skipped_pathogens,
+            )
+
         field_audit[field_name] = FieldAuditEntry(
             final_value=final_value,
             source=source_str,
             retrieval=retrieval_info,
             extraction=extraction_info,
             standardization=std_info,
+            pathogen_category_fallback=pcf_info,
         )
 
     # ── Defaulted fields: absent from provenance but used by the model ─────────

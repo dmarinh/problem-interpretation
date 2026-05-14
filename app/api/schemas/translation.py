@@ -205,6 +205,29 @@ class StandardizationAuditInfo(BaseModel):
     reason: str
 
 
+class PathogenCandidateInfo(BaseModel):
+    """One ranked pathogen candidate from the category-level fallback."""
+    pathogen: str
+    normalized_name: str
+    annual_deaths_us: int
+    source_id: str
+
+
+class PathogenCategoryFallbackAuditInfo(BaseModel):
+    """Audit block present when source=rag_pathogen_category_fallback.
+
+    Carries the full ranking provenance: resolved category, IFT mapping,
+    all ranked candidates, the selected organism, and any candidates that
+    were skipped because they do not map to a ComBaseOrganism.
+    """
+    ptm_category: str
+    ift_categories: list[str]
+    ift_source_id: str
+    candidate_pathogens: list[PathogenCandidateInfo]
+    selected_pathogen: PathogenCandidateInfo
+    skipped_pathogens: list[dict]
+
+
 class FieldAuditEntry(BaseModel):
     """Complete per-field audit record."""
     final_value: float | str | None
@@ -212,6 +235,7 @@ class FieldAuditEntry(BaseModel):
     retrieval: RetrievalAuditInfo | None
     extraction: ExtractionAuditInfo | None
     standardization: StandardizationAuditInfo | None
+    pathogen_category_fallback: PathogenCategoryFallbackAuditInfo | None = None
 
 
 class ComBaseModelAuditInfo(BaseModel):

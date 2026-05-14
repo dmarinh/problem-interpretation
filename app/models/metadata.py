@@ -45,12 +45,50 @@ class ValueSource(str, Enum):
     RAG_RETRIEVAL = "rag_retrieval"           # Retrieved from knowledge base (primary query, specific-food doc)
     RAG_RETRIEVAL_FALLBACK = "rag_retrieval_fallback"  # Retrieved via per-field secondary query (category-level doc or lower threshold)
     RAG_RETRIEVAL_CATEGORY_BRIDGE = "rag_retrieval_category_bridge"  # Tier 3: food name resolved to FoodEx2 ptm_category via taxonomy bridge; food_properties row retrieved by category filter
+    RAG_PATHOGEN_CATEGORY_FALLBACK = "rag_pathogen_category_fallback"  # Organism inferred from food category via IFT-2003-T1 associations ranked by CDC annual deaths; fires when food-specific hazard lookup (Stages 1+2) yields no confident result
     CONSERVATIVE_DEFAULT = "conservative_default"  # Safety default applied
     COMPOSITE_FOOD_DEFAULT = "composite_food_default"  # Retrieval deliberately skipped: food identified as composite dish; single-ingredient documents do not represent the mixture's properties reliably. Conservative default applied.
     CLARIFICATION_RESPONSE = "clarification_response"  # From user clarification
     CLAMPED_TO_RANGE = "clamped_to_range"     # Adjusted to valid range
     CALCULATED = "calculated"                  # Derived from other values
     MISSING = "missing"                        # Field was required but neither user nor grounding supplied a value; appears in field_audit with final_value=null on validation failure
+
+
+class PathogenCandidate(BaseModel):
+    """One entry in the ranked candidate list produced by the category-level pathogen fallback."""
+    pathogen: str = Field(description="Pathogen name as it appears in pathogen_food_associations.csv")
+    normalized_name: str = Field(description="Name after normalization to match pathogen_characteristics.csv")
+    annual_deaths_us: int = Field(description="Annual US deaths from pathogen_characteristics.csv; used as ranking signal")
+    source_id: str = Field(description="CDC source ID for the death count (e.g. CDC-2019-T1T2)")
+
+
+class PathogenCategoryFallbackInfo(BaseModel):
+    """Audit record for organism grounded via the category-level pathogen fallback.
+
+    Populated when RAG_PATHOGEN_CATEGORY_FALLBACK fires — food-specific hazard
+    lookup yielded no result, so the pipeline resolved food → ptm_category →
+    IFT-2003-T1 categories → ranked pathogens → top ComBaseOrganism-mappable
+    candidate.
+
+    Attached to ValueProvenance.pathogen_category_fallback when the fallback
+    succeeds.
+    """
+    ptm_category: str = Field(description="FoodEx2 ptm_category resolved by the taxonomy bridge")
+    ift_categories: list[str] = Field(description="IFT-2003-T1 categories the ptm_category mapped to")
+    ift_source_id: str = Field(
+        default="IFT-2003-T1",
+        description="Source ID for the qualitative pathogen-category association table",
+    )
+    candidate_pathogens: list[PathogenCandidate] = Field(
+        description="All candidates gathered from the union of IFT categories, ranked by annual_deaths_us descending"
+    )
+    selected_pathogen: PathogenCandidate = Field(
+        description="The top-ranked candidate that successfully mapped to a ComBaseOrganism"
+    )
+    skipped_pathogens: list[dict] = Field(
+        default_factory=list,
+        description="Candidates ranked above the selected one that failed ComBaseOrganism mapping; each entry has {pathogen, reason}",
+    )
 
 
 class CategoryBridgeInfo(BaseModel):
@@ -194,6 +232,13 @@ class ValueProvenance(BaseModel):
     category_bridge: CategoryBridgeInfo | None = Field(
         default=None,
         description="Taxonomy-bridge provenance when source=RAG_RETRIEVAL_CATEGORY_BRIDGE"
+    )
+    # Populated when the category-level pathogen fallback fires (RAG_PATHOGEN_CATEGORY_FALLBACK).
+    # Carries the full ranking provenance: ptm_category, IFT categories, all candidates,
+    # selected pathogen, and any skipped candidates. None for all other source tiers.
+    pathogen_category_fallback: PathogenCategoryFallbackInfo | None = Field(
+        default=None,
+        description="Category-fallback provenance when source=RAG_PATHOGEN_CATEGORY_FALLBACK",
     )
     # Rule-match details — populated by GroundingService for USER_INFERRED values.
     # These carry the InterpretationRule's structured fields so the audit can show
