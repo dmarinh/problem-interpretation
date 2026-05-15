@@ -520,3 +520,33 @@ Parametrize over multiple threshold values (70/75/80/85), run unit tests against
 
 **What to do differently:**
 - When a grounding fallback fails for a "known food", first check whether the food_description reaching the bridge is already a clean noun phrase. Bridge threshold failures for recognizable foods often indicate upstream qualifier noise rather than a taxonomy gap.
+
+---
+
+### 2026-05-15 — Two-tier food-property RAG collapse attempt and revert
+
+**Context:** The food-property retrieval used a two-tier design: Tier 1 = `query_food_properties()` (combined pH+aw query at threshold 0.70, `RAG_RETRIEVAL`, `attributed_field=None`) followed by conditional per-field fallbacks at 0.62 (`RAG_RETRIEVAL_FALLBACK`, `attributed_field` set). Attempted to collapse to a single tier: both `query_food_ph()` and `query_food_water_activity()` firing unconditionally, both emitting `RAG_RETRIEVAL`, both with `attributed_field` always set. `query_food_properties()` and `RAG_RETRIEVAL_FALLBACK` would have been deleted. All phases (production code, tests, documentation) completed and tests passed. Live verification against Q03 bread confirmed an aw retrieval regression. All changes reverted; two-tier design restored.
+
+**What went well:**
+- The 0.62 threshold was already calibrated from the 2026-04-30 session against 13 known-good and 8 known-bad pairs. The calibrated value was already correct for per-field queries.
+- Deleting the Priority 2 keyword heuristic from `translation.py` was structurally correct once all retrievals had `attributed_field` set. The heuristic removal was the right direction — the regression was not in routing but in retrieval quality.
+- All four phases (production, tests, documentation, verification) were sequenced cleanly before the revert decision. Catching the regression via live verification rather than discovering it in production is the correct outcome.
+
+**What surfaced: .env overrides need updating alongside setting field renames**
+
+`settings.py` had two fields: `food_properties_confidence = 0.70` (uncalibrated primary) and `food_properties_fallback_confidence = 0.62` (calibrated). After renaming `food_properties_fallback_confidence` → `food_properties_confidence`, the `.env` file still had `FOOD_PROPERTIES_CONFIDENCE=0.70` — the old *primary* value. The rename caused the env var to now override the renamed field with the wrong value. The setting appeared to load correctly (no KeyError), but the threshold was silently 0.70. Rule: when renaming a settings field that uses env-var override, immediately grep the full set of env-var artefacts — not just `.env`. The complete checklist: `.env`, `.env.example`, `docker-compose*.yml`, CI workflow files (`.github/workflows/*.yml`), and any deployment/infra configs. `.env` fails fast (tests catch it immediately); the others fail slowly — only on a fresh checkout, in CI, or at deployment time. A single `grep -r OLD_VAR_NAME .` from the repo root catches all of them at once.
+
+**What surfaced: threshold is stored on the response object, not forwarded to the vector store**
+
+`RetrievalService.query()` consumes `threshold` internally (for `_classify_confidence()`) but does not forward it to `self._store.query()`. A test that tried to assert `call_args.args[3] == settings.food_properties_confidence` raised `IndexError`. The correct assertion is `response.threshold == settings.food_properties_confidence`. Before asserting on `call_args`, verify that the parameter you're checking actually reaches the underlying mock call.
+
+**What surfaced: all test helper `RetrievalResult` objects must have `attributed_field` set after Priority 2 is deleted**
+
+Three test helpers in `test_api_translation.py` created `RetrievalResult` objects without `attributed_field`. After deleting the Priority 2 heuristic, those helpers produced retrievals that no field's Priority 1 match could claim, returning `None` for `top_match`/`attempted_top`. Pattern: whenever a routing fallback is removed, immediately scan all test helpers for objects that relied on the fallback.
+
+**Revert decision (2026-05-15):** Live testing on a sliced-bread query confirmed a regression. The per-field aw query retrieved bread crust (aw 0.3, wrong doc) over bread white (aw 0.94–0.97, correct doc) at embedding score 0.619 vs 0.596. The old Tier 1 combined query scored bread white at 0.756 — above the 0.70 threshold — extracting both pH and aw from the correct doc. The regression is structural: bread crust's aw-focused content (`"water activity 0.3. Dried bread crust"`) is semantically closer to the aw-specific query (`"white bread water activity aw moisture"`) than bread white's mixed-content doc. Not fixable by query-string tuning. Reverted to two-tier. Lesson: when a theoretical risk materialises on a real common food, revert to the proven design rather than speculating on fixes. The Tier 1 combined query threshold (0.70) was doing real protective work — the combined query retrieved the canonical full-property doc; the per-field query retrieved the most aw-relevant doc, which for bread happens to be a dry partial-data doc.
+
+**What to do differently:**
+- When renaming a settings field, grep the full set of env-var artefacts before closing the session — not just `.env`. A single `grep -r OLD_VAR_NAME .` from the repo root catches all of them at once.
+- Before deleting a routing fallback, grep for every construction site of the object the fallback was designed to route, and verify each construction site sets the primary routing key (`attributed_field`). If it doesn't, add it before deleting the fallback.
+- Before declaring a simplification correct, run retrieval spot-checks against common foods where the two designs would diverge — specifically foods whose best full-property doc and best single-property doc are different documents. The divergence is invisible to unit tests (which mock the store) and to integration tests that use the real store only against foods that happen to have a unique best doc for all fields.
