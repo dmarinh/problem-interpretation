@@ -271,7 +271,7 @@ MODELS = [
         "tier": 4,
         # 14.7B params Q4_K_M quantization, 16K context length
         # Weights ~9.1 GB + KV cache -> ~10-11 GB; partial CPU offload on 8 GB VRAM
-        # STEM reasoning ceiling probe; tight context limits heavy RAG payloads
+        # STEM reasoning ceiling probe; tight context limits heavy RAG payloadsA)
     },
 
     {
@@ -279,7 +279,7 @@ MODELS = [
         "litellm_model": "ollama/glm-4.7-flash:q4_K_M",
         "api_key_env_var": None,
         "api_base": "http://localhost:11434",
-        "instructor_mode": None,  # Native tools + thinking (confirmed in Ollama capabilities)
+        "instructor_mode": "JSON",  # Native tools + thinking (confirmed in Ollama capabilities)
         "tier": 4,
         # 30B-A3B MoE (3B active/token), Q4_K_M, 198K context, MIT licensed
         # 19 GB total weights -> spills to RAM; ~5-15 t/s RAM-bandwidth-bound on 8 GB VRAM
