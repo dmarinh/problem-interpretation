@@ -839,3 +839,111 @@ class TestOrganismDefaultImputation:
 
         org_defaults = [d for d in result.defaults_imputed if d.field_name == "organism"]
         assert org_defaults == []
+
+
+# =============================================================================
+# PHASE 9.7: LONG-WINDOW DEFAULT FOR MISSING SINGLE-STEP DURATION (NT-6)
+# =============================================================================
+
+class TestLongWindowDefault:
+    """
+    Phase 9.7: missing single-step duration defaults to LONG_WINDOW_DEFAULT (10080 min / 7 days).
+    """
+
+    def _make_grounded_no_duration(self) -> GroundedValues:
+        g = GroundedValues()
+        g.set("organism", ComBaseOrganism.SALMONELLA, ValueSource.USER_EXPLICIT)
+        g.set("temperature_celsius", 25.0, ValueSource.USER_EXPLICIT)
+        # duration_minutes deliberately NOT set
+        return g
+
+    def test_standardize_imputes_long_window_default(self, standardization_service):
+        """StandardizationService must impute 10080.0 and emit LONG_WINDOW_DEFAULT source."""
+        g = self._make_grounded_no_duration()
+        result = standardization_service.standardize(g, ModelType.GROWTH)
+
+        assert result.missing_required == []
+        assert result.payload is not None
+        assert result.payload.time_temperature_profile.total_duration_minutes == pytest.approx(10080.0)
+
+        duration_default = next(
+            (d for d in result.defaults_imputed if d.field_name == "duration_minutes"),
+            None,
+        )
+        assert duration_default is not None
+        assert duration_default.imputed_value == pytest.approx(10080.0)
+        assert duration_default.source == ValueSource.LONG_WINDOW_DEFAULT
+
+    def test_standardize_emits_long_window_warning(self, standardization_service):
+        """A long-window imputation must emit a warning that names 'long-window default'."""
+        g = self._make_grounded_no_duration()
+        result = standardization_service.standardize(g, ModelType.GROWTH)
+
+        # The new warning must mention both "duration" and the default nature —
+        # the old "Duration is required but not specified" string fails this check.
+        assert any(
+            "duration" in w.lower() and "long-window" in w.lower()
+            for w in result.warnings
+        )
+
+    def test_field_audit_source_is_long_window_default(self, standardization_service):
+        """field_audit entry for duration_minutes must carry source='long_window_default' and correct shape."""
+        from app.core.state import SessionState
+        from app.core.orchestrator import TranslationResult
+        from app.api.routes.translation import _build_field_audit
+        from app.models.enums import SessionStatus
+        from app.models.metadata import InterpretationMetadata
+
+        g = self._make_grounded_no_duration()
+        std_result = standardization_service.standardize(g, ModelType.GROWTH)
+
+        state = SessionState(user_input="test")
+        state.status = SessionStatus.COMPLETED
+        state.metadata = InterpretationMetadata(
+            session_id=state.session_id,
+            original_input=state.user_input,
+        )
+        state.metadata.defaults_imputed.extend(std_result.defaults_imputed)
+        for field_name, prov in g.provenance.items():
+            state.metadata.provenance[field_name] = prov
+
+        tr = TranslationResult(state)
+        field_audit = _build_field_audit(tr)
+
+        assert "duration_minutes" in field_audit
+        entry = field_audit["duration_minutes"]
+        assert entry.source == "long_window_default"
+        assert entry.final_value == pytest.approx(10080.0)
+        assert entry.standardization is not None
+        assert entry.standardization.rule == "default_imputed"
+
+
+# =============================================================================
+# PHASE 9.7: SETTINGS OVERRIDE FOR LONG-WINDOW DEFAULT (NT-7)
+# =============================================================================
+
+class TestLongWindowDefaultSettingsOverride:
+    """
+    Phase 9.7: default_long_window_minutes is configurable via environment variable.
+    """
+
+    def test_settings_override_changes_imputed_value(self, monkeypatch):
+        """Overriding default_long_window_minutes changes the imputed duration value."""
+        import app.services.standardization.standardization_service as svc_module
+
+        monkeypatch.setattr(svc_module.settings, "default_long_window_minutes", 2880.0)
+
+        svc = StandardizationService(model_registry=None)
+        g = GroundedValues()
+        g.set("organism", ComBaseOrganism.SALMONELLA, ValueSource.USER_EXPLICIT)
+        g.set("temperature_celsius", 25.0, ValueSource.USER_EXPLICIT)
+
+        result = svc.standardize(g, ModelType.GROWTH)
+
+        duration_default = next(
+            (d for d in result.defaults_imputed if d.field_name == "duration_minutes"),
+            None,
+        )
+        assert duration_default is not None
+        # Assert against the patched settings value — not the literal — per 2026-05-15 lesson
+        assert duration_default.imputed_value == pytest.approx(svc_module.settings.default_long_window_minutes)

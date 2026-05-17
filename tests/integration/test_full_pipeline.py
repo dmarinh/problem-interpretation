@@ -11,7 +11,7 @@ from pathlib import Path
 import tempfile
 import shutil
 
-from app.core.orchestrator import Orchestrator, TranslationResult
+from app.core.orchestrator import Orchestrator
 from app.core.state import SessionManager
 from app.engines.combase.engine import ComBaseEngine
 from app.rag.vector_store import VectorStore
@@ -378,8 +378,10 @@ class TestEdgeCases:
     """Edge case and error handling tests."""
     
     @pytest.mark.asyncio
-    async def test_missing_duration_fails(self, orchestrator, mock_semantic_parser):
-        """Should fail when duration cannot be determined."""
+    async def test_missing_single_step_duration_defaults_to_long_window(
+        self, orchestrator, mock_semantic_parser
+    ):
+        """Phase 9.7: missing single-step duration succeeds with long-window default applied."""
         mock_semantic_parser.extract_scenario = AsyncMock(return_value=create_scenario(
             food_description="chicken",
             pathogen_mentioned="Salmonella",
@@ -387,13 +389,141 @@ class TestEdgeCases:
             duration=ExtractedDuration(),  # No duration info
             is_storage_scenario=True,
         ))
-        
-        result = await orchestrator.translate(
-            "Chicken at 25°C"
+
+        result = await orchestrator.translate("Chicken at 25°C")
+
+        assert result.success is True
+        assert result.error is None
+
+        duration_default = next(
+            (d for d in result.metadata.defaults_imputed if d.field_name == "duration_minutes"),
+            None,
         )
-        
+        assert duration_default is not None
+        assert duration_default.imputed_value == 10080.0
+        assert duration_default.source == ValueSource.LONG_WINDOW_DEFAULT
+        assert any("duration" in w.lower() for w in result.metadata.warnings)
+        # 7-day window at 25°C reaches the physical growth cap
+        assert abs(result.execution_result.total_log_increase) == 15.0
+
+    @pytest.mark.asyncio
+    async def test_explicit_duration_no_long_window_regression(
+        self, orchestrator, mock_semantic_parser
+    ):
+        """Phase 9.7: explicit duration does not trigger the long-window default."""
+        mock_semantic_parser.extract_scenario = AsyncMock(return_value=create_scenario(
+            food_description="chicken",
+            pathogen_mentioned="Salmonella",
+            temperature=ExtractedTemperature(value_celsius=25.0),
+            duration=ExtractedDuration(value_minutes=120.0),
+            is_storage_scenario=True,
+        ))
+
+        result = await orchestrator.translate("Chicken at 25°C for 2 hours")
+
+        assert result.success is True
+        duration_defaults = [
+            d for d in result.metadata.defaults_imputed if d.field_name == "duration_minutes"
+        ]
+        assert duration_defaults == []
+
+    @pytest.mark.asyncio
+    async def test_rule_matched_duration_no_long_window(
+        self, orchestrator, mock_semantic_parser
+    ):
+        """Phase 9.7: rule-matched duration ('overnight' → 480 min) does not trigger long-window."""
+        mock_semantic_parser.extract_scenario = AsyncMock(return_value=create_scenario(
+            food_description="chicken",
+            pathogen_mentioned="Salmonella",
+            temperature=ExtractedTemperature(value_celsius=25.0),
+            duration=ExtractedDuration(description="overnight"),
+            is_storage_scenario=True,
+        ))
+
+        result = await orchestrator.translate("Chicken overnight")
+
+        assert result.success is True
+        duration_defaults = [
+            d for d in result.metadata.defaults_imputed if d.field_name == "duration_minutes"
+        ]
+        assert duration_defaults == []
+        assert result.state.execution_payload.time_temperature_profile.total_duration_minutes == 480.0
+
+    @pytest.mark.asyncio
+    async def test_multistep_missing_one_duration_fails(
+        self, orchestrator, mock_semantic_parser
+    ):
+        """Phase 9.7: multi-step with a missing step duration still fails (isolation check)."""
+        multi_step_scenario = ExtractedScenario(
+            food_description="chicken",
+            pathogen_mentioned="Salmonella",
+            is_multi_step=True,
+            single_step_temperature=ExtractedTemperature(),
+            single_step_duration=ExtractedDuration(),
+            time_temperature_steps=[
+                ExtractedTimeTemperatureStep(
+                    sequence_order=1,
+                    temperature=ExtractedTemperature(value_celsius=25.0),
+                    duration=ExtractedDuration(),  # missing
+                ),
+                ExtractedTimeTemperatureStep(
+                    sequence_order=2,
+                    temperature=ExtractedTemperature(value_celsius=4.0),
+                    duration=ExtractedDuration(value_minutes=60.0),
+                ),
+            ],
+            environmental_conditions=ExtractedEnvironmentalConditions(),
+            concern_type="safety",
+            additional_context=None,
+            is_cooking_scenario=False,
+            is_storage_scenario=True,
+            is_non_thermal_treatment=False,
+            implied_model_type=ModelType.GROWTH,
+        )
+        mock_semantic_parser.extract_scenario = AsyncMock(return_value=multi_step_scenario)
+
+        result = await orchestrator.translate("Chicken in two stages")
+
         assert result.success is False
-        assert "duration" in result.error.lower()
+        assert "step 1" in result.error.lower()
+
+    @pytest.mark.asyncio
+    async def test_multistep_all_missing_duration_fails_at_step_1(
+        self, orchestrator, mock_semantic_parser
+    ):
+        """Phase 9.7: multi-step with all durations missing fails naming step 1 only."""
+        multi_step_scenario = ExtractedScenario(
+            food_description="chicken",
+            pathogen_mentioned="Salmonella",
+            is_multi_step=True,
+            single_step_temperature=ExtractedTemperature(),
+            single_step_duration=ExtractedDuration(),
+            time_temperature_steps=[
+                ExtractedTimeTemperatureStep(
+                    sequence_order=1,
+                    temperature=ExtractedTemperature(value_celsius=25.0),
+                    duration=ExtractedDuration(),  # missing
+                ),
+                ExtractedTimeTemperatureStep(
+                    sequence_order=2,
+                    temperature=ExtractedTemperature(value_celsius=4.0),
+                    duration=ExtractedDuration(),  # missing
+                ),
+            ],
+            environmental_conditions=ExtractedEnvironmentalConditions(),
+            concern_type="safety",
+            additional_context=None,
+            is_cooking_scenario=False,
+            is_storage_scenario=True,
+            is_non_thermal_treatment=False,
+            implied_model_type=ModelType.GROWTH,
+        )
+        mock_semantic_parser.extract_scenario = AsyncMock(return_value=multi_step_scenario)
+
+        result = await orchestrator.translate("Chicken in two stages")
+
+        assert result.success is False
+        assert "step 1" in result.error.lower()
     
     @pytest.mark.asyncio
     async def test_defaults_applied_with_warnings(self, orchestrator, mock_semantic_parser):
