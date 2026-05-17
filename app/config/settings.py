@@ -210,7 +210,16 @@ class Settings(BaseSettings):
         le=1.0,
         description="Default water activity when unknown (conservative = high)"
     )
-    
+    default_long_window_minutes: float = Field(
+        default=10080.0,
+        ge=1.0,
+        description=(
+            "Duration default (minutes) when no duration is specified in a single-step query. "
+            "7 days (168 hours) — long enough for any model type's trajectory to reach the "
+            "physical growth cap (±15 log CFU) under worst-case conditions."
+        ),
+    )
+
     # -------------------------------------------------------------------------
     # Engine Configuration (connection settings only, NOT constraints)
     # -------------------------------------------------------------------------
