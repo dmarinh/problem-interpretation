@@ -1,0 +1,103 @@
+{
+    "success": false,
+    "session_id": "5ce4c053-67dc-42b8-8773-0d36aa425bfd",
+    "status": "failed",
+    "created_at": "2026-05-17T18:21:22.685988",
+    "completed_at": "2026-05-17T18:21:36.979466",
+    "original_query": "Heat chicken to 72C for 2 minutes then store at room temperature",
+    "prediction": null,
+    "provenance": [
+        {
+            "field": "water_activity",
+            "value": "0.997",
+            "source": "rag_retrieval",
+            "notes": "Clamped 0.99 \u00e2\u2020\u2019 0.997: Model constraint"
+        },
+        {
+            "field": "ph",
+            "value": "6.2",
+            "source": "rag_retrieval_fallback",
+            "notes": "Range [6.2, 6.4] \u00e2\u2020\u2019 selected lower bound 6.2 (Range narrowed to lower bound for thermal_inactivation model (less pathogen kill = more conservative))"
+        },
+        {
+            "field": "organism",
+            "value": "ss",
+            "source": "rag_retrieval",
+            "notes": "Extracted via ranked_by_annual_deaths"
+        },
+        {
+            "field": "temperature_celsius (step 1)",
+            "value": "65.0",
+            "source": "user_explicit",
+            "notes": "Clamped 72.0 \u00e2\u2020\u2019 65.0: Model constraint for thermal_inactivation"
+        },
+        {
+            "field": "duration_minutes (step 1)",
+            "value": "2.0",
+            "source": "user_explicit",
+            "notes": "Extracted via llm_extraction"
+        },
+        {
+            "field": "temperature_celsius (step 2)",
+            "value": "54.5",
+            "source": "user_inferred",
+            "notes": "Clamped 25.0 \u00e2\u2020\u2019 54.5: Model constraint for thermal_inactivation"
+        },
+        {
+            "field": "duration_minutes (step 2)",
+            "value": "N/A",
+            "source": "missing",
+            "notes": null
+        },
+        {
+            "field": "initial_inoculum_log_cfu",
+            "value": "0.0",
+            "source": "conservative_default",
+            "notes": "No initial inoculum specified. Using model default (0.0 log CFU/g) from ComBase DefaultInoc."
+        }
+    ],
+    "warnings": [
+        {
+            "type": "range_clamp",
+            "message": "Value 0.99 clamped to 0.997 (valid range: 0.997-1.0)",
+            "field": "water_activity"
+        },
+        {
+            "type": "range_clamp",
+            "message": "Value 72.0 clamped to 65.0 (valid range: 54.5-65.0)",
+            "field": "temperature_celsius (step 1)"
+        },
+        {
+            "type": "range_clamp",
+            "message": "Value 25.0 clamped to 54.5 (valid range: 54.5-65.0)",
+            "field": "temperature_celsius (step 2)"
+        },
+        {
+            "type": "warning",
+            "message": "Step 2 duration: No duration specified",
+            "field": null
+        },
+        {
+            "type": "warning",
+            "message": "Water activity 0.99 is outside the model's valid range [0.997, 1.0]; clamped to 0.997. Prediction is at the model boundary.",
+            "field": null
+        },
+        {
+            "type": "warning",
+            "message": "Step 1: temperature 72.0\u00c2\u00b0C is outside the model's valid range [54.5, 65.0]\u00c2\u00b0C; clamped to 65.0\u00c2\u00b0C. Prediction is at the model boundary.",
+            "field": null
+        },
+        {
+            "type": "warning",
+            "message": "Step 2: temperature 25.0\u00c2\u00b0C is outside the model's valid range [54.5, 65.0]\u00c2\u00b0C; clamped to 54.5\u00c2\u00b0C. Prediction is at the model boundary.",
+            "field": null
+        },
+        {
+            "type": "warning",
+            "message": "Validation failed: required value missing \u00e2\u20ac\u201d duration (step 2)",
+            "field": null
+        }
+    ],
+    "error": "Missing required values: duration (step 2)",
+    "audit": null
+}

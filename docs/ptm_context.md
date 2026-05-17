@@ -297,6 +297,7 @@ Resolves `ExtractedScenario` fields into a `GroundedValues` container with full 
 | 5.5 | RAG_PATHOGEN_CATEGORY_FALLBACK | Organism inferred from food category when food-specific hazard lookup (Stages 1+2) yields no result. Resolves food → `ptm_category` (FoodEx2 bridge) → IFT-2003-T1 categories (`data/rag/ift_category_alignment.csv`) → union of pathogens (`data/rag/pathogen_food_associations.csv`) → ranked by `annual_deaths_us` (`data/rag/pathogen_characteristics.csv`) → top `ComBaseOrganism`-mappable candidate. Full provenance in `ValueProvenance.pathogen_category_fallback` (`PathogenCategoryFallbackInfo`). Fails closed: organism stays ungrounded if bridge returns None, category has no IFT mapping, or all candidates are unmappable. Applies to organism grounding only. |
 | 6 | CONSERVATIVE_DEFAULT | Safety-first fallback (applied in standardization, not grounding). Fires only when all three retrieval tiers fail (for pH/aw) or when the category fallback cannot resolve organism. |
 | 6 | COMPOSITE_FOOD_DEFAULT | Same safety-floor tier as CONSERVATIVE_DEFAULT but distinguished by reason: retrieval was deliberately skipped because the food description matched a composite-dish keyword (`_COMPOSITE_KEYWORDS` in `grounding_service.py`). The matched keyword is recorded on `GroundedValues.composite_skip` and appears in `DefaultImputed.reason`. Note: the composite guard gates pH/aw retrieval only — organism grounding proceeds independently via `_ground_pathogen_from_rag`. |
+| 6 | LONG_WINDOW_DEFAULT | Applied when a single-step query provides no duration. Epistemically distinct from CONSERVATIVE_DEFAULT: duration is a scenario dimension (how long to simulate), not an environmental property with a scientifically-defensible worst-case value. Duration is NOT included in the CONSERVATIVE_DEFAULT row — see §5.3 and §8.13 for its defaulting behavior. |
 
 **Invariant:** higher-priority sources are never overwritten by lower-priority ones.
 
@@ -329,7 +330,7 @@ Temperature: `room temperature`/`counter`/`ambient`/`left out` → 25 °C; `refr
 
 Duration: `overnight`/`all night` → 480 min; `all day` → 600 min; `few hours`/`couple of hours` → 120–180 min; `half a day` → 360 min; `briefly`/`few minutes` → 10–15 min; `long time`/`many hours` → 360 min.
 
-When no rule matches, embedding similarity finds the closest canonical phrase (0.50 cosine threshold); the matched canonical phrase and similarity score are recorded on the provenance. Below threshold, the field is marked ungrounded and standardization will apply a conservative default.
+When no rule matches, embedding similarity finds the closest canonical phrase (0.50 cosine threshold); the matched canonical phrase and similarity score are recorded on the provenance. Below threshold, the field is marked ungrounded and standardization will apply a long-window default for duration (see §5.3 and §8.13) or a conservative default for other fields.
 
 **Sourcing of rules.py interpretation values (deferred):** The rules currently encode plausible defaults for linguistic conventions. Some are sourceable (refrigeration → 4°C from FDA Food Code; freezer → -18°C from Codex Alimentarius; room temperature 20–25°C from USP). Some are convention-backed (warm, hot, in the car). Some are linguistic-only and not sourceable in any standard ("a while" → 60 min). Adding source attribution per rule is filed as a future enhancement; see §16.
 
@@ -339,11 +340,12 @@ When no rule matches, embedding similarity finds the closest canonical phrase (0
 Prepares `GroundedValues` for model execution by performing four operations, each recorded as a structured event on the per-field standardization block:
 
 1. **Range-bound selection.** For values that arrive with `range_pending=True` (RAG-retrieved ranges and user-supplied ranges), picks the model-type-appropriate bound: upper for GROWTH and NON_THERMAL_SURVIVAL, lower for THERMAL_INACTIVATION. Recorded as `rule = "range_bound_selection"`.
-2. **Default imputation.** When a value is still missing after grounding, applies a conservative default for non-required fields:
-   - Temperature: abuse temperature (25°C for growth, conservative cooking temperature for inactivation)
-   - pH: 7.0 (neutral, near-optimal for pathogen growth)
-   - Water activity: 0.99 (high, maximises predicted growth)
-   Recorded as `rule = "default_imputed"` and added to the top-level `defaults_imputed` list as a structured `DefaultImputedInfo` entry.
+2. **Default imputation.** When a value is still missing after grounding, applies a default for non-required fields:
+   - Temperature: abuse temperature (25°C for growth, conservative cooking temperature for inactivation). Source: `CONSERVATIVE_DEFAULT`.
+   - pH: 7.0 (neutral, near-optimal for pathogen growth). Source: `CONSERVATIVE_DEFAULT`.
+   - Water activity: 0.99 (high, maximises predicted growth). Source: `CONSERVATIVE_DEFAULT`.
+   - Duration (single-step only): 10080 min / 7 days — long window ensuring the trajectory reaches the physical cap. Source: `LONG_WINDOW_DEFAULT`. Multi-step duration is a required field (missing step duration → `success=False`).
+   Recorded as `rule = "default_imputed"` and added to the top-level `defaults_imputed` list as a structured `DefaultImputedInfo` entry with an optional `source` field carrying the `ValueSource` variant.
    **Organism is a required field — no default is applied.** If organism is absent after grounding, standardization returns `missing_required = ["organism"]` and the pipeline returns a structured failure response (see §8.13).
 3. **Range clamping.** When a value falls outside the selected ComBase model's valid range, clamps to the nearest boundary. Recorded as `rule = "range_clamp"` AND added to the top-level `range_clamps` list as a structured `RangeClampInfo` entry. A warning string is also emitted alongside.
 4. **Payload construction.** Builds the `ComBaseExecutionPayload` from the (now standardised) values.
@@ -363,8 +365,9 @@ Empty audit categories emit truly empty arrays (`[]`), not sentinel strings. The
 - `default_temperature_abuse_c = 25.0`
 - `default_ph_neutral = 7.0`
 - `default_aw_high = 0.99`
+- `default_long_window_minutes = 10080.0` (single-step duration; source: `LONG_WINDOW_DEFAULT`)
 
-Organism has no default — it is a required field (see §8.13).
+Organism has no default — it is a required field (see §8.13). Duration (single-step) is no longer required — it defaults to the long-window value above (see §8.13).
 
 **Structured event types** (recorded in `StandardizationResult` and on the per-field `ValueProvenance.standardization` block):
 - `range_bound_selection` — direction (upper/lower), before_value (the range), after_value (selected bound), reason. Mechanical, fires whenever a range_pending value is processed; not a safety event.
@@ -733,8 +736,8 @@ A small JSON manifest is written alongside the ChromaDB persistence directory at
 
 This provenance stamping was the safeguard that would have caught the 2026-04-27 stale-RAG-store bug (where the post-audit aw value 0.94 was correct in the CSV but the RAG store still served the pre-audit 0.93). When the manifest is absent, a warning is appended to `metadata.warnings` ("RAG manifest missing — store provenance unknown") and the system fields are emitted as null.
 
-### 8.13 Organism is a required field; missing pathogen returns a structured failure
-**Status:** ✅ Architectural (Phase 9.5, May 2026). Extended by category-level pathogen fallback (2026-05-14).
+### 8.13 Required fields: organism is required; duration defaults to long-window for single-step
+**Status:** ✅ Architectural (Phase 9.5, May 2026). Extended by category-level pathogen fallback (2026-05-14). Duration default introduced Phase 9.7 (2026-05-17).
 
 Organism is treated as a user-required field, symmetric with duration. If neither the user, the RAG retrieval (Stages 1+2), nor the category-level pathogen fallback supplies a pathogen, `StandardizationService._get_organism()` returns `None`, the caller appends `"organism"` to `std_result.missing_required`, and the orchestrator synthesises a null-provenance `ValueSource.MISSING` entry in `field_audit["organism"]` before returning `success=False` with `error = "Missing required values: organism"`.
 
@@ -744,7 +747,7 @@ Organism is treated as a user-required field, symmetric with duration. If neithe
 
 **Previous behaviour** (Phase 9.4, now removed): The system imputed Salmonella as a `DefaultImputed` event with `rule = "default_imputed"` on `field_audit["organism"].standardization`. That behaviour has been removed. `defaults_imputed` no longer contains organism entries.
 
-**Symmetric precedent:** Duration uses the same pattern. Missing temperature is handled differently (it has a conservative default at 25°C / abuse temperature), but organism is categorically different because no single organism is a safe default across all food categories.
+**Duration split (Phase 9.7, 2026-05-17):** Duration previously used the same required-field pattern as organism. As of Phase 9.7, single-step duration has been moved to the defaulted-field category (`LONG_WINDOW_DEFAULT`); a missing single-step duration now results in `success=True` with a 10080-min default. Multi-step duration remains a required field (a missing step duration is a structurally malformed claim). Organism retains the required-field behavior because no single organism is a safe default across all food categories.
 
 ### 8.14 Ground truth evaluation framework (methodology)
 **Status:** ✅ Agreed.
@@ -796,6 +799,7 @@ Ground truth for this system is not a single correct answer per query but the di
 | Audit trail data shape | ✅ Architectural | Per-field `field_audit` map + three top-level lists (range_clamps, defaults_imputed, warnings) + three context blocks (combase_model, system, provenance auto-derived) — see §8.9 |
 | Benchmark suite (exp_3_1) | ✅ Live | Running on 14 models; results in `benchmarks/results/` |
 | Benchmark suite (exp_1_1) | ✅ Live | pH stochasticity Monte Carlo |
+| Phase 9.7 — LONG_WINDOW_DEFAULT | ✅ Done | Single-step missing duration defaults to 10080 min; multi-step unchanged |
 | Streamlit dashboard | 🟡 In progress | Pages 1/2/3 exist; page 4 (pH stochasticity) per spec |
 | Documentation | 🟡 Mixed | This document (`ptm_context.md`) is current. Older `*_documentation.md` and `*_architecture_expanded.md` files in the repo are pre-Phase-9.2 and are out of date — they describe the bias-correction layer that has been removed and the range-bound-selection-in-grounding architecture that has been replaced. Pending task: generate a `specifications.md` from the codebase via reverse engineering and maintain it from there forward. |
 
@@ -934,6 +938,7 @@ The following inconsistencies present in v1.1 have been resolved in v1.2:
 | 1.2 | 2026-04-28 | Major audit-trail and architecture cleanup landed. Phases 9.2 / 9.3 / 9.4 closed. Specific changes: (a) range-bound selection moved from GroundingService to StandardizationService — §5.2, §5.3, §8.8; (b) bias-correction layer removed entirely (no duration multiplier, no temperature bump) — §5.3, §8.1, §8.7; (c) confidence numbers removed (per-rule, per-field, overall, intent) — §5.2, §5.6, §8.7; (d) audit metadata captured post-standardization with structured per-field `standardization` block populated for all events — §5.5, §5.6, §8.9; (e) out-of-range values clamped (not extrapolated) with structured `RangeClampInfo` — §8.10; (f) multi-source citation attribution at ingestion — §8.11; (g) RAG manifest at ingestion for store provenance stamping — §8.12; (h) default organism imputation as structured event — §8.13; (i) thermal_inactivation routing fixed via intent classifier prompt — §10.1. Closed inconsistencies #2 (default_ph_neutral), #3 (bias direction), #6 (audit pre-standardization snapshot), and removed `bias_corrections` from response shape. Standardization-block-as-a-list refactor filed in §16 as a deferred future enhancement. Older tech docs (`problem_translation_module_complete_techincal_documentation.md`, `grounding_service_documentation.md`, `grounding_service_architecture_expanded.md`) are now formally out of date pending replacement by a `specifications.md` reverse-engineered from the codebase (planned). |
 | 1.3 | 2026-05-04 | `food_properties.csv` schema migrated from a single `source_id` column to per-field `ph_source_id` / `aw_source_id` columns. `load_food_properties()` rewritten to read these columns directly; notes-parsing workaround (`_BRACKET_RE`, `_PROSE_RE`, `_parse_extra_source_ids`) deleted. Row-count sanity check (`EXPECTED_FOOD_PROPERTIES_COUNT = 252`) and per-field validation (empty-source, unknown-source) added. `TestMultiSourceAttribution` in `tests/unit/test_ingestion.py` replaced with 9 new tests covering the per-field schema. §6.2 updated with schema table + example rows; §8.11 rewritten; §10.1 RAG System note updated. Externally-visible audit shape (`top_match.source_ids`, `full_citations`) unchanged — audit-shape contract from test journal Q01–Q17 preserved. |
 | 1.4 | 2026-05-08 | Composite-food guard lifted from `TaxonomyBridge.resolve()` to `GroundingService._ground_food_properties()` so it gates all three retrieval tiers (not only Tier 3). Guard expanded with new keywords: chili, custard, chowder, gumbo, bisque, lasagna, lasagne. Added `COMPOSITE_FOOD_DEFAULT` to `ValueSource` enum and `composite_skip: dict[str, str]` to `GroundedValues` / `InterpretationMetadata`; route builder assigns the new source variant; standardization emits a reason string naming the matched keyword. §5.2 food-property retrieval section updated: composite-food guard documented as a pre-Tier-1 step; Tier 3 description updated to remove bridge-level blocklist. ValueSource priority table updated to include `COMPOSITE_FOOD_DEFAULT`. |
+| 1.6 | 2026-05-17 | Phase 9.7: Long-window default for single-step missing duration. Duration moves from required-field (`success=False`) to defaulted-field (`LONG_WINDOW_DEFAULT`, `success=True`) for single-step scenarios. Multi-step duration keeps failure path. Added `default_long_window_minutes=10080` to `settings.py`. Added `LONG_WINDOW_DEFAULT` to `ValueSource` and optional `source` field to `DefaultImputed` / `DefaultImputedInfo`. Route builder propagates `d.source` to `default_source` and `DefaultImputedInfo.source`. §5.2 priority table, §5.2 duration-rules paragraph, §5.3 default-imputation list + settings list, §8.13 title + symmetric-precedent paragraph, §10.1, §15 updated. |
 | 1.5 | 2026-05-14 | Category-level pathogen fallback added. When food-specific hazard lookup (Stages 1+2) yields no result, a new tier fires: food → `ptm_category` (FoodEx2 bridge) → IFT-2003-T1 categories (`data/rag/ift_category_alignment.csv`, new) → union of pathogens ranked by CDC annual deaths (`pathogen_food_associations.csv` + `pathogen_characteristics.csv`). Added `RAG_PATHOGEN_CATEGORY_FALLBACK` to `ValueSource`; `PathogenCandidate` and `PathogenCategoryFallbackInfo` to `metadata.py`; `PathogenCandidateInfo` and `PathogenCategoryFallbackAuditInfo` to `app/api/schemas/translation.py`. Route builder reads `prov.pathogen_category_fallback` to populate `FieldAuditEntry.pathogen_category_fallback` (verbose=true only). `_PATHOGEN_NAME_NORMALIZATION` dict maps associations-CSV names to characteristics-CSV names for death-count lookup. §5.2 (pathogen grounding paragraph), §8.13, and ValueSource priority table updated. |
 
 ---

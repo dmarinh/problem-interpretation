@@ -694,3 +694,23 @@ Three test helpers in `test_api_translation.py` created `RetrievalResult` object
 - Tri-state viability (`"true"` / `"partial"` / `"false"`) is more honest than boolean when some tiers have undefined FPR due to corpus structure — `"partial"` signals "calibration meaningful where measurable" rather than collapsing to `False` and incorrectly blocking viable cells.
 
 **Revised recommendation (after fix):** Switch to `minilm-l6-v2_verbose`. Delta pure MRR = +0.002 vs baseline. Same family, verbose format, 22M params. The previous "switch to bge-small x verbose" recommendation was an artefact of gate-filtered MRR at a specific calibrated threshold — it was not stable across threshold changes.
+
+---
+
+### 2026-05-17 — Phase 9.7: Long-window default for missing single-step duration
+
+**What went well:**
+- The `_get_duration()` return-type change (from `float | None` to `float`) naturally forced removal of the dead `if duration is None` block in the caller — the type system made the dead code obvious.
+- Multi-step isolation was confirmed before any edits: the single-step and multi-step duration paths share no code, so the change was truly contained.
+- Red phase discipline held: NT-1, NT-6, and NT-7 actually failed before implementation, preventing hollow tests from masquerading as coverage.
+- Route builder `default_source` logic was extended without breaking existing `CONSERVATIVE_DEFAULT` / `COMPOSITE_FOOD_DEFAULT` behaviour: the `d.source is not None` guard is checked first, so old `DefaultImputed` objects (source=None) remain unaffected.
+- Settings override test used `svc_module.settings.default_long_window_minutes` (the live attribute), not the literal `2880.0`, so the test survives a future default change.
+
+**What surfaced:**
+- **`git stash` mid-session invalidates in-flight test runs.** Using `git stash` to check pre-existing failures while unstaged changes are active stashes all current edits, causing subsequent test runs to use the old code. Always restore the stash immediately after checking (confirmed via `git stash pop` + re-running gate tests).
+- **Grounding and standardization both emit duration warnings.** `_ground_duration()` calls `mark_ungrounded()` which appends `"duration_minutes: No duration specified"` to `grounded.warnings`. StandardizationService appends its own long-window warning. Both appear in `metadata.warnings` in the final response. This is correct (grounding records the absence; standardization records the response) but surprised on first live inspection — check both layers when debugging missing-duration paths.
+- **`audit.audit.defaults_imputed` vs `audit.summary.defaults_imputed`:** The verbose API response nests the audit summary under `response.audit.audit` (not `response.audit.summary`). When inspecting live responses, use `data["audit"]["audit"]["defaults_imputed"]`, not `data["audit"]["summary"]["defaults_imputed"]`.
+
+**Rules:**
+- When adding a new `ValueSource` variant for a default that is epistemically different from `CONSERVATIVE_DEFAULT`, always add the `d.source is not None` guard in the route builder's `default_source` logic so the existing source inference remains correct for all historical defaults.
+- For features with a configurable threshold (like `default_long_window_minutes`), bind test assertions to the live settings attribute (`svc_module.settings.default_long_window_minutes`), not a hardcoded literal, to prevent the test from failing silently when the default is changed.

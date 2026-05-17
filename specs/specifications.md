@@ -241,9 +241,10 @@ When a required value is absent from `GroundedValues`:
 | `temperature_celsius` (THERMAL_INACTIVATION) | `60.0°C` (`settings.default_temperature_inactivation_conservative_c`) | Below typical pasteurization — conservative for less kill |
 | `ph` | `7.0` (`settings.default_ph_neutral`) | Neutral; near-optimal for pathogen growth; no protective acidity |
 | `water_activity` | `0.99` (`settings.default_water_activity`) | High; maximizes predicted growth |
+| `duration_minutes` (single-step only) | `10080.0 min` (7 days) (`settings.default_long_window_minutes`) | Single-step only — long window ensuring trajectory reaches cap. Source: `LONG_WINDOW_DEFAULT`. Multi-step duration is a required field. |
 | `initial_inoculum_log_cfu` | `model.defaults.inoculum` from `DefaultInoc` CSV column; fallback `3.0` when registry unavailable | Model-specific experimental inoculum; fallback used only when the ComBase registry lookup fails |
 
-Each imputation produces a `DefaultImputed(field_name, imputed_value, reason)` appended to `StandardizationResult.defaults_imputed`. A warning string is also emitted for missing critical fields (organism, temperature).
+Each imputation produces a `DefaultImputed(field_name, imputed_value, reason, source)` appended to `StandardizationResult.defaults_imputed`. `source` carries the `ValueSource` variant (`LONG_WINDOW_DEFAULT` for duration; `None` for older defaults that predate the field). A warning string is also emitted for missing critical fields (organism, temperature) and for the long-window duration default.
 
 **Operation 3 — Range clamping:**  
 When a value falls outside the ComBase model's valid range (from `ComBaseModelConstraints`):
@@ -451,7 +452,7 @@ Tracks origin and transformations of a single value. Key fields:
 
 | Field | Type | Description |
 |---|---|---|
-| `source` | `ValueSource` | Categorical source tier (USER_EXPLICIT, USER_INFERRED, RAG_RETRIEVAL, RAG_RETRIEVAL_FALLBACK, RAG_RETRIEVAL_CATEGORY_BRIDGE, CONSERVATIVE_DEFAULT, etc.) |
+| `source` | `ValueSource` | Categorical source tier (USER_EXPLICIT, USER_INFERRED, RAG_RETRIEVAL, RAG_RETRIEVAL_FALLBACK, RAG_RETRIEVAL_CATEGORY_BRIDGE, CONSERVATIVE_DEFAULT, LONG_WINDOW_DEFAULT, etc.) |
 | `original_text` | `str \| None` | Raw text from user or RAG |
 | `retrieval_source` | `str \| None` | RAG doc_id |
 | `transformation_applied` | `str \| None` | Free-text description of transformation (legacy, supplemented by structured `standardization` block) |
@@ -712,6 +713,7 @@ There is no bias-correction layer. No duration multiplier. No temperature bump. 
 | temperature (THERMAL_INACTIVATION) | 60.0°C | Below pasteurization — less kill |
 | pH | 7.0 | Neutral — optimal for growth, no acid protection |
 | water_activity | 0.99 | High — maximizes growth |
+| duration_minutes (single-step only) | 10080.0 min | Long window — trajectory reaches physical cap |
 
 ### 9.3 Range-Bound Selection Direction
 
@@ -937,6 +939,7 @@ LiteLLM + Instructor. Model specified via `LLM_MODEL`. Supported providers inclu
 | `ComBaseExecutionPayload` | The standardized, engine-ready payload produced by StandardizationService |
 | `ComBaseModelRegistry` | In-memory registry of all ComBase models loaded from CSV, keyed by `{model_id}_{organism_id}_{factor4_type}` |
 | `conservative_default` | A value substituted when the user's input is absent, chosen to predict the worst-case food safety outcome |
+| `LONG_WINDOW_DEFAULT` | `ValueSource` variant emitted when a single-step query provides no duration. The 7-day (10080 min) window ensures the prediction trajectory reaches the physical growth cap (±15 log CFU) under all model types. Epistemically distinct from `CONSERVATIVE_DEFAULT`: duration is a scenario dimension (how long to simulate), not an environmental property with a scientifically-defensible worst-case value. |
 | `ExtractedScenario` | Pydantic model produced by SemanticParser from the user's query |
 | `Factor4Type` | Optional fourth environmental factor: NONE, CO2, NITRITE, LACTIC_ACID, ACETIC_ACID |
 | `field_audit` | Canonical post-standardization per-field map in the verbose API response |
@@ -951,7 +954,7 @@ LiteLLM + Instructor. Model specified via `LLM_MODEL`. Supported providers inclu
 | `TCS` | Time/Temperature Control for Safety — regulatory food classification |
 | `TranslationResult` | Top-level return from the orchestrator (.state, .success, .error, .execution_result, .metadata) |
 | `ValueProvenance` | Per-field metadata tracking source, extraction method, range bounds, and standardization events |
-| `ValueSource` | Categorical reliability tier: USER_EXPLICIT, USER_INFERRED, RAG_RETRIEVAL (primary food-properties query), RAG_RETRIEVAL_FALLBACK (per-field Tier 2 fallback query), RAG_RETRIEVAL_CATEGORY_BRIDGE (Tier 3 FoodEx2 bridge), RAG_PATHOGEN_CATEGORY_FALLBACK (organism inferred from food category via IFT-2003-T1, ranked by CDC annual deaths), CONSERVATIVE_DEFAULT, COMPOSITE_FOOD_DEFAULT (retrieval deliberately skipped — food identified as composite dish), FUZZY_MATCH, CALCULATED, CLAMPED_TO_RANGE, CLARIFICATION_RESPONSE |
+| `ValueSource` | Categorical reliability tier: USER_EXPLICIT, USER_INFERRED, RAG_RETRIEVAL (primary food-properties query), RAG_RETRIEVAL_FALLBACK (per-field Tier 2 fallback query), RAG_RETRIEVAL_CATEGORY_BRIDGE (Tier 3 FoodEx2 bridge), RAG_PATHOGEN_CATEGORY_FALLBACK (organism inferred from food category via IFT-2003-T1, ranked by CDC annual deaths), CONSERVATIVE_DEFAULT, COMPOSITE_FOOD_DEFAULT (retrieval deliberately skipped — food identified as composite dish), LONG_WINDOW_DEFAULT (single-step duration unspecified; 7-day window assumed), FUZZY_MATCH, CALCULATED, CLAMPED_TO_RANGE, CLARIFICATION_RESPONSE |
 
 ---
 
