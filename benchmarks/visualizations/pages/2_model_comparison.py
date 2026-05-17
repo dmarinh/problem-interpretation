@@ -1,5 +1,5 @@
 """
-Page 2: Model Comparison (Experiment 3.3)
+Page 2: Model Comparison (Experiment 3.1)
 
 Section-by-section viewer for the LLM model comparison benchmark.
 Narrative flow: Run info → Summary table → Key charts → Deep dive → Recommendation.
@@ -119,9 +119,9 @@ def _compute_recommendation(df: pd.DataFrame) -> dict:
 
 inject_css()
 
-_EXPERIMENT_ID = "exp_3_3_model_comparison"
+_EXPERIMENT_ID = "exp_3_1_model_comparison"
 
-st.title("Experiment 3.3 — LLM Model Comparison")
+st.title("Experiment 3.1 — LLM Model Comparison")
 
 # ── 4a: Data loading ─────────────────────────────────────────────────────────
 # Respect sidebar run selection (app.py stores it in session_state).
@@ -153,7 +153,7 @@ if results:
 # No-results state.
 if results is None:
     st.info(
-        "No results found for Experiment 3.3. "
+        "No results found for Experiment 3.1. "
         "Run the experiment first from the **Run Experiments** page."
     )
     st.page_link("pages/3_run_experiments.py", label="Go to Run Experiments", icon=":material/play_circle:")

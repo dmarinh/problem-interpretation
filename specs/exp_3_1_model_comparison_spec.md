@@ -1,6 +1,6 @@
 # Experiment Spec — LLM Model Comparison for PTM Semantic Extraction
 
-This document is the working record of Experiment 3.3 in the PTM benchmark suite. It is archive-quality: it describes what was built, what was found, and what the recommendation is. It is written to be read cold by someone who did not live through the conversation.
+This document is the working record of Experiment 3.1 in the PTM benchmark suite. It is archive-quality: it describes what was built, what was found, and what the recommendation is. It is written to be read cold by someone who did not live through the conversation.
 
 ---
 
@@ -8,7 +8,7 @@ This document is the working record of Experiment 3.3 in the PTM benchmark suite
 
 PTM's semantic parser is the entry point of the pipeline: it converts natural-language food-safety scenarios into a structured `ExtractedScenario` Pydantic schema that flows through grounding, standardisation, and ComBase execution. The parser's accuracy and consistency directly determine the system's trustworthiness — a wrong model-type classification reverses the direction of conservative bias, which is a safety-critical failure.
 
-Exp 3.3 answers the model-selection question for the semantic parser: **which LLM should PTM use in production, and what are the viable fallback options under budget constraints?**
+Exp 3.1 answers the model-selection question for the semantic parser: **which LLM should PTM use in production, and what are the viable fallback options under budget constraints?**
 
 The experiment ran across two model classes — frontier API models (OpenAI) and locally-hosted models via Ollama — against an expert-annotated benchmark of 20 extraction queries spanning easy / medium / hard difficulty tiers. The output decides the production model, characterises the gap between frontier and local options, and identifies which local model is the closest viable fallback.
 
@@ -39,9 +39,9 @@ benchmarks/
 │   ├── exp_1_1_ph_stochasticity.py
 │   ├── exp_2_1_embedder_comparison.py
 │   ├── exp_2_2_embedder_doc_format.py
-│   └── exp_3_3_model_comparison.py             # THIS EXPERIMENT
+│   └── exp_3_1_model_comparison.py             # THIS EXPERIMENT
 ├── results/
-│   └── exp_3_3_model_comparison/
+│   └── exp_3_1_model_comparison/
 │       ├── results_YYYYMMDD_HHMMSS.json
 │       ├── summary_YYYYMMDD_HHMMSS.csv
 │       ├── latest.json
@@ -51,7 +51,7 @@ benchmarks/
         └── 2_model_comparison.py               # Streamlit viewer page
 ```
 
-The naming convention: 1.x = data-quality experiments, 2.x = retrieval-quality, **3.x = LLM-quality**, 4.x = robustness. Exp 3.3 is the LLM-quality flagship; future 3.x experiments would test prompt variants (3.4), reasoning-mode toggles (3.5), or specific failure-mode probes (3.6).
+The naming convention: 1.x = data-quality experiments, 2.x = retrieval-quality, **3.x = LLM-quality**, 4.x = robustness. Exp 3.1 is the LLM-quality flagship; future 3.x experiments would test prompt variants (3.4), reasoning-mode toggles (3.5), or specific failure-mode probes (3.6).
 
 ---
 
@@ -108,7 +108,7 @@ The `MODELS` config lives in `benchmarks/config.py`.
 
 ## 6. Experiment script structure
 
-`benchmarks/experiments/exp_3_3_model_comparison.py`. Skeleton mirrors Exp 2.1 / 2.2.
+`benchmarks/experiments/exp_3_1_model_comparison.py`. Skeleton mirrors Exp 2.1 / 2.2.
 
 ### Per-model pipeline
 
@@ -149,10 +149,10 @@ For each `(model, query)` pair, aggregated across the N runs:
 ### CLI
 
 ```
-python -m benchmarks.experiments.exp_3_3_model_comparison
-python -m benchmarks.experiments.exp_3_3_model_comparison --models "GPT-4o,Qwen 3 8B"
-python -m benchmarks.experiments.exp_3_3_model_comparison --runs 20
-python -m benchmarks.experiments.exp_3_3_model_comparison --no-mlflow
+python -m benchmarks.experiments.exp_3_1_model_comparison
+python -m benchmarks.experiments.exp_3_1_model_comparison --models "GPT-4o,Qwen 3 8B"
+python -m benchmarks.experiments.exp_3_1_model_comparison --runs 20
+python -m benchmarks.experiments.exp_3_1_model_comparison --no-mlflow
 ```
 
 ---
@@ -322,9 +322,9 @@ This pattern would let Qwen 3 8B at 75% model_type accuracy handle the easy/medi
 
 ## 12. Definition of done
 
-Exp 3.3 is considered complete when:
+Exp 3.1 is considered complete when:
 
-1. `exp_3_3_model_comparison.py` runs end-to-end across the shortlist, produces `latest.json` and `latest.csv` with MLflow logging.
+1. `exp_3_1_model_comparison.py` runs end-to-end across the shortlist, produces `latest.json` and `latest.csv` with MLflow logging.
 2. The Streamlit page at `pages/2_model_comparison.py` renders the results cleanly against `latest.json`.
 3. The production recommendation (GPT-4o) is supported by data on accuracy, consistency, safety-critical correctness, latency, and cost.
 4. The local-fallback recommendation (Qwen 3 8B, with caveats) is supported by data on the same dimensions, with explicit gap analysis against the production floor.
@@ -342,8 +342,8 @@ Same as Exp 2.1 / 2.2, unchanged. Simple over DRY. No fake metrics. Production c
 
 - **Spec:** this document.
 - **Corpus:** `benchmarks/datasets/extraction_queries.json` v0.2 (20 queries).
-- **Runner:** `benchmarks/experiments/exp_3_3_model_comparison.py`.
-- **Output:** `benchmarks/results/exp_3_3_model_comparison/{latest.json, latest.csv}`.
+- **Runner:** `benchmarks/experiments/exp_3_1_model_comparison.py`.
+- **Output:** `benchmarks/results/exp_3_1_model_comparison/{latest.json, latest.csv}`.
 - **Viewer:** `benchmarks/visualizations/pages/2_model_comparison.py`.
 - **Config:** `benchmarks/config.py` (MODELS list).
 - **Lessons:** entries in `specs/lessons.md` related to extraction and parser-stage work.

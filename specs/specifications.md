@@ -871,7 +871,7 @@ FastAPI lifespan handler (`app/main.py`):
 **Benchmark suite:** `benchmarks/experiments/` — uses MLflow for tracking. Results in `benchmarks/results/`. Streamlit dashboard at `benchmarks/visualizations/app.py`.
 
 **`benchmarks/config.py`** defines two constants consumed by benchmark scripts and the dashboard:
-- `MODELS` — LLM candidates for Exp 3.3 (model comparison).
+- `MODELS` — LLM candidates for Exp 3.1 (model comparison).
 - `EMBEDDERS` — sentence-transformer candidates for Exp 2.1 (embedder comparison). Each entry has: `id`, `name`, `hf_model`, `dim`, `params_m`, `is_baseline`, `training_objective`, `input_prefix_query`, `input_prefix_passage`. Four embedders in a 2×2 design (size: 384-dim / 768-dim × objective: general / retrieval-optimised). Baseline is `all-MiniLM-L6-v2` (22M, 384-dim, general).
 
 **Experiment 2.1 — Embedder Comparison** (`benchmarks/experiments/exp_2_1_embedder_comparison.py`):

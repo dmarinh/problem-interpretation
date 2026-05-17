@@ -47,7 +47,7 @@ _RESULTS_PAGE: dict[str, tuple[str, str]] = {
         "pages/4_ph_stochasticity.py",
         "View pH Stochasticity Results",
     ),
-    "exp_3_3_model_comparison": (
+    "exp_3_1_model_comparison": (
         "pages/2_model_comparison.py",
         "View Results in Model Comparison",
     ),
@@ -280,7 +280,7 @@ else:
             # Unique model names regardless of CSV schema (per-model or per-food).
             models_str = ", ".join(sorted(run_df["model"].unique().tolist()))
             if "accuracy" in run_df.columns and "cost_per_call_usd" in run_df.columns:
-                # Comparison experiment (exp_3_3) — per-model CSV.
+                # Comparison experiment (exp_3_1) — per-model CSV.
                 is_comparison = True
                 col2_val = f"{run_df['accuracy'].max():.1%}"
                 total_cost = run_df["cost_per_call_usd"].sum()

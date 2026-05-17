@@ -25,7 +25,7 @@ _RESULTS_PAGE: dict[str, tuple[str, str]] = {
         "pages/4_ph_stochasticity.py",
         "View pH Stochasticity Results",
     ),
-    "exp_3_3_model_comparison": (
+    "exp_3_1_model_comparison": (
         "pages/2_model_comparison.py",
         "View Results in Model Comparison",
     ),
@@ -37,7 +37,7 @@ def _run_history_row(run_df: pd.DataFrame | None) -> tuple[str, str, str]:
 
     Returns (models_str, col2_val, col3_val) where the meaning of col2/col3
     depends on schema:
-      - Comparison schema (exp_3_3): col2=best accuracy %, col3=total cost/call $
+      - Comparison schema (exp_3_1): col2=best accuracy %, col3=total cost/call $
       - Per-food schema (exp_1_1):   col2=mean ph_mae (3dp), col3=safety impact count
       - Unknown / missing:            col2="—", col3="—"
 
@@ -436,29 +436,29 @@ class TestGetQueryCount:
 
     def test_no_results_returns_none(self):
         stub = _load_latest_results_stub(None)
-        assert get_query_count_mirrored("exp_3_3", stub) is None
+        assert get_query_count_mirrored("exp_3_1", stub) is None
 
     def test_empty_list_results_returns_none(self):
         stub = _load_latest_results_stub([])
-        assert get_query_count_mirrored("exp_3_3", stub) is None
+        assert get_query_count_mirrored("exp_3_1", stub) is None
 
     def test_non_list_results_returns_none(self):
         stub = _load_latest_results_stub("not-a-list")
-        assert get_query_count_mirrored("exp_3_3", stub) is None
+        assert get_query_count_mirrored("exp_3_1", stub) is None
 
     def test_result_with_no_queries_key_returns_none(self):
         # results[0] has no "queries" key → get returns [] → len=0 → None
         stub = _load_latest_results_stub([{"model": "GPT-4o", "summary": {}}])
-        assert get_query_count_mirrored("exp_3_3", stub) is None
+        assert get_query_count_mirrored("exp_3_1", stub) is None
 
     def test_result_with_empty_queries_returns_none(self):
         stub = _load_latest_results_stub([{"queries": []}])
-        assert get_query_count_mirrored("exp_3_3", stub) is None
+        assert get_query_count_mirrored("exp_3_1", stub) is None
 
     def test_result_with_queries_returns_count(self):
         queries = [{"q": "a"}, {"q": "b"}, {"q": "c"}]
         stub = _load_latest_results_stub([{"queries": queries}])
-        assert get_query_count_mirrored("exp_3_3", stub) == 3
+        assert get_query_count_mirrored("exp_3_1", stub) == 3
 
     def test_returns_query_count_from_first_model_only(self):
         """Only results[0] is used; a second model with more queries is ignored."""
@@ -466,11 +466,11 @@ class TestGetQueryCount:
             {"queries": [1, 2]},
             {"queries": [1, 2, 3, 4, 5]},
         ])
-        assert get_query_count_mirrored("exp_3_3", stub) == 2
+        assert get_query_count_mirrored("exp_3_1", stub) == 2
 
     def test_single_query_returns_one(self):
         stub = _load_latest_results_stub([{"queries": ["only one"]}])
-        assert get_query_count_mirrored("exp_3_3", stub) == 1
+        assert get_query_count_mirrored("exp_3_1", stub) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -618,8 +618,8 @@ class TestResultsPageMapping:
         assert "4_ph_stochasticity" in page
         assert label  # non-empty label
 
-    def test_exp_3_3_links_to_model_comparison_page(self):
-        page, label = _RESULTS_PAGE["exp_3_3_model_comparison"]
+    def test_exp_3_1_links_to_model_comparison_page(self):
+        page, label = _RESULTS_PAGE["exp_3_1_model_comparison"]
         assert "2_model_comparison" in page
         assert label
 
@@ -637,7 +637,7 @@ class TestResultsPageMapping:
 
 
 def _make_comparison_run_df(models: list[str]) -> pd.DataFrame:
-    """Per-model CSV schema (Exp 3.3)."""
+    """Per-model CSV schema (Exp 3.1)."""
     return pd.DataFrame([
         {"model": m, "accuracy": 0.85 + i * 0.05, "cost_per_call_usd": 0.001 * (i + 1)}
         for i, m in enumerate(models)
@@ -669,10 +669,10 @@ def _make_per_food_run_df(
 
 
 class TestRunHistorySchema:
-    # --- comparison schema (exp_3_3) ---
+    # --- comparison schema (exp_3_1) ---
 
     def test_comparison_schema_extracts_all_fields(self):
-        """Per-model CSV (exp_3_3) must yield model names, accuracy %, and cost $."""
+        """Per-model CSV (exp_3_1) must yield model names, accuracy %, and cost $."""
         df = _make_comparison_run_df(["ModelA", "ModelB"])
         models_str, col2, col3 = _run_history_row(df)
         assert "ModelA" in models_str

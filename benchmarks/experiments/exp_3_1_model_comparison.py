@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Experiment 3.3: LLM Model Comparison for Semantic Extraction
+Experiment 3.1: LLM Model Comparison for Semantic Extraction
 
 Compares candidate LLMs on the task that matters: extracting food safety
 scenarios from natural language using the REAL SemanticParser — the same
@@ -101,7 +101,7 @@ EXPERIMENT TRACKING
 
 Results are saved in two ways:
 
-1. Local files: benchmarks/results/exp_3_3_model_comparison/
+1. Local files: benchmarks/results/exp_3_1_model_comparison/
    - results_YYYYMMDD_HHMMSS.json  — full data, timestamped
    - summary_YYYYMMDD_HHMMSS.csv   — one row per model, all metrics
    - latest.json / latest.csv      — symlinks/copies to most recent
@@ -115,10 +115,10 @@ Results are saved in two ways:
 ═══════════════════════════════════════════════════════════════════════
 
 Usage:
-    python -m benchmarks.experiments.exp_3_3_model_comparison
-    python -m benchmarks.experiments.exp_3_3_model_comparison --runs 3
-    python -m benchmarks.experiments.exp_3_3_model_comparison --models GPT-4o,GPT-4o-mini
-    python -m benchmarks.experiments.exp_3_3_model_comparison --no-mlflow
+    python -m benchmarks.experiments.exp_3_1_model_comparison
+    python -m benchmarks.experiments.exp_3_1_model_comparison --runs 3
+    python -m benchmarks.experiments.exp_3_1_model_comparison --models GPT-4o,GPT-4o-mini
+    python -m benchmarks.experiments.exp_3_1_model_comparison --no-mlflow
 """
 
 import asyncio
@@ -752,7 +752,7 @@ async def run_experiment(models: list[dict], queries: list[dict], n_runs: int):
 # ---------------------------------------------------------------------------
 
 def save_results(results: list[dict], run_timestamp: str) -> Path:
-    out_dir = RESULTS_DIR / "exp_3_3_model_comparison"
+    out_dir = RESULTS_DIR / "exp_3_1_model_comparison"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # --- Full results JSON (timestamped) ---
@@ -847,7 +847,7 @@ def log_to_mlflow(results: list[dict], out_dir: Path,
     # and is the recommended approach since FileStore was deprecated Feb 2026.
     db_path = PROJECT_ROOT / "mlruns.db"
     mlflow.set_tracking_uri(f"sqlite:///{db_path}")
-    mlflow.set_experiment("exp_3_3_model_comparison")
+    mlflow.set_experiment("exp_3_1_model_comparison")
 
     with mlflow.start_run(run_name=f"run_{run_timestamp}"):
         # Parameters (shared across all models in this run)
@@ -986,7 +986,7 @@ def print_summary(results: list[dict]):
 # ---------------------------------------------------------------------------
 
 async def main():
-    parser = argparse.ArgumentParser(description="Exp 3.3: LLM Model Comparison")
+    parser = argparse.ArgumentParser(description="Exp 3.1: LLM Model Comparison")
     parser.add_argument("--runs", type=int, default=5,
                         help="Extraction runs per query per model (default: 5)")
     parser.add_argument("--models", type=str, default=None,
@@ -998,7 +998,7 @@ async def main():
     run_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
     print(f"\n{'#'*70}")
-    print(f"  EXPERIMENT 3.3: LLM MODEL COMPARISON")
+    print(f"  EXPERIMENT 3.1: LLM MODEL COMPARISON")
     print(f"  Semantic extraction accuracy, consistency, and latency")
     print(f"  Run: {run_timestamp}")
     print(f"{'#'*70}")

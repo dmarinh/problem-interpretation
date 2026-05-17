@@ -201,14 +201,14 @@ class TestListExperimentsWithResults:
     def test_experiment_with_results(self, results_dir):
         _create_experiment(
             results_dir,
-            "exp_3_3_model_comparison",
+            "exp_3_1_model_comparison",
             timestamps=["20260410_113632"],
         )
 
         experiments = data_loader.list_experiments_with_results()
         assert len(experiments) == 1
         exp = experiments[0]
-        assert exp["experiment_id"] == "exp_3_3_model_comparison"
+        assert exp["experiment_id"] == "exp_3_1_model_comparison"
         assert exp["has_results"] is True
         assert exp["latest_timestamp"] == "20260410_113632"
 
@@ -270,19 +270,19 @@ class TestLoadConfigModels:
 
 
 # ---------------------------------------------------------------------------
-# Integration: real exp_3_3_model_comparison results
+# Integration: real exp_3_1_model_comparison results
 # ---------------------------------------------------------------------------
 
-_REAL_EXP_DIR = REAL_RESULTS_DIR / "exp_3_3_model_comparison"
+_REAL_EXP_DIR = REAL_RESULTS_DIR / "exp_3_1_model_comparison"
 _has_real_results = (_REAL_EXP_DIR / "latest.json").exists()
 
 
-@pytest.mark.skipif(not _has_real_results, reason="No real exp_3_3 results on disk")
+@pytest.mark.skipif(not _has_real_results, reason="No real exp_3_1 results on disk")
 class TestRealExp33Results:
-    """Run loaders against the real exp_3_3_model_comparison results."""
+    """Run loaders against the real exp_3_1_model_comparison results."""
 
     def test_load_latest_results(self):
-        results, df = data_loader.load_latest_results("exp_3_3_model_comparison")
+        results, df = data_loader.load_latest_results("exp_3_1_model_comparison")
         assert results is not None
         assert isinstance(results, list)
         assert len(results) >= 1
@@ -292,16 +292,16 @@ class TestRealExp33Results:
         assert len(df) >= 1
 
     def test_list_available_runs(self):
-        runs = data_loader.list_available_runs("exp_3_3_model_comparison")
+        runs = data_loader.list_available_runs("exp_3_1_model_comparison")
         assert len(runs) >= 1
         for run in runs:
             assert "timestamp" in run
             assert Path(run["filepath"]).exists()
 
-    def test_list_experiments_includes_exp_3_3(self):
+    def test_list_experiments_includes_exp_3_1(self):
         experiments = data_loader.list_experiments_with_results()
         ids = [e["experiment_id"] for e in experiments]
-        assert "exp_3_3_model_comparison" in ids
-        exp = next(e for e in experiments if e["experiment_id"] == "exp_3_3_model_comparison")
+        assert "exp_3_1_model_comparison" in ids
+        exp = next(e for e in experiments if e["experiment_id"] == "exp_3_1_model_comparison")
         assert exp["has_results"] is True
         assert exp["latest_timestamp"] is not None

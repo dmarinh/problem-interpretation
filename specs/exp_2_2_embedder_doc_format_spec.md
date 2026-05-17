@@ -134,7 +134,7 @@ The `DOC_FORMATS` config lives alongside `EMBEDDERS` in `benchmarks/visualizatio
 
 ## 7. Experiment script structure
 
-`benchmarks/experiments/exp_2_2_embedder_doc_format.py` follows the same skeleton as `exp_2_1_embedder_comparison.py` and `exp_3_3_model_comparison.py`. Key adaptations:
+`benchmarks/experiments/exp_2_2_embedder_doc_format.py` follows the same skeleton as `exp_2_1_embedder_comparison.py` and `exp_3_1_model_comparison.py`. Key adaptations:
 
 ### Per-cell pipeline
 

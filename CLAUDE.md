@@ -21,7 +21,7 @@ Guidance for Claude Code working on the **Predictive Microbiology Translation Mo
 - RAG admin: `python -m cli.rag_admin` (subcommands: status, verify, --clear)
 
 ### Benchmarks (require API keys in `.env`)
-- Run model comparison: `python -m benchmarks.experiments.exp_3_3_model_comparison --runs 1`
+- Run model comparison: `python -m benchmarks.experiments.exp_3_1_model_comparison --runs 1`
 - Run pH stochasticity: `python -m benchmarks.experiments.exp_1_1_ph_stochasticity --runs 1`
 - View dashboard: `streamlit run benchmarks/visualizations/app.py`
 - MLflow UI: `mlflow ui --backend-store-uri sqlite:///mlruns.db`

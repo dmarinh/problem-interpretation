@@ -28,7 +28,7 @@ _COMPARISON_COLS = {"accuracy", "cost_per_call_usd", "model"}
 def _is_comparison_df(df: pd.DataFrame) -> bool:
     """Return True when df has the model-comparison schema (accuracy + cost columns).
 
-    Exp 1.1 produces a per-food CSV without these columns; Exp 3.3 produces a
+    Exp 1.1 produces a per-food CSV without these columns; Exp 3.1 produces a
     per-model CSV that does.  The overview uses this to skip experiments whose
     results don't carry cross-experiment accuracy/cost metrics.
     """
@@ -86,7 +86,7 @@ st.header("At a Glance")
 if not experiment_summaries:
     st.info(
         "No benchmark results found yet. Run an experiment first:\n\n"
-        "```\npython -m benchmarks.experiments.exp_3_3_model_comparison\n```"
+        "```\npython -m benchmarks.experiments.exp_3_1_model_comparison\n```"
     )
 else:
     # Gather cross-experiment stats from whichever experiments have data
@@ -171,4 +171,4 @@ else:
 # --- Quick links ---
 st.header("Quick Links")
 
-st.page_link("pages/2_model_comparison.py", label="Model Comparison (Exp 3.3)", icon=":material/bar_chart:")
+st.page_link("pages/2_model_comparison.py", label="Model Comparison (Exp 3.1)", icon=":material/bar_chart:")

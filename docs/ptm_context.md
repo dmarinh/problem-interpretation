@@ -527,8 +527,8 @@ The benchmark suite lives under `benchmarks/` and is part of the broader PTM sco
 
 ### 7.1 Experiments currently implemented
 
-#### Experiment 3.3 — LLM Model Comparison for Semantic Extraction
-**File:** `benchmarks/experiments/exp_3_3_model_comparison.py`
+#### Experiment 3.1 — LLM Model Comparison for Semantic Extraction
+**File:** `benchmarks/experiments/exp_3_1_model_comparison.py`
 
 Compares candidate LLMs on the extraction task using the **real** `SemanticParser` — same code path, same system prompt, same Pydantic schema as production. Uses monkey-patched `litellm.acompletion` for per-call token and cost tracking; cost via `litellm.completion_cost()`.
 
@@ -547,7 +547,7 @@ Compares candidate LLMs on the extraction task using the **real** `SemanticParse
 **Model roster:** 14 models across 5 tiers (frontier reference, established frontier, cost-optimized, reasoning, open-source Ollama). Local Ollama models require `instructor_mode="JSON"` because they lack tool-call support; API models use Instructor's default tool-call mode.
 
 **Result outputs:**
-- `benchmarks/results/exp_3_3_model_comparison/results_YYYYMMDD_HHMMSS.json` — full per-query, per-run data
+- `benchmarks/results/exp_3_1_model_comparison/results_YYYYMMDD_HHMMSS.json` — full per-query, per-run data
 - `summary_YYYYMMDD_HHMMSS.csv` — one row per model with all metrics
 - `latest.json` / `latest.csv` — copies of most recent run
 - MLflow tracking via local SQLite backend (`mlruns.db`)
@@ -574,7 +574,7 @@ This is important and has caused confusion. **PTM has two distinct query sets, s
 | Artefact | Location | Purpose | Size | Organized by |
 |----------|----------|---------|------|--------------|
 | Sensitivity analysis queries | `sensitivity_analysis_queries.md` | Human-vs-system comparison study + Sobol sensitivity analysis (publications) | 30 | User category (A: Risk Assessors, B: Inspectors, C: Industry QA) |
-| Extraction queries (benchmark) | `benchmarks/datasets/extraction_queries.json` | Engineering ground truth for `exp_3_3` runtime comparisons | ❓ size to confirm | Difficulty tier (easy / medium / hard / non-scenario) |
+| Extraction queries (benchmark) | `benchmarks/datasets/extraction_queries.json` | Engineering ground truth for `exp_3_1` runtime comparisons | ❓ size to confirm | Difficulty tier (easy / medium / hard / non-scenario) |
 
 Whether these overlap in content, and whether one should be derived from the other, is an **open question to resolve**. Daniel's working knowledge is of the 30-query md set; the JSON was built for the benchmark harness and is loaded automatically by the experiment script.
 
@@ -586,7 +586,7 @@ Web-based dashboard for the benchmark suite. Built with Streamlit + Plotly Expre
 
 **Page layout:**
 - `1_overview.py` — landing page with status cards across experiments, cost-vs-accuracy pick ("best cost-efficient model"), summary metrics.
-- `2_model_comparison.py` — Experiment 3.3 viewer. Includes a safety-critical red banner that fires whenever any query × model cell shows a GROWTH vs. THERMAL_INACTIVATION misclassification.
+- `2_model_comparison.py` — Experiment 3.1 viewer. Includes a safety-critical red banner that fires whenever any query × model cell shows a GROWTH vs. THERMAL_INACTIVATION misclassification.
 - `3_run_experiments.py` — runner page. Subprocess wrapper around `python -m benchmarks.experiments.exp_X_Y` with model selection, run count, `--no-mlflow` toggle, and (for 1.1) temperature and log-threshold sliders.
 - `4_ph_stochasticity.py` — Experiment 1.1 viewer (per `SPEC_exp_1_1_ph_stochasticity.md`). Violin plots per food ordered by stdev, MAE bar chart, growth propagation chart with configurable log-threshold slider.
 
@@ -794,7 +794,7 @@ Ground truth for this system is not a single correct answer per query but the di
 | Orchestrator | ✅ Complete | Audit metadata captured post-standardization; `field_audit` is canonical, legacy `provenance` array auto-derived |
 | API (`/api/v1/translate`) | ✅ Live | `verbose=true` exposes the full structured audit shape |
 | Audit trail data shape | ✅ Architectural | Per-field `field_audit` map + three top-level lists (range_clamps, defaults_imputed, warnings) + three context blocks (combase_model, system, provenance auto-derived) — see §8.9 |
-| Benchmark suite (exp_3_3) | ✅ Live | Running on 14 models; results in `benchmarks/results/` |
+| Benchmark suite (exp_3_1) | ✅ Live | Running on 14 models; results in `benchmarks/results/` |
 | Benchmark suite (exp_1_1) | ✅ Live | pH stochasticity Monte Carlo |
 | Streamlit dashboard | 🟡 In progress | Pages 1/2/3 exist; page 4 (pH stochasticity) per spec |
 | Documentation | 🟡 Mixed | This document (`ptm_context.md`) is current. Older `*_documentation.md` and `*_architecture_expanded.md` files in the repo are pre-Phase-9.2 and are out of date — they describe the bias-correction layer that has been removed and the range-bound-selection-in-grounding architecture that has been replaced. Pending task: generate a `specifications.md` from the codebase via reverse engineering and maintain it from there forward. |
@@ -828,7 +828,7 @@ For each open concern, the table below captures the concern in one line and the 
 | 2 | **Conservative bias direction for thermal inactivation** — Bias rules only correct for growth; were anti-conservative for cooking queries (Chicken Nuggets bug). | ✅ Resolved | Model-type-aware bias implemented in Phase 9.1 (§8.1). Non-thermal survival still uses growth direction; refinement for acid-treatment / drying edge cases tracked. |
 | 3 | **Lag phase handling** — Current λ=0 over-predicts growth and compounds with other conservative biases. | 🔴 Open | Two-step plan: (1) MVP — full Baranyi with fixed default h₀ per organism (ComBase-compatible). (2) Research — curated lag-phase RAG corpus from 30–50 papers structured as (organism, prior conditions, current conditions, observed lag, matrix, reference). LLM-based numerical h₀ prediction was evaluated and rejected as infeasible. |
 | 4 | **RAG coverage, currency, governance** — CDC 2011 outdated (2019 update available); 259 foods skewed to Western agriculture; no formal curation protocol; no RAG version tracking. | 🟡 Partial | CDC-2019 source registered but rows not yet merged (§6.3). Governance protocol and RAG version tracking not yet designed. Hybrid architecture (structured CSV + direct PDF for regulatory/literature text) is the agreed future state. USDA FoodData Central is the target for food-specific aw in a future sprint. |
-| 5 | **LLM as a single point of failure / reproducibility paradox** — Extraction is a probabilistic LLM call; the system claims reproducibility but the first stage is stochastic. Reproducibility is not empirically verified. | 🔴 Open | Experiment 3.3 measures extraction consistency (same query × N runs → field-level agreement) as a first-class metric. Targeted response: reproducibility claim will be reframed as "process transparency and structured standardisation" rather than deterministic output. |
+| 5 | **LLM as a single point of failure / reproducibility paradox** — Extraction is a probabilistic LLM call; the system claims reproducibility but the first stage is stochastic. Reproducibility is not empirically verified. | 🔴 Open | Experiment 3.1 measures extraction consistency (same query × N runs → field-level agreement) as a first-class metric. Targeted response: reproducibility claim will be reframed as "process transparency and structured standardisation" rather than deterministic output. |
 | 6 | **Silent acceptance of potentially biased user inputs** — User priority means user values are respected, but the system does not flag when a user's stated value is suspiciously optimistic (e.g., at the safety-favourable end of a stated range). | 🔴 Open | Planned: bias-detection layer between grounding and standardization. Detects (a) user values at growth-favourable end of stated ranges, (b) user values diverging from RAG references beyond a threshold (e.g., > 0.5 pH units, > 5 °C), (c) compound optimism across parameters. Flags only — never modifies user values. |
 | 7 | **End-to-end validation strategy** — Unit tests validate components in isolation, but there is no end-to-end validation against expert judgement. No ground truth dataset. No failure-mode analysis for compounding defaults. | 🔴 Open | Ground truth via expert distribution collected in the human-vs-system study (§7.2). Failure modes catalogued: food-not-in-RAG, scenario-type misclassification, wrong pathogen inference, numeric-extraction failure, compounding fallbacks. Recommended mitigations: "grounding score" (fraction of parameters grounded vs. defaulted, warned if < 50 %), rule-based sanity checks (temp > 55 °C forces inactivation mode; temp < 5 °C + mesophile → flag negligible growth). |
 | 8 | **ComBase integration — technical and political** — Production impact requires real ComBase integration, not a standalone engine. Daniel's role as original ComBase architect is an advantage. | 🔴 Open | Architecture supports pluggable engines (`EngineType` enum). Integration strategy, API availability, and timeline not yet finalised. |
@@ -853,7 +853,7 @@ Items worth verifying the next time Daniel works on the related area:
 
 1. **Project name in `settings.py` / tests.** `Settings.app_name` reads "Problem Interpretation Module" (see `test_config.py`). Current project name is PTM; "Problem Interpretation Module" is the broader tentative project name (§1.2). Low-priority rename, but ensure current sessions don't get misled by the config value.
 2. **Ratkowsky vs. Baranyi in documentation.** Implementation is Baranyi + 2nd-order polynomial secondary (§5.4); some legacy text and an advisory-review aside described it as Ratkowsky. Old tech docs (`problem_translation_module_complete_techincal_documentation.md`, `grounding_service_documentation.md`, `grounding_service_architecture_expanded.md`) should be either updated or formally retired in favour of the planned `specifications.md`.
-3. **Two query artefacts.** `sensitivity_analysis_queries.md` (30 queries, paper-oriented) vs. `benchmarks/datasets/extraction_queries.json` (engineering ground truth for exp_3_3). Overlap unknown; consolidation or derivation relationship not documented.
+3. **Two query artefacts.** `sensitivity_analysis_queries.md` (30 queries, paper-oriented) vs. `benchmarks/datasets/extraction_queries.json` (engineering ground truth for exp_3_1). Overlap unknown; consolidation or derivation relationship not documented.
 4. **CDC-2019 rows missing from `pathogen_characteristics.csv`.** Source is registered; rows not yet populated (§6.3).
 5. **`test_llm_client.py` content.** Inspection shows its test classes duplicate `test_config.py` rather than testing the LLM client (likely a mis-saved file). Verify and restore.
 6. **`data_year` and `notes` columns** specified in the pathogen-characteristics schema but not present in the CSV. Schema documentation should be aligned with file content.

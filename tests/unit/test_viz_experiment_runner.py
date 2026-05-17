@@ -14,14 +14,14 @@ from benchmarks.visualizations.lib import experiment_runner
 # ---------------------------------------------------------------------------
 
 
-def test_get_available_experiments_finds_exp_3_3():
+def test_get_available_experiments_finds_exp_3_1():
     experiments = experiment_runner.get_available_experiments()
     ids = [e["id"] for e in experiments]
-    assert "exp_3_3_model_comparison" in ids
+    assert "exp_3_1_model_comparison" in ids
 
-    exp = next(e for e in experiments if e["id"] == "exp_3_3_model_comparison")
+    exp = next(e for e in experiments if e["id"] == "exp_3_1_model_comparison")
     assert exp["filepath"].exists()
-    assert "3.3" in exp["name"]
+    assert "3.1" in exp["name"]
 
 
 def test_get_available_experiments_returns_sorted_ids():
@@ -48,8 +48,8 @@ def test_get_available_experiments_isolated_dir(monkeypatch, tmp_path):
 
 def test_humanize_experiment_id_formats_version_and_title():
     assert (
-        experiment_runner.humanize_experiment_id("exp_3_3_model_comparison")
-        == "Exp 3.3 — Model Comparison"
+        experiment_runner.humanize_experiment_id("exp_3_1_model_comparison")
+        == "Exp 3.1 — Model Comparison"
     )
     assert experiment_runner.humanize_experiment_id("exp_1_ph_test") == "Exp 1 — Ph Test"
     # Version-only (no trailing name parts).
@@ -130,7 +130,7 @@ def test_run_experiment_builds_expected_command(monkeypatch):
     monkeypatch.setattr(experiment_runner.subprocess, "Popen", FakePopen)
 
     experiment_runner.run_experiment(
-        experiment_id="exp_3_3_model_comparison",
+        experiment_id="exp_3_1_model_comparison",
         models=["GPT-4o", "GPT-4o-mini"],
         runs=3,
         no_mlflow=True,
@@ -138,7 +138,7 @@ def test_run_experiment_builds_expected_command(monkeypatch):
 
     cmd = captured["cmd"]
     assert cmd[0] == sys.executable
-    assert cmd[1:3] == ["-m", "benchmarks.experiments.exp_3_3_model_comparison"]
+    assert cmd[1:3] == ["-m", "benchmarks.experiments.exp_3_1_model_comparison"]
     assert "--runs" in cmd and cmd[cmd.index("--runs") + 1] == "3"
     assert "--models" in cmd and cmd[cmd.index("--models") + 1] == "GPT-4o,GPT-4o-mini"
     assert "--no-mlflow" in cmd
@@ -158,7 +158,7 @@ def test_run_experiment_omits_no_mlflow_by_default(monkeypatch):
     )
 
     experiment_runner.run_experiment(
-        experiment_id="exp_3_3_model_comparison",
+        experiment_id="exp_3_1_model_comparison",
         models=["GPT-4o"],
         runs=1,
     )
@@ -176,7 +176,7 @@ def test_run_experiment_omits_models_flag_when_empty(monkeypatch):
     )
 
     experiment_runner.run_experiment(
-        experiment_id="exp_3_3_model_comparison",
+        experiment_id="exp_3_1_model_comparison",
         models=[],
         runs=5,
     )

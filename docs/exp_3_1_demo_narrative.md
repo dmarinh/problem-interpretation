@@ -1,4 +1,4 @@
-# PTM Model Selection — Demo Narrative (Exp 3.3)
+# PTM Model Selection — Demo Narrative (Exp 3.1)
 
 For the advisory board. ~5-minute walkthrough. Tells the story of the model-comparison experiment, the production recommendation, and what we learned about local-model alternatives.
 

@@ -39,9 +39,9 @@ benchmarks/
 ├── datasets/
 │   └── extraction_queries.json                 # Ground truth
 ├── experiments/
-│   └── exp_3_3_model_comparison.py             # Experiment script
+│   └── exp_3_1_model_comparison.py             # Experiment script
 ├── results/
-│   └── exp_3_3_model_comparison/
+│   └── exp_3_1_model_comparison/
 │       ├── results_YYYYMMDD_HHMMSS.json        # Full data
 │       ├── summary_YYYYMMDD_HHMMSS.csv         # Summary table
 │       ├── latest.json                         # Most recent run
@@ -50,7 +50,7 @@ benchmarks/
     ├── app.py                                  # Entry point: streamlit run benchmarks/visualizations/app.py
     ├── pages/
     │   ├── 1_overview.py                       # Landing page with summary across experiments
-    │   ├── 2_model_comparison.py               # Exp 3.3 viewer
+    │   ├── 2_model_comparison.py               # Exp 3.1 viewer
     │   └── 3_run_experiments.py                # Experiment runner
     └── lib/
         ├── data_loader.py                      # Load results from files
@@ -98,13 +98,13 @@ picture.
 2. **Status cards** (one row of metrics):
    - Number of experiments with results
    - Date of most recent run
-   - Best model (highest accuracy from exp_3_3)
+   - Best model (highest accuracy from exp_3_1)
    - Best cost-efficient model (highest accuracy among models under $0.001/call)
 
 3. **Experiment results table:**
    One row per experiment. Columns: experiment name, last run date, number of
    models tested, best accuracy, status (has results / no results).
-   Currently only exp_3_3 exists, but the table should be built from scanning
+   Currently only exp_3_1 exists, but the table should be built from scanning
    the `results/` directory so new experiments appear automatically.
 
 4. **Quick links:** Buttons to navigate to each experiment's detail page.
@@ -116,14 +116,14 @@ check if `latest.json` exists. If so, load summary metrics.
 
 ### Page 2: Model Comparison (`2_model_comparison.py`)
 
-**Purpose:** Detailed viewer for Experiment 3.3 (LLM Model Comparison).
+**Purpose:** Detailed viewer for Experiment 3.1 (LLM Model Comparison).
 This is the most important page — it's where the model selection decision
 is made.
 
 **Layout:** Top-to-bottom narrative flow. The page tells a story:
 "Here's what we tested → here's how they compare → here's the recommendation."
 
-**Data source:** Load from `benchmarks/results/exp_3_3_model_comparison/latest.json`
+**Data source:** Load from `benchmarks/results/exp_3_1_model_comparison/latest.json`
 and `latest.csv`. If no results exist, show a message directing to the runner page.
 
 #### Section 1: Run information
@@ -243,7 +243,7 @@ This chart should be large (use full width, ~500px height).
 
 #### Section 2: Configuration panel
 
-For exp_3_3, show:
+For exp_3_1, show:
 
 - **Models to test:** Multiselect checkbox list, populated from `config.py`'s MODELS list.
   Show model name and tier. Pre-select all models whose API keys are available
@@ -258,7 +258,7 @@ For exp_3_3, show:
 
 - Large "Run Experiment" button
 - When clicked:
-  - Build the command: `python -m benchmarks.experiments.exp_3_3_model_comparison --runs N --models "A,B,C"`
+  - Build the command: `python -m benchmarks.experiments.exp_3_1_model_comparison --runs N --models "A,B,C"`
   - Run as subprocess
   - Stream stdout to a Streamlit expander (shows real-time progress)
   - Show a progress bar (estimated from number of models × queries)
@@ -282,7 +282,7 @@ def load_latest_results(experiment_id: str) -> tuple[dict | None, pd.DataFrame |
     """Load latest.json and latest.csv for an experiment.
     
     Args:
-        experiment_id: e.g., "exp_3_3_model_comparison"
+        experiment_id: e.g., "exp_3_1_model_comparison"
     
     Returns:
         (full_results_dict, summary_dataframe) or (None, None) if no results exist.

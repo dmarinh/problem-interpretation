@@ -1,4 +1,4 @@
-# PTM Model Selection — Technical Narrative (Exp 3.3)
+# PTM Model Selection — Technical Narrative (Exp 3.1)
 
 For Daniel and future Claude sessions. Comprehensive record of the model-comparison experiment, the findings that survived, the local-model improvement path, and the unresolved questions. Read this first when picking up the LLM-quality workstream.
 
@@ -14,7 +14,7 @@ The model behind the parser was production-set at GPT-4o based on early developm
 2. **Characterise the budget-constrained alternative.** If frontier API access becomes a budget constraint (likely for the long-term deployment plan), what's the best viable local model?
 3. **Identify the improvement path for local models.** What would it take to make a local model production-viable?
 
-Exp 3.3 was designed to answer all three.
+Exp 3.1 was designed to answer all three.
 
 ---
 
@@ -233,10 +233,10 @@ This is the natural next experiment (Exp 3.4 or 3.5).
 
 ## 9. Files and artefacts
 
-- **Spec:** `exp_3_3_model_comparison_spec.md`.
+- **Spec:** `exp_3_1_model_comparison_spec.md`.
 - **Corpus:** `benchmarks/datasets/extraction_queries.json` v0.2 (20 queries).
-- **Runner:** `benchmarks/experiments/exp_3_3_model_comparison.py`.
-- **Output:** `benchmarks/results/exp_3_3_model_comparison/{latest.json, latest.csv}`.
+- **Runner:** `benchmarks/experiments/exp_3_1_model_comparison.py`.
+- **Output:** `benchmarks/results/exp_3_1_model_comparison/{latest.json, latest.csv}`.
 - **Viewer:** `benchmarks/visualizations/pages/2_model_comparison.py`.
 - **Config:** `benchmarks/config.py` (MODELS list).
 

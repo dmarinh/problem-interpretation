@@ -101,7 +101,7 @@ log_increase_min/max values are in the results JSON.
 
 ## Colors
 
-Same tier colors as exp_3_3. For difficulty tiers in this experiment:
+Same tier colors as exp_3_1. For difficulty tiers in this experiment:
 - Easy: green (#2CA02C)
 - Medium: amber (#FFC107)
 - Hard: red (#D62728)

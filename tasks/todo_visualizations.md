@@ -46,7 +46,7 @@ Each phase is sized to complete and verify independently. Run
   - `list_experiments_with_results()` returns expected entry when
     `latest.json` exists (use tmp_path fixtures with fake results).
   - `list_available_runs` sorts newest first by timestamp.
-- Run against real `exp_3_3_model_comparison` results if present.
+- Run against real `exp_3_1_model_comparison` results if present.
 
 ---
 
@@ -65,7 +65,7 @@ experiments AND with one experiment.
 
 **Tests:**
 - Manual: fresh repo (no results) shows empty state gracefully.
-- Manual: with exp_3_3 results present, cards populate; table shows
+- Manual: with exp_3_1 results present, cards populate; table shows
   one row; quick-link navigates to Model Comparison.
 - Unit test for a helper that computes "best cost-efficient" from a
   sample DataFrame (green/amber/red edge cases).
@@ -80,7 +80,7 @@ to render it against real data.
 
 ### 3a: `cost_vs_accuracy_scatter`
 - Log X axis, threshold lines at 90% and $0.001, quadrant annotations.
-- **Test:** renders with real exp_3_3 `latest.csv`; points labeled;
+- **Test:** renders with real exp_3_1 `latest.csv`; points labeled;
   dashed threshold lines visible.
 
 ### 3b: `accuracy_by_tier_bars`
@@ -173,7 +173,7 @@ loading the page.
   stream stdout.
 
 **Tests:**
-- Unit: `get_available_experiments` finds `exp_3_3_model_comparison`.
+- Unit: `get_available_experiments` finds `exp_3_1_model_comparison`.
 - Unit: `check_model_availability` toggles correctly with monkeypatched
   env vars.
 - Integration (optional, gated on API key): `run_experiment` with

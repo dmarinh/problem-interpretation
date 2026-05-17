@@ -28,7 +28,7 @@ The experiment is **not** a substitute for the FoodEx2 Tier 3 bridge. The bridge
 
 ## 3. Architectural position in the benchmark suite
 
-This experiment will live alongside `exp_1_1_ph_stochasticity` and `exp_3_3_model_comparison` in the existing benchmark suite, following their conventions:
+This experiment will live alongside `exp_1_1_ph_stochasticity` and `exp_3_1_model_comparison` in the existing benchmark suite, following their conventions:
 
 ```
 benchmarks/
@@ -40,7 +40,7 @@ benchmarks/
 ├── experiments/
 │   ├── exp_1_1_ph_stochasticity.py
 │   ├── exp_2_1_embedder_comparison.py          # NEW — this experiment
-│   ├── exp_3_3_model_comparison.py
+│   ├── exp_3_1_model_comparison.py
 │   └── exp_4_1_realistic_robustness.py
 ├── results/
 │   ├── exp_1_1_ph_stochasticity/
@@ -49,7 +49,7 @@ benchmarks/
 │   │   ├── summary_YYYYMMDD_HHMMSS.csv
 │   │   ├── latest.json
 │   │   └── latest.csv
-│   ├── exp_3_3_model_comparison/
+│   ├── exp_3_1_model_comparison/
 │   └── exp_4_1_realistic_robustness/
 ├── visualizations/
 │   ├── common.py
@@ -130,7 +130,7 @@ The corpus lives in `benchmarks/datasets/retrieval_queries.json`. Suggested sche
 }
 ```
 
-The `expected_doc_id` is the doc_id the retrieval should rank first. The `tier` field (easy/medium/hard) lets the comparison chart stratify results by query difficulty, mirroring the convention from exp_3_3 and exp_1_1. The `expected_doc_text_hint` is for human verification — the experiment harness checks `expected_doc_id` only.
+The `expected_doc_id` is the doc_id the retrieval should rank first. The `tier` field (easy/medium/hard) lets the comparison chart stratify results by query difficulty, mirroring the convention from exp_3_1 and exp_1_1. The `expected_doc_text_hint` is for human verification — the experiment harness checks `expected_doc_id` only.
 
 **Open question for checkpoint 1:** for queries where multiple doc_ids would be acceptable (e.g., a turkey query could match either chicken pH or fresh poultry pH if both existed), should the schema support a list of acceptable doc_ids, or one canonical answer? Recommend list-of-acceptable for flexibility, with the first one being the canonical-best match.
 
@@ -138,7 +138,7 @@ The `expected_doc_id` is the doc_id the retrieval should rank first. The `tier` 
 
 ## 6. Experiment script structure
 
-The script `benchmarks/experiments/exp_2_1_embedder_comparison.py` follows the same skeleton as `exp_1_1_ph_stochasticity.py` and `exp_3_3_model_comparison.py`. Key adaptations:
+The script `benchmarks/experiments/exp_2_1_embedder_comparison.py` follows the same skeleton as `exp_1_1_ph_stochasticity.py` and `exp_3_1_model_comparison.py`. Key adaptations:
 
 ### Skeleton (mirroring exp_1_1)
 
@@ -182,7 +182,7 @@ For each (embedder, query) pair, record:
 - `mean_query_latency_ms` — embed + search latency
 - `embedder_load_time_s` — one-time model load (relevant for cold-start cost)
 - `corpus_embed_time_s` — one-time corpus embed
-- Stratified accuracy by tier (easy / medium / hard) — same as exp_3_3
+- Stratified accuracy by tier (easy / medium / hard) — same as exp_3_1
 
 ### Critical implementation note: corpus isolation per embedder
 
@@ -245,7 +245,7 @@ The `is_baseline` flag is used by the viewer to highlight the baseline row. The 
 
 ## 8. Streamlit viewer page
 
-Mirroring the structure of `exp_3_3_model_comparison.py`'s viewer, the page tells a clear story for the demo:
+Mirroring the structure of `exp_3_1_model_comparison.py`'s viewer, the page tells a clear story for the demo:
 
 > "Here's the retrieval problem we identified. Here are the candidate embedders. Here's how each one performs on the queries that matter. Here's the recommendation."
 
@@ -262,7 +262,7 @@ Scatter plot. X-axis: embedder size (params, log scale). Y-axis: top-1 accuracy.
 Box plot or strip plot. X-axis: embedder. Y-axis: expected_doc_score (cosine). Horizontal lines at 0.62 and 0.70 (current Tier 2 and Tier 1 gates). One marker per query per embedder; jittered for legibility. The visual answers: "for this embedder, where do the expected-doc scores actually cluster?" Knife-edge results around the gate are visible at a glance.
 
 ### Section 5 — Accuracy by tier
-Grouped bar chart. X-axis: tier (easy/medium/hard). Y-axis: top-1 accuracy. One bar per embedder, grouped by tier. Mirrors exp_3_3's tier chart.
+Grouped bar chart. X-axis: tier (easy/medium/hard). Y-axis: top-1 accuracy. One bar per embedder, grouped by tier. Mirrors exp_3_1's tier chart.
 
 ### Section 6 — Gate pass-rate comparison
 Two grouped bar charts side by side. Left: fraction of queries where expected_score ≥ 0.62 (Tier 2 gate). Right: fraction ≥ 0.70 (Tier 1 gate). One bar per embedder. Annotated with the count.
@@ -291,7 +291,7 @@ This experiment is being built in a fresh Claude session. The interaction style 
 **Checkpoint 1 — design sketch (no code).** The session reads:
 - This spec document
 - `exp_1_1_ph_stochasticity.py` (skeleton reference)
-- `exp_3_3_model_comparison.py` (skeleton reference)
+- `exp_3_1_model_comparison.py` (skeleton reference)
 - `visualization_specs.md` (viewer page conventions)
 - `benchmarks/visualizations/config.py` (current MODELS shape)
 - The relevant PTM context: `ptm_context.md` §5 (retrieval architecture)
@@ -306,7 +306,7 @@ The session produces a sketch covering: final embedder shortlist, final query co
 
 **Checkpoint 5 — first run on real data.** Run with the full embedder shortlist against the full query corpus. Capture timings, scores, accuracy. Daniel reviews the raw output and the structure of `latest.json`. Adjust if anything is off.
 
-**Checkpoint 6 — Streamlit viewer page.** Build `4_embedder_comparison.py` mirroring exp_3_3's viewer conventions. Verify all 9 sections render against the real `latest.json`.
+**Checkpoint 6 — Streamlit viewer page.** Build `4_embedder_comparison.py` mirroring exp_3_1's viewer conventions. Verify all 9 sections render against the real `latest.json`.
 
 **Checkpoint 7 — demo polish.** Final adjustments to chart annotations, recommendation text, table formatting. Confirm the page tells the story Daniel wants for the advisory-board demo.
 

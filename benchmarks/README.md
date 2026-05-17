@@ -16,7 +16,7 @@ benchmarks/
 ├── experiments/
 │   ├── exp_1_1_ph_stochasticity.py    # pH stochasticity Monte Carlo
 │   ├── exp_2_1_embedder_comparison.py  # Sentence-transformer embedder selection
-│   └── exp_3_3_model_comparison.py     # LLM model selection benchmark
+│   └── exp_3_1_model_comparison.py     # LLM model selection benchmark
 ├── results/                            # Timestamped outputs
 │   ├── exp_1_1_ph_stochasticity/
 │   │   ├── results_YYYYMMDD_HHMMSS.json
@@ -26,7 +26,7 @@ benchmarks/
 │   │   ├── summary_YYYYMMDD_HHMMSS.csv   # One row per embedder
 │   │   ├── latest.json / latest.csv
 │   │   └── _chroma/<embedder_id>/         # Isolated ChromaDB (safe to delete)
-│   └── exp_3_3_model_comparison/
+│   └── exp_3_1_model_comparison/
 │       ├── results_YYYYMMDD_HHMMSS.json
 │       ├── summary_YYYYMMDD_HHMMSS.csv
 │       ├── latest.json
@@ -120,7 +120,7 @@ python -m benchmarks.experiments.exp_1_1_ph_stochasticity --models "GPT-4o"
 python -m benchmarks.experiments.exp_1_1_ph_stochasticity --no-mlflow
 ```
 
-### Exp 3.3 — Model Comparison
+### Exp 3.1 — Model Comparison
 
 **Claim:** Model choice affects extraction accuracy, cost, and latency in
 ways that matter for production deployment.
@@ -142,16 +142,16 @@ field-level accuracy heatmap, cost per call, and P50/P95 latency.
 
 ```bash
 # Quick smoke test (1 run per query)
-python -m benchmarks.experiments.exp_3_3_model_comparison --runs 1
+python -m benchmarks.experiments.exp_3_1_model_comparison --runs 1
 
 # Full run
-python -m benchmarks.experiments.exp_3_3_model_comparison --runs 20
+python -m benchmarks.experiments.exp_3_1_model_comparison --runs 20
 
 # Test specific models only
-python -m benchmarks.experiments.exp_3_3_model_comparison --models "GPT-4o,GPT-4o-mini"
+python -m benchmarks.experiments.exp_3_1_model_comparison --models "GPT-4o,GPT-4o-mini"
 
 # Skip MLflow tracking
-python -m benchmarks.experiments.exp_3_3_model_comparison --no-mlflow
+python -m benchmarks.experiments.exp_3_1_model_comparison --no-mlflow
 ```
 
 ## Prerequisites
@@ -170,7 +170,7 @@ MLflow is optional but recommended. It lets you compare runs across time.
 
 ```bash
 pip install mlflow
-python -m benchmarks.experiments.exp_3_3_model_comparison
+python -m benchmarks.experiments.exp_3_1_model_comparison
 mlflow ui --backend-store-uri sqlite:///mlruns.db
 ```
 
@@ -187,5 +187,5 @@ streamlit run benchmarks/visualizations/app.py
 python -m streamlit run benchmarks/visualizations/app.py
 ```
 
-Pages: Overview, Model Comparison (Exp 3.3), Run Experiments,
+Pages: Overview, Model Comparison (Exp 3.1), Run Experiments,
 pH Stochasticity (Exp 1.1), Embedder Comparison (Exp 2.1).
