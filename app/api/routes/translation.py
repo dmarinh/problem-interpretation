@@ -310,11 +310,12 @@ def _build_field_audit(result: TranslationResult) -> dict[str, FieldAuditEntry]:
                     reranker_top=reranker_top,
                     attempted_top=attempted_top,
                 )
-            default_source = (
-                ValueSource.COMPOSITE_FOOD_DEFAULT.value
-                if d.field_name in composite_skip
-                else ValueSource.CONSERVATIVE_DEFAULT.value
-            )
+            if d.source is not None:
+                default_source = d.source.value
+            elif d.field_name in composite_skip:
+                default_source = ValueSource.COMPOSITE_FOOD_DEFAULT.value
+            else:
+                default_source = ValueSource.CONSERVATIVE_DEFAULT.value
             field_audit[d.field_name] = FieldAuditEntry(
                 final_value=d.imputed_value,
                 source=default_source,
@@ -429,6 +430,7 @@ def _build_audit_detail(
             field_name=d.field_name,
             default_value=d.imputed_value,
             reason=d.reason,
+            source=d.source.value if d.source is not None else None,
         )
         for d in metadata.defaults_imputed
     ]

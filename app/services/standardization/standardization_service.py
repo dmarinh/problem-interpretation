@@ -67,6 +67,7 @@ from app.models.metadata import (
     DefaultImputed,
     RangeBoundSelection,
     RangeClamp,
+    ValueSource,
 )
 from app.services.grounding.grounding_service import GroundedValues
 from app.engines.combase.models import ComBaseModel, ComBaseModelConstraints, ComBaseModelRegistry
@@ -165,9 +166,6 @@ class StandardizationService:
                 return result
 
             duration = self._get_duration(grounded, result, model_type)
-            if duration is None:
-                result.missing_required.append("duration")
-                return result
 
             representative_temp = temperature
             profile = TimeTemperatureProfile(
@@ -358,7 +356,7 @@ class StandardizationService:
         grounded: GroundedValues,
         result: StandardizationResult,
         model_type: ModelType,
-    ) -> float | None:
+    ) -> float:
         """
         Get duration, passing it through unchanged.
 
@@ -366,6 +364,11 @@ class StandardizationService:
         rule's chosen point — e.g., "a while" → 60 min is the upper end of
         the 30–90 min range described in the rule's notes.  No multiplier is
         applied on top of that.
+
+        When no duration is specified for a single-step scenario, applies a
+        long-window default (settings.default_long_window_minutes, 7 days by
+        default) so the prediction trajectory reaches the physical growth cap.
+        The Result Interpretation Module will slice meaningful sub-windows.
         """
         duration = grounded.get("duration_minutes")
         prov = grounded.provenance.get("duration_minutes")
@@ -379,8 +382,24 @@ class StandardizationService:
             prov.range_pending = False
 
         if duration is None:
-            result.warnings.append("Duration is required but not specified")
-            return None
+            duration = float(settings.default_long_window_minutes)
+            result.defaults_imputed.append(DefaultImputed(
+                field_name="duration_minutes",
+                imputed_value=duration,
+                reason=(
+                    f"No duration specified. Using long-window default "
+                    f"({int(duration / 60)} hours / {int(duration / 1440)} days) to ensure "
+                    "the prediction trajectory reaches the physical growth cap. "
+                    "The Result Interpretation Module will identify actionable sub-windows."
+                ),
+                source=ValueSource.LONG_WINDOW_DEFAULT,
+            ))
+            result.warnings.append(
+                f"Duration not specified — long-window default applied "
+                f"({int(duration / 60)} hours / {int(duration / 1440)} days). "
+                "Prediction shows full growth trajectory to physical cap; "
+                "sub-window analysis required for actionable interpretation."
+            )
 
         return duration
 
