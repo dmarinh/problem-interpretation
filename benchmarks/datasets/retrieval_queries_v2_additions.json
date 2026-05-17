@@ -1,0 +1,351 @@
+{
+  "version": "draft_v2_additions",
+  "description": "30 candidate corpus entries for Experiment 2.2 (Embedder x Doc Text Format). NOT merged into retrieval_queries.json — pending Daniel's Gate 1 review.",
+  "review_notes": [
+    "CONSTRAINT — ph_aw_combined coverage: Only 3 rows in food_properties.csv have BOTH pH and aw populated, excluding bread white (already E03): cheese parmesan, honey, maple syrup. The brief asked for all 8 easy entries to use field=ph_aw_combined; that was not achievable. Entries E13-E16 use field=ph with production_tier=tier_1, consistent with existing E04-E10 pattern. Daniel: confirm this is acceptable, or restrict easy additions to 3.",
+    "CONSTRAINT — food_taxonomy.csv not fully verified: The taxonomy CSV is 1.5 MB; species membership for quail, guinea fowl, venison, bison, halibut, tilapia was confirmed by domain knowledge rather than taxonomy file scan. If any of these maps to a different ptm_category in the taxonomy, the medium-stratum classification may need updating.",
+    "acceptable_food_names: All values verified as exact food_name strings in food_properties.csv or food_pathogen_hazards.csv.",
+    "category_level_rows: All medium entries verified — category row exists AND provides data for the requested field (aw for fresh poultry, fresh meat, cured meat, eggs; pH for fish fresh most).",
+    "Hard-stratum real-foods (H09, H10): rabbit and ostrich confirmed absent from food_properties.csv. Their inferred category rows (fresh meat, fresh poultry) have aw only — no pH — so no correct retrieval exists at the embedder layer for a pH query.",
+    "Pathogen note P07 (rice cooked): Bacillus cereus is primary_hazard=yes but annual_deaths_us=0. Clostridium perfringens is primary_hazard=no but annual_deaths_us=41. Stage 2 would select C. perfringens by deaths. Both are real hazards; hint reflects this tension."
+  ],
+  "queries": [
+    {
+      "id": "E11",
+      "food_description": "parmesan cheese",
+      "field": "ph_aw_combined",
+      "production_tier": "tier_1",
+      "tier": "easy",
+      "acceptable_food_names": ["cheese parmesan"],
+      "expected_doc_text_hint": "cheese parmesan (dairy): pH 5.2 to 5.3. water activity 0.68 to 0.76",
+      "source": "species_probe",
+      "comment": "One of only three food_properties.csv rows with BOTH pH and aw populated (excluding bread white, already E03). Tests word-order tolerance — query 'parmesan cheese' vs row 'cheese parmesan'. Hard aged cheese with low aw is a dual-field Tier 1 test spanning different preservation mechanisms from bread white."
+    },
+    {
+      "id": "E12",
+      "food_description": "plain yogurt",
+      "field": "ph",
+      "production_tier": "tier_1",
+      "tier": "easy",
+      "acceptable_food_names": ["yogurt"],
+      "expected_doc_text_hint": "yogurt (dairy): pH 3.8 to 4.2",
+      "source": "species_probe",
+      "comment": "Dairy row with pH only. Tests qualifier tolerance — 'plain yogurt' vs row 'yogurt'. pH below 4.5 means this is near the safety boundary for most pathogens; an important anchor for the acid dairy region of the food space."
+    },
+    {
+      "id": "E13",
+      "food_description": "rye bread",
+      "field": "ph",
+      "production_tier": "tier_1",
+      "tier": "easy",
+      "acceptable_food_names": ["bread rye"],
+      "expected_doc_text_hint": "bread rye (grain): pH 5.2 to 5.9",
+      "source": "species_probe",
+      "comment": "Grain row with pH only. Tests word-order tolerance — query 'rye bread' vs row 'bread rye'. Follows the same pattern as E04 (ground beef/beef ground) and E08 (canned tuna/tuna fish canned). Second grain entry after bread white (E03)."
+    },
+    {
+      "id": "E14",
+      "food_description": "cooked oatmeal",
+      "field": "ph",
+      "production_tier": "tier_1",
+      "tier": "easy",
+      "acceptable_food_names": ["oatmeal cooked"],
+      "expected_doc_text_hint": "oatmeal cooked (grain): pH 6.2 to 6.6",
+      "source": "species_probe",
+      "comment": "Grain row with pH only. Tests word-order tolerance — 'cooked oatmeal' vs row 'oatmeal cooked'. Near-neutral pH cooked grain; common in temperature-abuse scenarios. Analogous to E10 (cooked white rice / rice white cooked)."
+    },
+    {
+      "id": "E15",
+      "food_description": "fresh strawberries",
+      "field": "ph",
+      "production_tier": "tier_1",
+      "tier": "easy",
+      "acceptable_food_names": ["strawberries"],
+      "expected_doc_text_hint": "strawberries (fruit): pH 3.0 to 3.9",
+      "source": "species_probe",
+      "comment": "Fruit row with pH only. Tests qualifier tolerance — 'fresh strawberries' vs row 'strawberries'. Very low pH (below 4.0) — most pathogens cannot grow; tests that low-acid fruits are retrievable. First fruit entry in the corpus."
+    },
+    {
+      "id": "E16",
+      "food_description": "fresh carrots",
+      "field": "ph",
+      "production_tier": "tier_1",
+      "tier": "easy",
+      "acceptable_food_names": ["carrots"],
+      "expected_doc_text_hint": "carrots (vegetable): pH 5.88 to 6.4",
+      "source": "species_probe",
+      "comment": "Vegetable row with pH only. Tests qualifier tolerance — 'fresh carrots' vs row 'carrots'. Near-neutral pH vegetable above the 4.6 safety threshold; first vegetable entry in the corpus. Analogous qualifier pattern to E07 (fresh salmon / salmon fresh)."
+    },
+    {
+      "id": "E17",
+      "food_description": "honey",
+      "field": "ph_aw_combined",
+      "production_tier": "tier_1",
+      "tier": "easy",
+      "acceptable_food_names": ["honey"],
+      "expected_doc_text_hint": "honey (sweetener): pH 3.7 to 4.2. water activity 0.75",
+      "source": "species_probe",
+      "comment": "One of only three food_properties.csv rows with BOTH pH and aw populated. Exact food_name match. Very low aw (0.75) inhibits microbial growth despite near-safety-boundary pH — tests dual-field retrieval for a water-activity-preserved product. Different aw range from bread white (0.94-0.97)."
+    },
+    {
+      "id": "E18",
+      "food_description": "maple syrup",
+      "field": "ph_aw_combined",
+      "production_tier": "tier_1",
+      "tier": "easy",
+      "acceptable_food_names": ["maple syrup"],
+      "expected_doc_text_hint": "maple syrup (sweetener): pH 5.15. water activity 0.85",
+      "source": "species_probe",
+      "comment": "One of only three food_properties.csv rows with BOTH pH and aw populated. Exact food_name match. Mid-range aw (0.85) with near-neutral pH — tests dual-field retrieval for a moderately preserved product. Third dual-field entry alongside bread white (E03) and cheese parmesan (E11)."
+    },
+    {
+      "id": "M11",
+      "food_description": "quail",
+      "field": "water_activity",
+      "production_tier": "tier_2",
+      "tier": "medium",
+      "acceptable_food_names": ["fresh poultry"],
+      "expected_doc_text_hint": "fresh poultry (poultry): aw 0.99 to 1.0",
+      "source": "species_probe",
+      "comment": "Species probe — no quail-specific row in food_properties.csv. Canonical answer is the category-level fresh poultry row (aw 0.99-1.0). Tier 2 aw fallback query 'quail water activity aw moisture' at 0.62 threshold. Note: quail pH would be hard stratum — no poultry-pH category row exists. Adds a fifth poultry species to M01-M04 (turkey, duck, goose, pheasant)."
+    },
+    {
+      "id": "M12",
+      "food_description": "guinea fowl",
+      "field": "water_activity",
+      "production_tier": "tier_2",
+      "tier": "medium",
+      "acceptable_food_names": ["fresh poultry"],
+      "expected_doc_text_hint": "fresh poultry (poultry): aw 0.99 to 1.0",
+      "source": "species_probe",
+      "comment": "Species probe — no guinea fowl row in food_properties.csv. Less-common poultry species (Numida meleagris) tests category generalisation beyond the turkey/duck/goose/pheasant cluster already in corpus. Same pattern as M01-M04."
+    },
+    {
+      "id": "M13",
+      "food_description": "venison",
+      "field": "water_activity",
+      "production_tier": "tier_2",
+      "tier": "medium",
+      "acceptable_food_names": ["fresh meat"],
+      "expected_doc_text_hint": "fresh meat (meat): aw 0.99 to 1.0",
+      "source": "species_probe",
+      "comment": "Species probe — no venison (deer meat) row in food_properties.csv. Game meat that maps to the fresh meat category for aw. Same pattern as M05 (lamb) and M06 (pork). Tests that the embedder generalises game mammals to the fresh meat category."
+    },
+    {
+      "id": "M14",
+      "food_description": "bison",
+      "field": "water_activity",
+      "production_tier": "tier_2",
+      "tier": "medium",
+      "acceptable_food_names": ["fresh meat"],
+      "expected_doc_text_hint": "fresh meat (meat): aw 0.99 to 1.0",
+      "source": "species_probe",
+      "comment": "Species probe — no bison row in food_properties.csv. North American large ungulate; increasingly common in food service. Tests fresh meat category generalisation beyond the common European livestock species (lamb, pork, beef) already in corpus."
+    },
+    {
+      "id": "M15",
+      "food_description": "pepperoni",
+      "field": "water_activity",
+      "production_tier": "tier_2",
+      "tier": "medium",
+      "acceptable_food_names": ["cured meat"],
+      "expected_doc_text_hint": "cured meat (meat): aw 0.87 to 0.95",
+      "source": "species_probe",
+      "comment": "Species probe — no pepperoni row in food_properties.csv. Dry-cured fermented sausage; aw typically 0.85-0.90 which is within the cured meat category range (0.87-0.95). Existing M09 covers cured ham; pepperoni adds a processed/emulsified cured product. Tests whether the embedder maps processed cured sausages to the cured meat category."
+    },
+    {
+      "id": "M16",
+      "food_description": "salami",
+      "field": "water_activity",
+      "production_tier": "tier_2",
+      "tier": "medium",
+      "acceptable_food_names": ["cured meat"],
+      "expected_doc_text_hint": "cured meat (meat): aw 0.87 to 0.95",
+      "source": "species_probe",
+      "comment": "Species probe — no salami row in food_properties.csv. Italian dry-cured fermented sausage; different vocabulary from pepperoni. Tests cross-product generalisation within cured processed meats. Together with M15, gives two independent tests of the cured-sausage → cured meat mapping."
+    },
+    {
+      "id": "M17",
+      "food_description": "halibut",
+      "field": "ph",
+      "production_tier": "tier_2",
+      "tier": "medium",
+      "acceptable_food_names": ["fish fresh most"],
+      "expected_doc_text_hint": "fish fresh most (fish): pH 6.6 to 6.8",
+      "source": "species_probe",
+      "comment": "Species probe — no halibut row in food_properties.csv. Flatfish; canonical answer is the fish fresh most category row (pH 6.6-6.8). Existing M10 (cod) has an acceptable specific row (codfish boiled); halibut does not — making this a purer category-only test. Tier 2 pH query 'halibut pH acidity' at 0.62 threshold."
+    },
+    {
+      "id": "M18",
+      "food_description": "tilapia",
+      "field": "ph",
+      "production_tier": "tier_2",
+      "tier": "medium",
+      "acceptable_food_names": ["fish fresh most"],
+      "expected_doc_text_hint": "fish fresh most (fish): pH 6.6 to 6.8",
+      "source": "species_probe",
+      "comment": "Species probe — no tilapia row in food_properties.csv. Common farmed freshwater fish; widely used in food service. Tests whether the embedder generalises a freshwater farmed species to the 'fish fresh most' category. Second fish-pH medium entry alongside M10 (cod) and M17 (halibut)."
+    },
+    {
+      "id": "M19",
+      "food_description": "quail eggs",
+      "field": "water_activity",
+      "production_tier": "tier_2",
+      "tier": "medium",
+      "acceptable_food_names": ["eggs"],
+      "expected_doc_text_hint": "eggs (eggs): aw 0.97",
+      "source": "species_probe",
+      "comment": "Species probe — no quail eggs row in food_properties.csv. The category-level 'eggs' row provides aw 0.97. Note: 'eggs whole new laid' has pH only; for aw the only row is the category 'eggs'. Query 'quail eggs water activity aw moisture' at 0.62 threshold. Tests egg-species generalisation."
+    },
+    {
+      "id": "M20",
+      "food_description": "duck eggs",
+      "field": "water_activity",
+      "production_tier": "tier_2",
+      "tier": "medium",
+      "acceptable_food_names": ["eggs"],
+      "expected_doc_text_hint": "eggs (eggs): aw 0.97",
+      "source": "species_probe",
+      "comment": "Species probe — no duck eggs row in food_properties.csv. Less-common egg type; used in baking and Asian cuisine. Tests whether 'duck eggs' maps to the generic 'eggs' category row at the Tier 2 aw threshold. Together with M19 gives two distinct non-chicken egg species for the eggs category."
+    },
+    {
+      "id": "H07",
+      "food_description": "florbax steak",
+      "field": "ph",
+      "production_tier": "tier_2",
+      "tier": "hard",
+      "acceptable_food_names": [],
+      "expected_doc_text_hint": null,
+      "source": "negative_control",
+      "comment": "Made-up food with a plausible real-food suffix ('steak'). Correct behaviour: no doc clears the 0.62 threshold. Tests whether the real token 'steak' anchors to beef/meat rows with spurious high confidence. Bad embedders may over-match the 'steak' semantic cluster. Mirrors H05/H06 pattern with a different surface form."
+    },
+    {
+      "id": "H08",
+      "food_description": "thaxen bar",
+      "field": "water_activity",
+      "production_tier": "tier_2",
+      "tier": "hard",
+      "acceptable_food_names": [],
+      "expected_doc_text_hint": null,
+      "source": "negative_control",
+      "comment": "Made-up food with a semantically neutral suffix ('bar'). Correct behaviour: no doc clears the 0.62 threshold for the aw query. 'Bar' does not strongly anchor to any food category in the KB. Tests general non-match robustness for an aw query, complementing H07 (pH query)."
+    },
+    {
+      "id": "H09",
+      "food_description": "rabbit",
+      "field": "ph",
+      "production_tier": "tier_2",
+      "tier": "hard",
+      "acceptable_food_names": [],
+      "expected_doc_text_hint": null,
+      "source": "species_probe_negative",
+      "comment": "Real food absent from KB at embedder layer for pH. No rabbit row in food_properties.csv. The fresh meat category row exists but has aw only — no pH data. So no valid row exists for a pH query. In production, Tier 3 (FoodEx2 bridge) would handle this. For the embedder benchmark, no doc clearing 0.62 is the correct outcome. Analogous to H01-H04 (poultry species, pH)."
+    },
+    {
+      "id": "H10",
+      "food_description": "ostrich",
+      "field": "ph",
+      "production_tier": "tier_2",
+      "tier": "hard",
+      "acceptable_food_names": [],
+      "expected_doc_text_hint": null,
+      "source": "species_probe_negative",
+      "comment": "Real food absent from KB at embedder layer for pH. No ostrich row in food_properties.csv. The fresh poultry category row exists but has aw only — no pH. Ratite bird; commercially farmed in South Africa and increasingly globally. Adds a structurally identical hard case to H01 (turkey pH) and H02 (duck pH) using a more exotic species that bad embedders are less likely to have seen paired with poultry category terms."
+    },
+    {
+      "id": "H11",
+      "food_description": "meat",
+      "field": "ph",
+      "production_tier": "tier_2",
+      "tier": "hard",
+      "acceptable_food_names": [],
+      "expected_doc_text_hint": null,
+      "source": "negative_control",
+      "comment": "Unqualified generic class noun — no species, state, or preparation qualifier. Correct behaviour: no doc clears 0.62. Meat-specific pH rows exist (beef ground, ham, veal) but grounding pH on a bare generic-class query is epistemically wrong; the system should seek clarification. Bad embedders may match 'beef ground' or 'ham' above threshold. Tests over-specificity resistance on unqualified class terms."
+    },
+    {
+      "id": "H12",
+      "food_description": "fish",
+      "field": "water_activity",
+      "production_tier": "tier_2",
+      "tier": "hard",
+      "acceptable_food_names": [],
+      "expected_doc_text_hint": null,
+      "source": "negative_control",
+      "comment": "Unqualified generic class noun for aw. A 'fresh fish' aw category row exists (0.99-1.0) but grounding aw on bare 'fish' is wrong: fresh, smoked, and canned fish have radically different aw (0.99, 0.96, 0.80 respectively). The system should not match. Bad embedders may retrieve 'fresh fish' above 0.62. Mirrors H11 pattern for a different field and food class."
+    },
+    {
+      "id": "P05",
+      "food_description": "raw shrimp",
+      "field": "pathogen",
+      "production_tier": "pathogen_stage_1",
+      "tier": "pathogen",
+      "acceptable_food_names": ["shrimp raw"],
+      "expected_doc_text_hint": "Hazard for shrimp raw: Vibrio parahaemolyticus (primary hazard). Stage 2 top-ranked by deaths: Salmonella spp. (238)",
+      "source": "species_probe",
+      "comment": "Shellfish pathogen retrieval. Stage 1 should retrieve shrimp raw hazard docs above 0.75 threshold for 'raw shrimp food hazard'. Word-order variant: 'raw shrimp' vs row 'shrimp raw'. Stage 2 (out of scope) would rank: Salmonella 238 > Listeria 172 > Vibrio 4 by annual_deaths_us."
+    },
+    {
+      "id": "P06",
+      "food_description": "raw pork",
+      "field": "pathogen",
+      "production_tier": "pathogen_stage_1",
+      "tier": "pathogen",
+      "acceptable_food_names": ["pork raw"],
+      "expected_doc_text_hint": "Hazard for pork raw: Salmonella spp. (primary hazard, 238 annual US deaths)",
+      "source": "species_probe",
+      "comment": "Meat pathogen retrieval. Word-order variant: 'raw pork' vs row 'pork raw'. Stage 2 ranking: Salmonella 238 > Listeria 172 > Yersinia 29 > Trichinella 0. Yersinia enterocolitica is a distinctive pork-associated pathogen (primary_hazard=yes) not present in beef or poultry categories — diagnostically valuable."
+    },
+    {
+      "id": "P07",
+      "food_description": "cooked rice",
+      "field": "pathogen",
+      "production_tier": "pathogen_stage_1",
+      "tier": "pathogen",
+      "acceptable_food_names": ["rice cooked"],
+      "expected_doc_text_hint": "Hazard for rice cooked: Bacillus cereus (primary_hazard=yes, emetic toxin). Stage 2 top-ranked by deaths: Clostridium perfringens (41)",
+      "source": "test_journal_Q17",
+      "comment": "Grain pathogen retrieval. Tests that 'cooked rice food hazard' retrieves 'rice cooked' hazard docs at 0.75 threshold. Tension in data: B. cereus is primary_hazard=yes but annual_deaths_us=0; C. perfringens is primary_hazard=no but annual_deaths_us=41. Stage 2 would select C. perfringens by deaths. Both are real spore-forming concerns for cooked rice held at room temperature."
+    },
+    {
+      "id": "P08",
+      "food_description": "fresh lettuce",
+      "field": "pathogen",
+      "production_tier": "pathogen_stage_1",
+      "tier": "pathogen",
+      "acceptable_food_names": ["lettuce raw"],
+      "expected_doc_text_hint": "Hazard for lettuce raw: Escherichia coli O157:H7 (primary hazard, 40 annual US deaths)",
+      "source": "species_probe",
+      "comment": "Produce pathogen retrieval. Vocabulary variant: 'fresh lettuce' vs row 'lettuce raw'. Tests whether the pathogen-stage-1 query bridges the 'fresh' descriptor to the 'raw' food_name at 0.75 threshold. E. coli O157:H7 is the primary pathogen of concern for leafy greens (2006 major outbreak source)."
+    },
+    {
+      "id": "P09",
+      "food_description": "raw eggs",
+      "field": "pathogen",
+      "production_tier": "pathogen_stage_1",
+      "tier": "pathogen",
+      "acceptable_food_names": ["eggs raw"],
+      "expected_doc_text_hint": "Hazard for eggs raw: Salmonella Enteritidis (primary hazard, vertical transmission)",
+      "source": "species_probe",
+      "comment": "Egg pathogen retrieval. Word-order variant: 'raw eggs' vs row 'eggs raw'. Salmonella Enteritidis (annual_deaths_us=238) is the defining pathogen for raw egg scenarios via vertical (transovarian) transmission. Stage 2 ranking: Salmonella Enteritidis 238 > Listeria monocytogenes 172."
+    },
+    {
+      "id": "P10",
+      "food_description": "raw milk",
+      "field": "pathogen",
+      "production_tier": "pathogen_stage_1",
+      "tier": "pathogen",
+      "acceptable_food_names": ["milk raw unpasteurized"],
+      "expected_doc_text_hint": "Hazard for milk raw unpasteurized: Listeria monocytogenes (primary hazard, 15-30% case fatality rate)",
+      "source": "species_probe",
+      "comment": "Dairy pathogen retrieval. Vocabulary variant: 'raw milk' (consumer term) vs row 'milk raw unpasteurized' (regulatory term). Tests that stage-1 query bridges the abbreviated common term to the longer food_name at 0.75 threshold. Stage 2 ranking by deaths: Salmonella 238 > Campylobacter 197 > Listeria 172 > E. coli 40 — note Listeria is primary_hazard=yes despite ranking 3rd by deaths."
+    }
+  ],
+  "stratum_counts": {
+    "easy": 8,
+    "medium": 10,
+    "hard": 6,
+    "pathogen": 6,
+    "total": 30
+  }
+}

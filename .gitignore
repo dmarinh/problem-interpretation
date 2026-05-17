@@ -121,10 +121,12 @@ Thumbs.db
 # =============================================================================
 # Benchmarks — results and experiment tracking
 # =============================================================================
-# Timestamped run files are large and machine-generated; latest.json and
-# latest.csv are kept so the dashboard works out of the box after a clone.
-benchmarks/results/**/results_*.json
-benchmarks/results/**/summary_*.csv
+# Ignore everything under results/ except latest.json and latest.csv,
+# which the dashboard needs to work out of the box after a clone.
+benchmarks/results/**
+!benchmarks/results/**/
+!benchmarks/results/**/latest.json
+!benchmarks/results/**/latest.csv
 # MLflow tracking artifacts (SQLite DB, mlruns/ directory)
 mlruns/
 mlruns.db

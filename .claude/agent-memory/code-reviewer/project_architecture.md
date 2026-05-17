@@ -247,3 +247,21 @@ Pipeline: User Query → SemanticParser (LLM) → GroundingService (RAG + rules)
 - `test_notes_field_does_not_contribute_to_source_ids` IS a genuine proof: IFT-2003-T31 appears in notes but NOT in ph_source_id/aw_source_id; the test confirms it is absent from stored source_id. Would fail if notes were parsed.
 - Source ID validation when source_references.csv is missing: `_valid_source_ids()` returns `frozenset()`, causing any non-empty source ID to fail validation. Correct fail-safe behavior.
 - chunk_size=512, food_properties docs are ~90-150 chars → always 1 chunk per row. Comment in sanity check about "food_properties_0..food_properties_251" IDs is accurate for current data but fragile: depends on 1 chunk per row assumption.
+
+## Experiment 2.1 Embedder Comparison (2026-05-15)
+
+### Architecture
+- Benchmark writes per-embedder ChromaDB to `benchmarks/results/exp_2_1_embedder_comparison/_chroma/<embedder_id>/` — never touches production `data/vector_store/`.
+- JSON output format: `{"experiment_id":..., "timestamp":..., "corpus":..., "embedders":[...]}` (dict, NOT list). The shared `load_latest_results()` in `data_loader.py` rejects non-list JSON. Streamlit page 5 has its own `_load_latest()` that handles dict format correctly.
+- Query reformulation strings in `_FIELD_TO_SUFFIX` match production `RetrievalService` verbatim (confirmed against `retrieval.py`).
+- Pathogen filter: `{"$and": [{"type": "pathogen_hazards"}, {"data_type": "food_pathogen_hazard"}]}` — matches `VectorStore.query()` multi-key construction.
+- Food properties filter: `{"type": "food_properties"}` — single key, plain dict.
+
+### Known issues found in Phase 2.1 review
+- `_query_collection` (line 533) catches bare `except Exception: return []` — silences ChromaDB errors including filter mismatches that would indicate a bug in `_build_where_filter`.
+- `embed_corpus` (line 479) catches bare `except Exception: pass` for `delete_collection` — acceptable because the collection may not exist on first run; the bare except is intentional here.
+- `_get_threshold` keys ("tier_1", "tier_2", "pathogen_stage_1") must stay in sync with corpus JSON `production_tier` values. The mapping is the single source of truth; changing settings variable names would silently break threshold lookup if tests only check against live settings.
+- `async def main()` contains no `await` calls — unnecessary async declaration (NIT).
+- `test_tier_2` and `test_pathogen_stage_1` in unit tests compare `_get_threshold()` against literal values (0.62, 0.75) rather than only against `settings.*`. If settings defaults change, tests would catch the mismatch — but framing as "reads from settings" while using literals is slightly misleading.
+- `latencies` list in `_compute_embedder_summary` (line 275) always has length == `n` (same list comprehension, with `.get("latency_ms", 0)` fallback), so `if latencies else None` on line 283 is dead code. Harmless.
+- `correct_at_3 = correct_at_1` for negative controls is logically correct: results sorted descending, so if top-1 is below threshold, all top-3 are too.

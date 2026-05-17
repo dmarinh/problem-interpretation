@@ -870,6 +870,19 @@ FastAPI lifespan handler (`app/main.py`):
 
 **Benchmark suite:** `benchmarks/experiments/` — uses MLflow for tracking. Results in `benchmarks/results/`. Streamlit dashboard at `benchmarks/visualizations/app.py`.
 
+**`benchmarks/config.py`** defines two constants consumed by benchmark scripts and the dashboard:
+- `MODELS` — LLM candidates for Exp 3.3 (model comparison).
+- `EMBEDDERS` — sentence-transformer candidates for Exp 2.1 (embedder comparison). Each entry has: `id`, `name`, `hf_model`, `dim`, `params_m`, `is_baseline`, `training_objective`, `input_prefix_query`, `input_prefix_passage`. Four embedders in a 2×2 design (size: 384-dim / 768-dim × objective: general / retrieval-optimised). Baseline is `all-MiniLM-L6-v2` (22M, 384-dim, general).
+
+**Experiment 2.1 — Embedder Comparison** (`benchmarks/experiments/exp_2_1_embedder_comparison.py`):
+- Ground-truth corpus: `benchmarks/datasets/retrieval_queries.json` — 30 queries stratified as easy (10), medium (10), hard (6 negative controls), pathogen (4).
+- Each corpus entry has: `id`, `food_description`, `field`, `production_tier`, `tier`, `acceptable_food_names` (empty list for hard-tier negative controls).
+- **Negative control polarity**: for hard-tier entries, `correct_at_1 = True` means NO document cleared the confidence threshold.
+- **Query reformulation** mirrors `app/rag/retrieval.py` verbatim: `ph_aw_combined` → `"{food} pH water activity properties"`, `ph` → `"{food} pH acidity"`, `water_activity` → `"{food} water activity aw moisture"`, `pathogen` → `"{food} food hazard"`.
+- **Thresholds** are read from `app.config.settings` (never hard-coded): `tier_1` → `settings.food_properties_confidence`, `tier_2` → `settings.food_properties_fallback_confidence`, `pathogen_stage_1` → `settings.pathogen_hazards_confidence`.
+- **Isolation**: each embedder gets its own ChromaDB PersistentClient at `benchmarks/results/exp_2_1_embedder_comparison/_chroma/<embedder_id>/`. The production store at `data/vector_store/` is never touched.
+- Results saved to `benchmarks/results/exp_2_1_embedder_comparison/latest.json` (full dict) and `latest.csv` (one row per embedder). JSON root is a dict with `experiment_id`, `timestamp`, `corpus`, `embedders` — NOT a top-level list. The Streamlit page (`pages/5_embedder_comparison.py`) uses its own `_load_latest()` loader rather than the shared `data_loader.load_latest_results()` (which expects a list).
+
 ---
 
 ## 13. Configuration

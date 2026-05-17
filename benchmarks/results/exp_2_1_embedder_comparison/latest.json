@@ -1,0 +1,3728 @@
+{
+  "experiment_id": "exp_2_1_embedder_comparison",
+  "timestamp": "20260516_180918",
+  "corpus": {
+    "version": "1.0",
+    "total_queries": 30,
+    "stratum_counts": {
+      "easy": 10,
+      "medium": 10,
+      "hard": 6,
+      "pathogen": 4
+    }
+  },
+  "embedders": [
+    {
+      "id": "minilm-l6-v2",
+      "name": "all-MiniLM-L6-v2 (baseline)",
+      "hf_model": "sentence-transformers/all-MiniLM-L6-v2",
+      "dim": 384,
+      "params_m": 22,
+      "is_baseline": true,
+      "training_objective": "general",
+      "load_time_s": 7.23,
+      "corpus_embed_time_s": 0.69,
+      "queries": [
+        {
+          "query_id": "E01",
+          "food_description": "chicken",
+          "field": "ph_aw_combined",
+          "production_tier": "tier_1",
+          "tier": "easy",
+          "reformulated_query": "chicken pH water activity properties",
+          "threshold_used": 0.62,
+          "latency_ms": 29.4,
+          "error": null,
+          "top1_doc_id": "food_properties_27",
+          "top1_food_name": "fresh poultry",
+          "top1_score": 0.650502,
+          "top3_doc_ids": [
+            "food_properties_27",
+            "food_properties_25",
+            "food_properties_208"
+          ],
+          "top3_food_names": [
+            "fresh poultry",
+            "chicken",
+            "watercress"
+          ],
+          "canonical_food_name": "chicken",
+          "expected_rank": 2,
+          "expected_score": 0.646243,
+          "correct_at_1": false,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "E02",
+          "food_description": "raw chicken",
+          "field": "ph_aw_combined",
+          "production_tier": "tier_1",
+          "tier": "easy",
+          "reformulated_query": "raw chicken pH water activity properties",
+          "threshold_used": 0.62,
+          "latency_ms": 8.7,
+          "error": null,
+          "top1_doc_id": "food_properties_25",
+          "top1_food_name": "chicken",
+          "top1_score": 0.704227,
+          "top3_doc_ids": [
+            "food_properties_25",
+            "food_properties_27",
+            "food_properties_208"
+          ],
+          "top3_food_names": [
+            "chicken",
+            "fresh poultry",
+            "watercress"
+          ],
+          "canonical_food_name": "chicken",
+          "expected_rank": 1,
+          "expected_score": 0.704227,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "E03",
+          "food_description": "white bread",
+          "field": "ph_aw_combined",
+          "production_tier": "tier_1",
+          "tier": "easy",
+          "reformulated_query": "white bread pH water activity properties",
+          "threshold_used": 0.62,
+          "latency_ms": 5.6,
+          "error": null,
+          "top1_doc_id": "food_properties_212",
+          "top1_food_name": "bread white",
+          "top1_score": 0.84904,
+          "top3_doc_ids": [
+            "food_properties_212",
+            "food_properties_214",
+            "food_properties_217"
+          ],
+          "top3_food_names": [
+            "bread white",
+            "bread cracked wheat",
+            "bread whole wheat"
+          ],
+          "canonical_food_name": "bread white",
+          "expected_rank": 1,
+          "expected_score": 0.84904,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "E04",
+          "food_description": "ground beef",
+          "field": "ph",
+          "production_tier": "tier_1",
+          "tier": "easy",
+          "reformulated_query": "ground beef pH acidity",
+          "threshold_used": 0.62,
+          "latency_ms": 5.0,
+          "error": null,
+          "top1_doc_id": "food_properties_21",
+          "top1_food_name": "beef ground",
+          "top1_score": 0.750243,
+          "top3_doc_ids": [
+            "food_properties_21",
+            "food_properties_2",
+            "food_properties_4"
+          ],
+          "top3_food_names": [
+            "beef ground",
+            "milk cow",
+            "milk acidophilus"
+          ],
+          "canonical_food_name": "beef ground",
+          "expected_rank": 1,
+          "expected_score": 0.750243,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "E05",
+          "food_description": "veal",
+          "field": "ph",
+          "production_tier": "tier_1",
+          "tier": "easy",
+          "reformulated_query": "veal pH acidity",
+          "threshold_used": 0.62,
+          "latency_ms": 4.6,
+          "error": null,
+          "top1_doc_id": "food_properties_24",
+          "top1_food_name": "veal",
+          "top1_score": 0.622467,
+          "top3_doc_ids": [
+            "food_properties_24",
+            "food_properties_88",
+            "food_properties_90"
+          ],
+          "top3_food_names": [
+            "veal",
+            "lime",
+            "loquat"
+          ],
+          "canonical_food_name": "veal",
+          "expected_rank": 1,
+          "expected_score": 0.622467,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "E06",
+          "food_description": "milk",
+          "field": "ph",
+          "production_tier": "tier_1",
+          "tier": "easy",
+          "reformulated_query": "milk pH acidity",
+          "threshold_used": 0.62,
+          "latency_ms": 5.7,
+          "error": null,
+          "top1_doc_id": "food_properties_4",
+          "top1_food_name": "milk acidophilus",
+          "top1_score": 0.760153,
+          "top3_doc_ids": [
+            "food_properties_4",
+            "food_properties_5",
+            "food_properties_2"
+          ],
+          "top3_food_names": [
+            "milk acidophilus",
+            "milk evaporated",
+            "milk cow"
+          ],
+          "canonical_food_name": "milk cow",
+          "expected_rank": 3,
+          "expected_score": 0.694549,
+          "correct_at_1": false,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "E07",
+          "food_description": "fresh salmon",
+          "field": "ph",
+          "production_tier": "tier_1",
+          "tier": "easy",
+          "reformulated_query": "fresh salmon pH acidity",
+          "threshold_used": 0.62,
+          "latency_ms": 6.8,
+          "error": null,
+          "top1_doc_id": "food_properties_38",
+          "top1_food_name": "salmon fresh",
+          "top1_score": 0.75194,
+          "top3_doc_ids": [
+            "food_properties_38",
+            "food_properties_39",
+            "food_properties_29"
+          ],
+          "top3_food_names": [
+            "salmon fresh",
+            "salmon canned",
+            "fish fresh most"
+          ],
+          "canonical_food_name": "salmon fresh",
+          "expected_rank": 1,
+          "expected_score": 0.75194,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "E08",
+          "food_description": "canned tuna",
+          "field": "ph",
+          "production_tier": "tier_1",
+          "tier": "easy",
+          "reformulated_query": "canned tuna pH acidity",
+          "threshold_used": 0.62,
+          "latency_ms": 5.3,
+          "error": null,
+          "top1_doc_id": "food_properties_42",
+          "top1_food_name": "tuna fish canned",
+          "top1_score": 0.775705,
+          "top3_doc_ids": [
+            "food_properties_42",
+            "food_properties_185",
+            "food_properties_39"
+          ],
+          "top3_food_names": [
+            "tuna fish canned",
+            "pimiento canned acidified",
+            "salmon canned"
+          ],
+          "canonical_food_name": "tuna fish canned",
+          "expected_rank": 1,
+          "expected_score": 0.775705,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "E09",
+          "food_description": "oysters",
+          "field": "ph",
+          "production_tier": "tier_1",
+          "tier": "easy",
+          "reformulated_query": "oysters pH acidity",
+          "threshold_used": 0.62,
+          "latency_ms": 6.6,
+          "error": null,
+          "top1_doc_id": "food_properties_48",
+          "top1_food_name": "oysters",
+          "top1_score": 0.768574,
+          "top3_doc_ids": [
+            "food_properties_48",
+            "food_properties_44",
+            "food_properties_43"
+          ],
+          "top3_food_names": [
+            "oysters",
+            "crab meat",
+            "clams"
+          ],
+          "canonical_food_name": "oysters",
+          "expected_rank": 1,
+          "expected_score": 0.768574,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "E10",
+          "food_description": "cooked white rice",
+          "field": "ph",
+          "production_tier": "tier_1",
+          "tier": "easy",
+          "reformulated_query": "cooked white rice pH acidity",
+          "threshold_used": 0.62,
+          "latency_ms": 6.0,
+          "error": null,
+          "top1_doc_id": "food_properties_221",
+          "top1_food_name": "rice white cooked",
+          "top1_score": 0.775407,
+          "top3_doc_ids": [
+            "food_properties_221",
+            "food_properties_220",
+            "food_properties_222"
+          ],
+          "top3_food_names": [
+            "rice white cooked",
+            "rice brown cooked",
+            "rice wild cooked"
+          ],
+          "canonical_food_name": "rice white cooked",
+          "expected_rank": 1,
+          "expected_score": 0.775407,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "M01",
+          "food_description": "turkey",
+          "field": "water_activity",
+          "production_tier": "tier_2",
+          "tier": "medium",
+          "reformulated_query": "turkey water activity aw moisture",
+          "threshold_used": 0.62,
+          "latency_ms": 5.9,
+          "error": null,
+          "top1_doc_id": "food_properties_27",
+          "top1_food_name": "fresh poultry",
+          "top1_score": 0.554316,
+          "top3_doc_ids": [
+            "food_properties_27",
+            "food_properties_26",
+            "food_properties_28"
+          ],
+          "top3_food_names": [
+            "fresh poultry",
+            "fresh meat",
+            "cured meat"
+          ],
+          "canonical_food_name": "fresh poultry",
+          "expected_rank": 1,
+          "expected_score": 0.554316,
+          "correct_at_1": false,
+          "correct_at_3": false,
+          "gate_passed": false
+        },
+        {
+          "query_id": "M02",
+          "food_description": "duck",
+          "field": "water_activity",
+          "production_tier": "tier_2",
+          "tier": "medium",
+          "reformulated_query": "duck water activity aw moisture",
+          "threshold_used": 0.62,
+          "latency_ms": 5.2,
+          "error": null,
+          "top1_doc_id": "food_properties_27",
+          "top1_food_name": "fresh poultry",
+          "top1_score": 0.524179,
+          "top3_doc_ids": [
+            "food_properties_27",
+            "food_properties_58",
+            "food_properties_59"
+          ],
+          "top3_food_names": [
+            "fresh poultry",
+            "eggs",
+            "dried whole egg"
+          ],
+          "canonical_food_name": "fresh poultry",
+          "expected_rank": 1,
+          "expected_score": 0.524179,
+          "correct_at_1": false,
+          "correct_at_3": false,
+          "gate_passed": false
+        },
+        {
+          "query_id": "M03",
+          "food_description": "goose",
+          "field": "water_activity",
+          "production_tier": "tier_2",
+          "tier": "medium",
+          "reformulated_query": "goose water activity aw moisture",
+          "threshold_used": 0.62,
+          "latency_ms": 5.8,
+          "error": null,
+          "top1_doc_id": "food_properties_27",
+          "top1_food_name": "fresh poultry",
+          "top1_score": 0.51437,
+          "top3_doc_ids": [
+            "food_properties_27",
+            "food_properties_26",
+            "food_properties_58"
+          ],
+          "top3_food_names": [
+            "fresh poultry",
+            "fresh meat",
+            "eggs"
+          ],
+          "canonical_food_name": "fresh poultry",
+          "expected_rank": 1,
+          "expected_score": 0.51437,
+          "correct_at_1": false,
+          "correct_at_3": false,
+          "gate_passed": false
+        },
+        {
+          "query_id": "M04",
+          "food_description": "pheasant",
+          "field": "water_activity",
+          "production_tier": "tier_2",
+          "tier": "medium",
+          "reformulated_query": "pheasant water activity aw moisture",
+          "threshold_used": 0.62,
+          "latency_ms": 7.6,
+          "error": null,
+          "top1_doc_id": "food_properties_27",
+          "top1_food_name": "fresh poultry",
+          "top1_score": 0.584004,
+          "top3_doc_ids": [
+            "food_properties_27",
+            "food_properties_26",
+            "food_properties_58"
+          ],
+          "top3_food_names": [
+            "fresh poultry",
+            "fresh meat",
+            "eggs"
+          ],
+          "canonical_food_name": "fresh poultry",
+          "expected_rank": 1,
+          "expected_score": 0.584004,
+          "correct_at_1": false,
+          "correct_at_3": false,
+          "gate_passed": false
+        },
+        {
+          "query_id": "M05",
+          "food_description": "lamb",
+          "field": "water_activity",
+          "production_tier": "tier_2",
+          "tier": "medium",
+          "reformulated_query": "lamb water activity aw moisture",
+          "threshold_used": 0.62,
+          "latency_ms": 5.9,
+          "error": null,
+          "top1_doc_id": "food_properties_26",
+          "top1_food_name": "fresh meat",
+          "top1_score": 0.53479,
+          "top3_doc_ids": [
+            "food_properties_26",
+            "food_properties_28",
+            "food_properties_27"
+          ],
+          "top3_food_names": [
+            "fresh meat",
+            "cured meat",
+            "fresh poultry"
+          ],
+          "canonical_food_name": "fresh meat",
+          "expected_rank": 1,
+          "expected_score": 0.53479,
+          "correct_at_1": false,
+          "correct_at_3": false,
+          "gate_passed": false
+        },
+        {
+          "query_id": "M06",
+          "food_description": "pork",
+          "field": "water_activity",
+          "production_tier": "tier_2",
+          "tier": "medium",
+          "reformulated_query": "pork water activity aw moisture",
+          "threshold_used": 0.62,
+          "latency_ms": 5.4,
+          "error": null,
+          "top1_doc_id": "food_properties_26",
+          "top1_food_name": "fresh meat",
+          "top1_score": 0.613749,
+          "top3_doc_ids": [
+            "food_properties_26",
+            "food_properties_28",
+            "food_properties_27"
+          ],
+          "top3_food_names": [
+            "fresh meat",
+            "cured meat",
+            "fresh poultry"
+          ],
+          "canonical_food_name": "fresh meat",
+          "expected_rank": 1,
+          "expected_score": 0.613749,
+          "correct_at_1": false,
+          "correct_at_3": false,
+          "gate_passed": false
+        },
+        {
+          "query_id": "M07",
+          "food_description": "beef",
+          "field": "water_activity",
+          "production_tier": "tier_2",
+          "tier": "medium",
+          "reformulated_query": "beef water activity aw moisture",
+          "threshold_used": 0.62,
+          "latency_ms": 5.2,
+          "error": null,
+          "top1_doc_id": "food_properties_26",
+          "top1_food_name": "fresh meat",
+          "top1_score": 0.654915,
+          "top3_doc_ids": [
+            "food_properties_26",
+            "food_properties_28",
+            "food_properties_27"
+          ],
+          "top3_food_names": [
+            "fresh meat",
+            "cured meat",
+            "fresh poultry"
+          ],
+          "canonical_food_name": "fresh meat",
+          "expected_rank": 1,
+          "expected_score": 0.654915,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "M08",
+          "food_description": "eggs",
+          "field": "water_activity",
+          "production_tier": "tier_2",
+          "tier": "medium",
+          "reformulated_query": "eggs water activity aw moisture",
+          "threshold_used": 0.62,
+          "latency_ms": 5.1,
+          "error": null,
+          "top1_doc_id": "food_properties_58",
+          "top1_food_name": "eggs",
+          "top1_score": 0.744009,
+          "top3_doc_ids": [
+            "food_properties_58",
+            "food_properties_59",
+            "food_properties_27"
+          ],
+          "top3_food_names": [
+            "eggs",
+            "dried whole egg",
+            "fresh poultry"
+          ],
+          "canonical_food_name": "eggs",
+          "expected_rank": 1,
+          "expected_score": 0.744009,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "M09",
+          "food_description": "cured ham",
+          "field": "water_activity",
+          "production_tier": "tier_2",
+          "tier": "medium",
+          "reformulated_query": "cured ham water activity aw moisture",
+          "threshold_used": 0.62,
+          "latency_ms": 5.0,
+          "error": null,
+          "top1_doc_id": "food_properties_22",
+          "top1_food_name": "ham",
+          "top1_score": 0.571338,
+          "top3_doc_ids": [
+            "food_properties_22",
+            "food_properties_228",
+            "food_properties_28"
+          ],
+          "top3_food_names": [
+            "ham",
+            "bread crust",
+            "cured meat"
+          ],
+          "canonical_food_name": "cured meat",
+          "expected_rank": 3,
+          "expected_score": 0.462616,
+          "correct_at_1": false,
+          "correct_at_3": false,
+          "gate_passed": false
+        },
+        {
+          "query_id": "M10",
+          "food_description": "cod",
+          "field": "ph",
+          "production_tier": "tier_2",
+          "tier": "medium",
+          "reformulated_query": "cod pH acidity",
+          "threshold_used": 0.62,
+          "latency_ms": 5.6,
+          "error": null,
+          "top1_doc_id": "food_properties_33",
+          "top1_food_name": "codfish boiled",
+          "top1_score": 0.645581,
+          "top3_doc_ids": [
+            "food_properties_33",
+            "food_properties_36",
+            "food_properties_41"
+          ],
+          "top3_food_names": [
+            "codfish boiled",
+            "herring",
+            "trout sea"
+          ],
+          "canonical_food_name": "codfish boiled",
+          "expected_rank": 1,
+          "expected_score": 0.645581,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "H01",
+          "food_description": "turkey",
+          "field": "ph",
+          "production_tier": "tier_2",
+          "tier": "hard",
+          "reformulated_query": "turkey pH acidity",
+          "threshold_used": 0.62,
+          "latency_ms": 4.8,
+          "error": null,
+          "top1_doc_id": "food_properties_239",
+          "top1_food_name": "curry paste acidified",
+          "top1_score": 0.565935,
+          "top3_doc_ids": [
+            "food_properties_239",
+            "food_properties_189",
+            "food_properties_4"
+          ],
+          "top3_food_names": [
+            "curry paste acidified",
+            "pumpkin",
+            "milk acidophilus"
+          ],
+          "canonical_food_name": null,
+          "expected_rank": null,
+          "expected_score": null,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "H02",
+          "food_description": "duck",
+          "field": "ph",
+          "production_tier": "tier_2",
+          "tier": "hard",
+          "reformulated_query": "duck pH acidity",
+          "threshold_used": 0.62,
+          "latency_ms": 4.4,
+          "error": null,
+          "top1_doc_id": "food_properties_189",
+          "top1_food_name": "pumpkin",
+          "top1_score": 0.564224,
+          "top3_doc_ids": [
+            "food_properties_189",
+            "food_properties_4",
+            "food_properties_162"
+          ],
+          "top3_food_names": [
+            "pumpkin",
+            "milk acidophilus",
+            "horseradish"
+          ],
+          "canonical_food_name": null,
+          "expected_rank": null,
+          "expected_score": null,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "H03",
+          "food_description": "lamb",
+          "field": "ph",
+          "production_tier": "tier_2",
+          "tier": "hard",
+          "reformulated_query": "lamb pH acidity",
+          "threshold_used": 0.62,
+          "latency_ms": 4.6,
+          "error": null,
+          "top1_doc_id": "food_properties_3",
+          "top1_food_name": "milk goat",
+          "top1_score": 0.591914,
+          "top3_doc_ids": [
+            "food_properties_3",
+            "food_properties_4",
+            "food_properties_21"
+          ],
+          "top3_food_names": [
+            "milk goat",
+            "milk acidophilus",
+            "beef ground"
+          ],
+          "canonical_food_name": null,
+          "expected_rank": null,
+          "expected_score": null,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "H04",
+          "food_description": "pork",
+          "field": "ph",
+          "production_tier": "tier_2",
+          "tier": "hard",
+          "reformulated_query": "pork pH acidity",
+          "threshold_used": 0.62,
+          "latency_ms": 4.1,
+          "error": null,
+          "top1_doc_id": "food_properties_22",
+          "top1_food_name": "ham",
+          "top1_score": 0.583613,
+          "top3_doc_ids": [
+            "food_properties_22",
+            "food_properties_44",
+            "food_properties_137"
+          ],
+          "top3_food_names": [
+            "ham",
+            "crab meat",
+            "beets canned acidified"
+          ],
+          "canonical_food_name": null,
+          "expected_rank": null,
+          "expected_score": null,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "H05",
+          "food_description": "zarblax burger",
+          "field": "ph",
+          "production_tier": "tier_2",
+          "tier": "hard",
+          "reformulated_query": "zarblax burger pH acidity",
+          "threshold_used": 0.62,
+          "latency_ms": 6.7,
+          "error": null,
+          "top1_doc_id": "food_properties_246",
+          "top1_food_name": "vinegar cider",
+          "top1_score": 0.491842,
+          "top3_doc_ids": [
+            "food_properties_246",
+            "food_properties_185",
+            "food_properties_239"
+          ],
+          "top3_food_names": [
+            "vinegar cider",
+            "pimiento canned acidified",
+            "curry paste acidified"
+          ],
+          "canonical_food_name": null,
+          "expected_rank": null,
+          "expected_score": null,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "H06",
+          "food_description": "zarblax burger",
+          "field": "water_activity",
+          "production_tier": "tier_2",
+          "tier": "hard",
+          "reformulated_query": "zarblax burger water activity aw moisture",
+          "threshold_used": 0.62,
+          "latency_ms": 8.3,
+          "error": null,
+          "top1_doc_id": "food_properties_26",
+          "top1_food_name": "fresh meat",
+          "top1_score": 0.477806,
+          "top3_doc_ids": [
+            "food_properties_26",
+            "food_properties_28",
+            "food_properties_228"
+          ],
+          "top3_food_names": [
+            "fresh meat",
+            "cured meat",
+            "bread crust"
+          ],
+          "canonical_food_name": null,
+          "expected_rank": null,
+          "expected_score": null,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "P01",
+          "food_description": "raw chicken",
+          "field": "pathogen",
+          "production_tier": "pathogen_stage_1",
+          "tier": "pathogen",
+          "reformulated_query": "raw chicken food hazard",
+          "threshold_used": 0.75,
+          "latency_ms": 5.4,
+          "error": null,
+          "top1_doc_id": "pathogen_hazards_0",
+          "top1_food_name": "chicken raw",
+          "top1_score": 0.777316,
+          "top3_doc_ids": [
+            "pathogen_hazards_0",
+            "pathogen_hazards_4",
+            "pathogen_hazards_2"
+          ],
+          "top3_food_names": [
+            "chicken raw",
+            "chicken raw",
+            "chicken raw"
+          ],
+          "canonical_food_name": "chicken raw",
+          "expected_rank": 1,
+          "expected_score": 0.777316,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "P02",
+          "food_description": "raw beef",
+          "field": "pathogen",
+          "production_tier": "pathogen_stage_1",
+          "tier": "pathogen",
+          "reformulated_query": "raw beef food hazard",
+          "threshold_used": 0.75,
+          "latency_ms": 4.2,
+          "error": null,
+          "top1_doc_id": "pathogen_hazards_6",
+          "top1_food_name": "beef raw",
+          "top1_score": 0.761445,
+          "top3_doc_ids": [
+            "pathogen_hazards_6",
+            "pathogen_hazards_7",
+            "pathogen_hazards_9"
+          ],
+          "top3_food_names": [
+            "beef raw",
+            "beef raw",
+            "beef raw"
+          ],
+          "canonical_food_name": "beef raw",
+          "expected_rank": 1,
+          "expected_score": 0.761445,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "P03",
+          "food_description": "raw oysters",
+          "field": "pathogen",
+          "production_tier": "pathogen_stage_1",
+          "tier": "pathogen",
+          "reformulated_query": "raw oysters food hazard",
+          "threshold_used": 0.75,
+          "latency_ms": 4.5,
+          "error": null,
+          "top1_doc_id": "pathogen_hazards_19",
+          "top1_food_name": "oysters raw",
+          "top1_score": 0.797274,
+          "top3_doc_ids": [
+            "pathogen_hazards_19",
+            "pathogen_hazards_17",
+            "pathogen_hazards_16"
+          ],
+          "top3_food_names": [
+            "oysters raw",
+            "oysters raw",
+            "oysters raw"
+          ],
+          "canonical_food_name": "oysters raw",
+          "expected_rank": 1,
+          "expected_score": 0.797274,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "P04",
+          "food_description": "raw salmon",
+          "field": "pathogen",
+          "production_tier": "pathogen_stage_1",
+          "tier": "pathogen",
+          "reformulated_query": "raw salmon food hazard",
+          "threshold_used": 0.75,
+          "latency_ms": 3.9,
+          "error": null,
+          "top1_doc_id": "pathogen_hazards_23",
+          "top1_food_name": "salmon raw",
+          "top1_score": 0.800809,
+          "top3_doc_ids": [
+            "pathogen_hazards_23",
+            "pathogen_hazards_25",
+            "pathogen_hazards_24"
+          ],
+          "top3_food_names": [
+            "salmon raw",
+            "salmon raw",
+            "salmon raw"
+          ],
+          "canonical_food_name": "salmon raw",
+          "expected_rank": 1,
+          "expected_score": 0.800809,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        }
+      ],
+      "summary": {
+        "top1_accuracy": 0.7,
+        "top3_accuracy": 0.766667,
+        "gate_pass_rate": 0.766667,
+        "mean_expected_score": 0.6795,
+        "n_positive_queries": 24,
+        "n_errored_queries": 0,
+        "mean_query_latency_ms": 6.4,
+        "tier_accuracy": {
+          "easy": 0.8,
+          "medium": 0.3,
+          "hard": 1.0,
+          "pathogen": 1.0
+        }
+      }
+    },
+    {
+      "id": "bge-small-en-v1.5",
+      "name": "BGE small EN v1.5",
+      "hf_model": "BAAI/bge-small-en-v1.5",
+      "dim": 384,
+      "params_m": 33,
+      "is_baseline": false,
+      "training_objective": "retrieval",
+      "load_time_s": 15.32,
+      "corpus_embed_time_s": 0.93,
+      "queries": [
+        {
+          "query_id": "E01",
+          "food_description": "chicken",
+          "field": "ph_aw_combined",
+          "production_tier": "tier_1",
+          "tier": "easy",
+          "reformulated_query": "chicken pH water activity properties",
+          "threshold_used": 0.62,
+          "latency_ms": 30.9,
+          "error": null,
+          "top1_doc_id": "food_properties_25",
+          "top1_food_name": "chicken",
+          "top1_score": 0.813226,
+          "top3_doc_ids": [
+            "food_properties_25",
+            "food_properties_27",
+            "food_properties_207"
+          ],
+          "top3_food_names": [
+            "chicken",
+            "fresh poultry",
+            "water chestnut"
+          ],
+          "canonical_food_name": "chicken",
+          "expected_rank": 1,
+          "expected_score": 0.813226,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "E02",
+          "food_description": "raw chicken",
+          "field": "ph_aw_combined",
+          "production_tier": "tier_1",
+          "tier": "easy",
+          "reformulated_query": "raw chicken pH water activity properties",
+          "threshold_used": 0.62,
+          "latency_ms": 10.1,
+          "error": null,
+          "top1_doc_id": "food_properties_25",
+          "top1_food_name": "chicken",
+          "top1_score": 0.853645,
+          "top3_doc_ids": [
+            "food_properties_25",
+            "food_properties_27",
+            "food_properties_28"
+          ],
+          "top3_food_names": [
+            "chicken",
+            "fresh poultry",
+            "cured meat"
+          ],
+          "canonical_food_name": "chicken",
+          "expected_rank": 1,
+          "expected_score": 0.853645,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "E03",
+          "food_description": "white bread",
+          "field": "ph_aw_combined",
+          "production_tier": "tier_1",
+          "tier": "easy",
+          "reformulated_query": "white bread pH water activity properties",
+          "threshold_used": 0.62,
+          "latency_ms": 8.9,
+          "error": null,
+          "top1_doc_id": "food_properties_212",
+          "top1_food_name": "bread white",
+          "top1_score": 0.883831,
+          "top3_doc_ids": [
+            "food_properties_212",
+            "food_properties_228",
+            "food_properties_231"
+          ],
+          "top3_food_names": [
+            "bread white",
+            "bread crust",
+            "flour"
+          ],
+          "canonical_food_name": "bread white",
+          "expected_rank": 1,
+          "expected_score": 0.883831,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "E04",
+          "food_description": "ground beef",
+          "field": "ph",
+          "production_tier": "tier_1",
+          "tier": "easy",
+          "reformulated_query": "ground beef pH acidity",
+          "threshold_used": 0.62,
+          "latency_ms": 9.2,
+          "error": null,
+          "top1_doc_id": "food_properties_21",
+          "top1_food_name": "beef ground",
+          "top1_score": 0.853453,
+          "top3_doc_ids": [
+            "food_properties_21",
+            "food_properties_238",
+            "food_properties_242"
+          ],
+          "top3_food_names": [
+            "beef ground",
+            "chili sauce acidified",
+            "ketchup"
+          ],
+          "canonical_food_name": "beef ground",
+          "expected_rank": 1,
+          "expected_score": 0.853453,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "E05",
+          "food_description": "veal",
+          "field": "ph",
+          "production_tier": "tier_1",
+          "tier": "easy",
+          "reformulated_query": "veal pH acidity",
+          "threshold_used": 0.62,
+          "latency_ms": 9.2,
+          "error": null,
+          "top1_doc_id": "food_properties_24",
+          "top1_food_name": "veal",
+          "top1_score": 0.756098,
+          "top3_doc_ids": [
+            "food_properties_24",
+            "food_properties_137",
+            "food_properties_236"
+          ],
+          "top3_food_names": [
+            "veal",
+            "beets canned acidified",
+            "molasses"
+          ],
+          "canonical_food_name": "veal",
+          "expected_rank": 1,
+          "expected_score": 0.756098,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "E06",
+          "food_description": "milk",
+          "field": "ph",
+          "production_tier": "tier_1",
+          "tier": "easy",
+          "reformulated_query": "milk pH acidity",
+          "threshold_used": 0.62,
+          "latency_ms": 9.5,
+          "error": null,
+          "top1_doc_id": "food_properties_2",
+          "top1_food_name": "milk cow",
+          "top1_score": 0.854503,
+          "top3_doc_ids": [
+            "food_properties_2",
+            "food_properties_4",
+            "food_properties_5"
+          ],
+          "top3_food_names": [
+            "milk cow",
+            "milk acidophilus",
+            "milk evaporated"
+          ],
+          "canonical_food_name": "milk cow",
+          "expected_rank": 1,
+          "expected_score": 0.854503,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "E07",
+          "food_description": "fresh salmon",
+          "field": "ph",
+          "production_tier": "tier_1",
+          "tier": "easy",
+          "reformulated_query": "fresh salmon pH acidity",
+          "threshold_used": 0.62,
+          "latency_ms": 9.0,
+          "error": null,
+          "top1_doc_id": "food_properties_38",
+          "top1_food_name": "salmon fresh",
+          "top1_score": 0.902948,
+          "top3_doc_ids": [
+            "food_properties_38",
+            "food_properties_39",
+            "food_properties_29"
+          ],
+          "top3_food_names": [
+            "salmon fresh",
+            "salmon canned",
+            "fish fresh most"
+          ],
+          "canonical_food_name": "salmon fresh",
+          "expected_rank": 1,
+          "expected_score": 0.902948,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "E08",
+          "food_description": "canned tuna",
+          "field": "ph",
+          "production_tier": "tier_1",
+          "tier": "easy",
+          "reformulated_query": "canned tuna pH acidity",
+          "threshold_used": 0.62,
+          "latency_ms": 8.5,
+          "error": null,
+          "top1_doc_id": "food_properties_42",
+          "top1_food_name": "tuna fish canned",
+          "top1_score": 0.887478,
+          "top3_doc_ids": [
+            "food_properties_42",
+            "food_properties_39",
+            "food_properties_37"
+          ],
+          "top3_food_names": [
+            "tuna fish canned",
+            "salmon canned",
+            "mackerel canned"
+          ],
+          "canonical_food_name": "tuna fish canned",
+          "expected_rank": 1,
+          "expected_score": 0.887478,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "E09",
+          "food_description": "oysters",
+          "field": "ph",
+          "production_tier": "tier_1",
+          "tier": "easy",
+          "reformulated_query": "oysters pH acidity",
+          "threshold_used": 0.62,
+          "latency_ms": 8.3,
+          "error": null,
+          "top1_doc_id": "food_properties_48",
+          "top1_food_name": "oysters",
+          "top1_score": 0.877572,
+          "top3_doc_ids": [
+            "food_properties_48",
+            "food_properties_47",
+            "food_properties_43"
+          ],
+          "top3_food_names": [
+            "oysters",
+            "mussels",
+            "clams"
+          ],
+          "canonical_food_name": "oysters",
+          "expected_rank": 1,
+          "expected_score": 0.877572,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "E10",
+          "food_description": "cooked white rice",
+          "field": "ph",
+          "production_tier": "tier_1",
+          "tier": "easy",
+          "reformulated_query": "cooked white rice pH acidity",
+          "threshold_used": 0.62,
+          "latency_ms": 9.3,
+          "error": null,
+          "top1_doc_id": "food_properties_221",
+          "top1_food_name": "rice white cooked",
+          "top1_score": 0.899872,
+          "top3_doc_ids": [
+            "food_properties_221",
+            "food_properties_222",
+            "food_properties_220"
+          ],
+          "top3_food_names": [
+            "rice white cooked",
+            "rice wild cooked",
+            "rice brown cooked"
+          ],
+          "canonical_food_name": "rice white cooked",
+          "expected_rank": 1,
+          "expected_score": 0.899872,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "M01",
+          "food_description": "turkey",
+          "field": "water_activity",
+          "production_tier": "tier_2",
+          "tier": "medium",
+          "reformulated_query": "turkey water activity aw moisture",
+          "threshold_used": 0.62,
+          "latency_ms": 8.3,
+          "error": null,
+          "top1_doc_id": "food_properties_27",
+          "top1_food_name": "fresh poultry",
+          "top1_score": 0.759901,
+          "top3_doc_ids": [
+            "food_properties_27",
+            "food_properties_230",
+            "food_properties_18"
+          ],
+          "top3_food_names": [
+            "fresh poultry",
+            "uncooked rice",
+            "natural cheeses"
+          ],
+          "canonical_food_name": "fresh poultry",
+          "expected_rank": 1,
+          "expected_score": 0.759901,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "M02",
+          "food_description": "duck",
+          "field": "water_activity",
+          "production_tier": "tier_2",
+          "tier": "medium",
+          "reformulated_query": "duck water activity aw moisture",
+          "threshold_used": 0.62,
+          "latency_ms": 10.2,
+          "error": null,
+          "top1_doc_id": "food_properties_27",
+          "top1_food_name": "fresh poultry",
+          "top1_score": 0.750319,
+          "top3_doc_ids": [
+            "food_properties_27",
+            "food_properties_18",
+            "food_properties_233"
+          ],
+          "top3_food_names": [
+            "fresh poultry",
+            "natural cheeses",
+            "crackers dry"
+          ],
+          "canonical_food_name": "fresh poultry",
+          "expected_rank": 1,
+          "expected_score": 0.750319,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "M03",
+          "food_description": "goose",
+          "field": "water_activity",
+          "production_tier": "tier_2",
+          "tier": "medium",
+          "reformulated_query": "goose water activity aw moisture",
+          "threshold_used": 0.62,
+          "latency_ms": 9.7,
+          "error": null,
+          "top1_doc_id": "food_properties_27",
+          "top1_food_name": "fresh poultry",
+          "top1_score": 0.732135,
+          "top3_doc_ids": [
+            "food_properties_27",
+            "food_properties_231",
+            "food_properties_28"
+          ],
+          "top3_food_names": [
+            "fresh poultry",
+            "flour",
+            "cured meat"
+          ],
+          "canonical_food_name": "fresh poultry",
+          "expected_rank": 1,
+          "expected_score": 0.732135,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "M04",
+          "food_description": "pheasant",
+          "field": "water_activity",
+          "production_tier": "tier_2",
+          "tier": "medium",
+          "reformulated_query": "pheasant water activity aw moisture",
+          "threshold_used": 0.62,
+          "latency_ms": 10.8,
+          "error": null,
+          "top1_doc_id": "food_properties_27",
+          "top1_food_name": "fresh poultry",
+          "top1_score": 0.726359,
+          "top3_doc_ids": [
+            "food_properties_27",
+            "food_properties_18",
+            "food_properties_231"
+          ],
+          "top3_food_names": [
+            "fresh poultry",
+            "natural cheeses",
+            "flour"
+          ],
+          "canonical_food_name": "fresh poultry",
+          "expected_rank": 1,
+          "expected_score": 0.726359,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "M05",
+          "food_description": "lamb",
+          "field": "water_activity",
+          "production_tier": "tier_2",
+          "tier": "medium",
+          "reformulated_query": "lamb water activity aw moisture",
+          "threshold_used": 0.62,
+          "latency_ms": 9.2,
+          "error": null,
+          "top1_doc_id": "food_properties_18",
+          "top1_food_name": "natural cheeses",
+          "top1_score": 0.768169,
+          "top3_doc_ids": [
+            "food_properties_18",
+            "food_properties_28",
+            "food_properties_230"
+          ],
+          "top3_food_names": [
+            "natural cheeses",
+            "cured meat",
+            "uncooked rice"
+          ],
+          "canonical_food_name": "fresh meat",
+          "expected_rank": 5,
+          "expected_score": 0.742253,
+          "correct_at_1": false,
+          "correct_at_3": false,
+          "gate_passed": true
+        },
+        {
+          "query_id": "M06",
+          "food_description": "pork",
+          "field": "water_activity",
+          "production_tier": "tier_2",
+          "tier": "medium",
+          "reformulated_query": "pork water activity aw moisture",
+          "threshold_used": 0.62,
+          "latency_ms": 7.7,
+          "error": null,
+          "top1_doc_id": "food_properties_28",
+          "top1_food_name": "cured meat",
+          "top1_score": 0.807309,
+          "top3_doc_ids": [
+            "food_properties_28",
+            "food_properties_26",
+            "food_properties_233"
+          ],
+          "top3_food_names": [
+            "cured meat",
+            "fresh meat",
+            "crackers dry"
+          ],
+          "canonical_food_name": "fresh meat",
+          "expected_rank": 2,
+          "expected_score": 0.796894,
+          "correct_at_1": false,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "M07",
+          "food_description": "beef",
+          "field": "water_activity",
+          "production_tier": "tier_2",
+          "tier": "medium",
+          "reformulated_query": "beef water activity aw moisture",
+          "threshold_used": 0.62,
+          "latency_ms": 8.2,
+          "error": null,
+          "top1_doc_id": "food_properties_26",
+          "top1_food_name": "fresh meat",
+          "top1_score": 0.821002,
+          "top3_doc_ids": [
+            "food_properties_26",
+            "food_properties_28",
+            "food_properties_18"
+          ],
+          "top3_food_names": [
+            "fresh meat",
+            "cured meat",
+            "natural cheeses"
+          ],
+          "canonical_food_name": "fresh meat",
+          "expected_rank": 1,
+          "expected_score": 0.821002,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "M08",
+          "food_description": "eggs",
+          "field": "water_activity",
+          "production_tier": "tier_2",
+          "tier": "medium",
+          "reformulated_query": "eggs water activity aw moisture",
+          "threshold_used": 0.62,
+          "latency_ms": 8.0,
+          "error": null,
+          "top1_doc_id": "food_properties_59",
+          "top1_food_name": "dried whole egg",
+          "top1_score": 0.856479,
+          "top3_doc_ids": [
+            "food_properties_59",
+            "food_properties_58",
+            "food_properties_27"
+          ],
+          "top3_food_names": [
+            "dried whole egg",
+            "eggs",
+            "fresh poultry"
+          ],
+          "canonical_food_name": "eggs",
+          "expected_rank": 2,
+          "expected_score": 0.83627,
+          "correct_at_1": false,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "M09",
+          "food_description": "cured ham",
+          "field": "water_activity",
+          "production_tier": "tier_2",
+          "tier": "medium",
+          "reformulated_query": "cured ham water activity aw moisture",
+          "threshold_used": 0.62,
+          "latency_ms": 8.5,
+          "error": null,
+          "top1_doc_id": "food_properties_28",
+          "top1_food_name": "cured meat",
+          "top1_score": 0.80612,
+          "top3_doc_ids": [
+            "food_properties_28",
+            "food_properties_228",
+            "food_properties_233"
+          ],
+          "top3_food_names": [
+            "cured meat",
+            "bread crust",
+            "crackers dry"
+          ],
+          "canonical_food_name": "cured meat",
+          "expected_rank": 1,
+          "expected_score": 0.80612,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "M10",
+          "food_description": "cod",
+          "field": "ph",
+          "production_tier": "tier_2",
+          "tier": "medium",
+          "reformulated_query": "cod pH acidity",
+          "threshold_used": 0.62,
+          "latency_ms": 8.4,
+          "error": null,
+          "top1_doc_id": "food_properties_33",
+          "top1_food_name": "codfish boiled",
+          "top1_score": 0.802666,
+          "top3_doc_ids": [
+            "food_properties_33",
+            "food_properties_31",
+            "food_properties_30"
+          ],
+          "top3_food_names": [
+            "codfish boiled",
+            "bass striped broiled",
+            "bass sea broiled"
+          ],
+          "canonical_food_name": "codfish boiled",
+          "expected_rank": 1,
+          "expected_score": 0.802666,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "H01",
+          "food_description": "turkey",
+          "field": "ph",
+          "production_tier": "tier_2",
+          "tier": "hard",
+          "reformulated_query": "turkey pH acidity",
+          "threshold_used": 0.62,
+          "latency_ms": 8.0,
+          "error": null,
+          "top1_doc_id": "food_properties_40",
+          "top1_food_name": "sardines",
+          "top1_score": 0.739897,
+          "top3_doc_ids": [
+            "food_properties_40",
+            "food_properties_219",
+            "food_properties_25"
+          ],
+          "top3_food_names": [
+            "sardines",
+            "oatmeal cooked",
+            "chicken"
+          ],
+          "canonical_food_name": null,
+          "expected_rank": null,
+          "expected_score": null,
+          "correct_at_1": false,
+          "correct_at_3": false,
+          "gate_passed": false
+        },
+        {
+          "query_id": "H02",
+          "food_description": "duck",
+          "field": "ph",
+          "production_tier": "tier_2",
+          "tier": "hard",
+          "reformulated_query": "duck pH acidity",
+          "threshold_used": 0.62,
+          "latency_ms": 10.2,
+          "error": null,
+          "top1_doc_id": "food_properties_35",
+          "top1_food_name": "haddock filet broiled",
+          "top1_score": 0.753135,
+          "top3_doc_ids": [
+            "food_properties_35",
+            "food_properties_37",
+            "food_properties_85"
+          ],
+          "top3_food_names": [
+            "haddock filet broiled",
+            "mackerel canned",
+            "kumquat"
+          ],
+          "canonical_food_name": null,
+          "expected_rank": null,
+          "expected_score": null,
+          "correct_at_1": false,
+          "correct_at_3": false,
+          "gate_passed": false
+        },
+        {
+          "query_id": "H03",
+          "food_description": "lamb",
+          "field": "ph",
+          "production_tier": "tier_2",
+          "tier": "hard",
+          "reformulated_query": "lamb pH acidity",
+          "threshold_used": 0.62,
+          "latency_ms": 9.0,
+          "error": null,
+          "top1_doc_id": "food_properties_236",
+          "top1_food_name": "molasses",
+          "top1_score": 0.756685,
+          "top3_doc_ids": [
+            "food_properties_236",
+            "food_properties_22",
+            "food_properties_216"
+          ],
+          "top3_food_names": [
+            "molasses",
+            "ham",
+            "bread rye"
+          ],
+          "canonical_food_name": null,
+          "expected_rank": null,
+          "expected_score": null,
+          "correct_at_1": false,
+          "correct_at_3": false,
+          "gate_passed": false
+        },
+        {
+          "query_id": "H04",
+          "food_description": "pork",
+          "field": "ph",
+          "production_tier": "tier_2",
+          "tier": "hard",
+          "reformulated_query": "pork pH acidity",
+          "threshold_used": 0.62,
+          "latency_ms": 8.1,
+          "error": null,
+          "top1_doc_id": "food_properties_22",
+          "top1_food_name": "ham",
+          "top1_score": 0.798438,
+          "top3_doc_ids": [
+            "food_properties_22",
+            "food_properties_245",
+            "food_properties_242"
+          ],
+          "top3_food_names": [
+            "ham",
+            "vinegar",
+            "ketchup"
+          ],
+          "canonical_food_name": null,
+          "expected_rank": null,
+          "expected_score": null,
+          "correct_at_1": false,
+          "correct_at_3": false,
+          "gate_passed": false
+        },
+        {
+          "query_id": "H05",
+          "food_description": "zarblax burger",
+          "field": "ph",
+          "production_tier": "tier_2",
+          "tier": "hard",
+          "reformulated_query": "zarblax burger pH acidity",
+          "threshold_used": 0.62,
+          "latency_ms": 10.3,
+          "error": null,
+          "top1_doc_id": "food_properties_193",
+          "top1_food_name": "sauerkraut",
+          "top1_score": 0.751196,
+          "top3_doc_ids": [
+            "food_properties_193",
+            "food_properties_52",
+            "food_properties_242"
+          ],
+          "top3_food_names": [
+            "sauerkraut",
+            "squid calamari",
+            "ketchup"
+          ],
+          "canonical_food_name": null,
+          "expected_rank": null,
+          "expected_score": null,
+          "correct_at_1": false,
+          "correct_at_3": false,
+          "gate_passed": false
+        },
+        {
+          "query_id": "H06",
+          "food_description": "zarblax burger",
+          "field": "water_activity",
+          "production_tier": "tier_2",
+          "tier": "hard",
+          "reformulated_query": "zarblax burger water activity aw moisture",
+          "threshold_used": 0.62,
+          "latency_ms": 10.0,
+          "error": null,
+          "top1_doc_id": "food_properties_28",
+          "top1_food_name": "cured meat",
+          "top1_score": 0.748916,
+          "top3_doc_ids": [
+            "food_properties_28",
+            "food_properties_26",
+            "food_properties_18"
+          ],
+          "top3_food_names": [
+            "cured meat",
+            "fresh meat",
+            "natural cheeses"
+          ],
+          "canonical_food_name": null,
+          "expected_rank": null,
+          "expected_score": null,
+          "correct_at_1": false,
+          "correct_at_3": false,
+          "gate_passed": false
+        },
+        {
+          "query_id": "P01",
+          "food_description": "raw chicken",
+          "field": "pathogen",
+          "production_tier": "pathogen_stage_1",
+          "tier": "pathogen",
+          "reformulated_query": "raw chicken food hazard",
+          "threshold_used": 0.75,
+          "latency_ms": 10.9,
+          "error": null,
+          "top1_doc_id": "pathogen_hazards_2",
+          "top1_food_name": "chicken raw",
+          "top1_score": 0.861718,
+          "top3_doc_ids": [
+            "pathogen_hazards_2",
+            "pathogen_hazards_4",
+            "pathogen_hazards_0"
+          ],
+          "top3_food_names": [
+            "chicken raw",
+            "chicken raw",
+            "chicken raw"
+          ],
+          "canonical_food_name": "chicken raw",
+          "expected_rank": 1,
+          "expected_score": 0.861718,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "P02",
+          "food_description": "raw beef",
+          "field": "pathogen",
+          "production_tier": "pathogen_stage_1",
+          "tier": "pathogen",
+          "reformulated_query": "raw beef food hazard",
+          "threshold_used": 0.75,
+          "latency_ms": 9.8,
+          "error": null,
+          "top1_doc_id": "pathogen_hazards_7",
+          "top1_food_name": "beef raw",
+          "top1_score": 0.878377,
+          "top3_doc_ids": [
+            "pathogen_hazards_7",
+            "pathogen_hazards_5",
+            "pathogen_hazards_9"
+          ],
+          "top3_food_names": [
+            "beef raw",
+            "beef raw",
+            "beef raw"
+          ],
+          "canonical_food_name": "beef raw",
+          "expected_rank": 1,
+          "expected_score": 0.878377,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "P03",
+          "food_description": "raw oysters",
+          "field": "pathogen",
+          "production_tier": "pathogen_stage_1",
+          "tier": "pathogen",
+          "reformulated_query": "raw oysters food hazard",
+          "threshold_used": 0.75,
+          "latency_ms": 9.6,
+          "error": null,
+          "top1_doc_id": "pathogen_hazards_18",
+          "top1_food_name": "oysters raw",
+          "top1_score": 0.832387,
+          "top3_doc_ids": [
+            "pathogen_hazards_18",
+            "pathogen_hazards_16",
+            "pathogen_hazards_17"
+          ],
+          "top3_food_names": [
+            "oysters raw",
+            "oysters raw",
+            "oysters raw"
+          ],
+          "canonical_food_name": "oysters raw",
+          "expected_rank": 1,
+          "expected_score": 0.832387,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "P04",
+          "food_description": "raw salmon",
+          "field": "pathogen",
+          "production_tier": "pathogen_stage_1",
+          "tier": "pathogen",
+          "reformulated_query": "raw salmon food hazard",
+          "threshold_used": 0.75,
+          "latency_ms": 9.9,
+          "error": null,
+          "top1_doc_id": "pathogen_hazards_23",
+          "top1_food_name": "salmon raw",
+          "top1_score": 0.869674,
+          "top3_doc_ids": [
+            "pathogen_hazards_23",
+            "pathogen_hazards_25",
+            "pathogen_hazards_24"
+          ],
+          "top3_food_names": [
+            "salmon raw",
+            "salmon raw",
+            "salmon raw"
+          ],
+          "canonical_food_name": "salmon raw",
+          "expected_rank": 1,
+          "expected_score": 0.869674,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        }
+      ],
+      "summary": {
+        "top1_accuracy": 0.7,
+        "top3_accuracy": 0.766667,
+        "gate_pass_rate": 0.8,
+        "mean_expected_score": 0.8249,
+        "n_positive_queries": 24,
+        "n_errored_queries": 0,
+        "mean_query_latency_ms": 9.9,
+        "tier_accuracy": {
+          "easy": 1.0,
+          "medium": 0.7,
+          "hard": 0.0,
+          "pathogen": 1.0
+        }
+      }
+    },
+    {
+      "id": "bge-base-en-v1.5",
+      "name": "BGE base EN v1.5",
+      "hf_model": "BAAI/bge-base-en-v1.5",
+      "dim": 768,
+      "params_m": 109,
+      "is_baseline": false,
+      "training_objective": "retrieval",
+      "load_time_s": 23.68,
+      "corpus_embed_time_s": 2.94,
+      "queries": [
+        {
+          "query_id": "E01",
+          "food_description": "chicken",
+          "field": "ph_aw_combined",
+          "production_tier": "tier_1",
+          "tier": "easy",
+          "reformulated_query": "chicken pH water activity properties",
+          "threshold_used": 0.62,
+          "latency_ms": 52.0,
+          "error": null,
+          "top1_doc_id": "food_properties_27",
+          "top1_food_name": "fresh poultry",
+          "top1_score": 0.78906,
+          "top3_doc_ids": [
+            "food_properties_27",
+            "food_properties_25",
+            "food_properties_28"
+          ],
+          "top3_food_names": [
+            "fresh poultry",
+            "chicken",
+            "cured meat"
+          ],
+          "canonical_food_name": "chicken",
+          "expected_rank": 2,
+          "expected_score": 0.787903,
+          "correct_at_1": false,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "E02",
+          "food_description": "raw chicken",
+          "field": "ph_aw_combined",
+          "production_tier": "tier_1",
+          "tier": "easy",
+          "reformulated_query": "raw chicken pH water activity properties",
+          "threshold_used": 0.62,
+          "latency_ms": 23.8,
+          "error": null,
+          "top1_doc_id": "food_properties_25",
+          "top1_food_name": "chicken",
+          "top1_score": 0.823367,
+          "top3_doc_ids": [
+            "food_properties_25",
+            "food_properties_27",
+            "food_properties_28"
+          ],
+          "top3_food_names": [
+            "chicken",
+            "fresh poultry",
+            "cured meat"
+          ],
+          "canonical_food_name": "chicken",
+          "expected_rank": 1,
+          "expected_score": 0.823367,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "E03",
+          "food_description": "white bread",
+          "field": "ph_aw_combined",
+          "production_tier": "tier_1",
+          "tier": "easy",
+          "reformulated_query": "white bread pH water activity properties",
+          "threshold_used": 0.62,
+          "latency_ms": 18.9,
+          "error": null,
+          "top1_doc_id": "food_properties_212",
+          "top1_food_name": "bread white",
+          "top1_score": 0.882929,
+          "top3_doc_ids": [
+            "food_properties_212",
+            "food_properties_228",
+            "food_properties_217"
+          ],
+          "top3_food_names": [
+            "bread white",
+            "bread crust",
+            "bread whole wheat"
+          ],
+          "canonical_food_name": "bread white",
+          "expected_rank": 1,
+          "expected_score": 0.882929,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "E04",
+          "food_description": "ground beef",
+          "field": "ph",
+          "production_tier": "tier_1",
+          "tier": "easy",
+          "reformulated_query": "ground beef pH acidity",
+          "threshold_used": 0.62,
+          "latency_ms": 20.7,
+          "error": null,
+          "top1_doc_id": "food_properties_21",
+          "top1_food_name": "beef ground",
+          "top1_score": 0.858004,
+          "top3_doc_ids": [
+            "food_properties_21",
+            "food_properties_24",
+            "food_properties_22"
+          ],
+          "top3_food_names": [
+            "beef ground",
+            "veal",
+            "ham"
+          ],
+          "canonical_food_name": "beef ground",
+          "expected_rank": 1,
+          "expected_score": 0.858004,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "E05",
+          "food_description": "veal",
+          "field": "ph",
+          "production_tier": "tier_1",
+          "tier": "easy",
+          "reformulated_query": "veal pH acidity",
+          "threshold_used": 0.62,
+          "latency_ms": 20.3,
+          "error": null,
+          "top1_doc_id": "food_properties_24",
+          "top1_food_name": "veal",
+          "top1_score": 0.83757,
+          "top3_doc_ids": [
+            "food_properties_24",
+            "food_properties_137",
+            "food_properties_35"
+          ],
+          "top3_food_names": [
+            "veal",
+            "beets canned acidified",
+            "haddock filet broiled"
+          ],
+          "canonical_food_name": "veal",
+          "expected_rank": 1,
+          "expected_score": 0.83757,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "E06",
+          "food_description": "milk",
+          "field": "ph",
+          "production_tier": "tier_1",
+          "tier": "easy",
+          "reformulated_query": "milk pH acidity",
+          "threshold_used": 0.62,
+          "latency_ms": 21.0,
+          "error": null,
+          "top1_doc_id": "food_properties_4",
+          "top1_food_name": "milk acidophilus",
+          "top1_score": 0.84149,
+          "top3_doc_ids": [
+            "food_properties_4",
+            "food_properties_2",
+            "food_properties_5"
+          ],
+          "top3_food_names": [
+            "milk acidophilus",
+            "milk cow",
+            "milk evaporated"
+          ],
+          "canonical_food_name": "milk cow",
+          "expected_rank": 2,
+          "expected_score": 0.838448,
+          "correct_at_1": false,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "E07",
+          "food_description": "fresh salmon",
+          "field": "ph",
+          "production_tier": "tier_1",
+          "tier": "easy",
+          "reformulated_query": "fresh salmon pH acidity",
+          "threshold_used": 0.62,
+          "latency_ms": 19.2,
+          "error": null,
+          "top1_doc_id": "food_properties_38",
+          "top1_food_name": "salmon fresh",
+          "top1_score": 0.875265,
+          "top3_doc_ids": [
+            "food_properties_38",
+            "food_properties_29",
+            "food_properties_39"
+          ],
+          "top3_food_names": [
+            "salmon fresh",
+            "fish fresh most",
+            "salmon canned"
+          ],
+          "canonical_food_name": "salmon fresh",
+          "expected_rank": 1,
+          "expected_score": 0.875265,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "E08",
+          "food_description": "canned tuna",
+          "field": "ph",
+          "production_tier": "tier_1",
+          "tier": "easy",
+          "reformulated_query": "canned tuna pH acidity",
+          "threshold_used": 0.62,
+          "latency_ms": 20.6,
+          "error": null,
+          "top1_doc_id": "food_properties_42",
+          "top1_food_name": "tuna fish canned",
+          "top1_score": 0.876456,
+          "top3_doc_ids": [
+            "food_properties_42",
+            "food_properties_37",
+            "food_properties_39"
+          ],
+          "top3_food_names": [
+            "tuna fish canned",
+            "mackerel canned",
+            "salmon canned"
+          ],
+          "canonical_food_name": "tuna fish canned",
+          "expected_rank": 1,
+          "expected_score": 0.876456,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "E09",
+          "food_description": "oysters",
+          "field": "ph",
+          "production_tier": "tier_1",
+          "tier": "easy",
+          "reformulated_query": "oysters pH acidity",
+          "threshold_used": 0.62,
+          "latency_ms": 20.2,
+          "error": null,
+          "top1_doc_id": "food_properties_48",
+          "top1_food_name": "oysters",
+          "top1_score": 0.849982,
+          "top3_doc_ids": [
+            "food_properties_48",
+            "food_properties_47",
+            "food_properties_49"
+          ],
+          "top3_food_names": [
+            "oysters",
+            "mussels",
+            "scallop"
+          ],
+          "canonical_food_name": "oysters",
+          "expected_rank": 1,
+          "expected_score": 0.849982,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "E10",
+          "food_description": "cooked white rice",
+          "field": "ph",
+          "production_tier": "tier_1",
+          "tier": "easy",
+          "reformulated_query": "cooked white rice pH acidity",
+          "threshold_used": 0.62,
+          "latency_ms": 17.5,
+          "error": null,
+          "top1_doc_id": "food_properties_221",
+          "top1_food_name": "rice white cooked",
+          "top1_score": 0.881803,
+          "top3_doc_ids": [
+            "food_properties_221",
+            "food_properties_220",
+            "food_properties_222"
+          ],
+          "top3_food_names": [
+            "rice white cooked",
+            "rice brown cooked",
+            "rice wild cooked"
+          ],
+          "canonical_food_name": "rice white cooked",
+          "expected_rank": 1,
+          "expected_score": 0.881803,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "M01",
+          "food_description": "turkey",
+          "field": "water_activity",
+          "production_tier": "tier_2",
+          "tier": "medium",
+          "reformulated_query": "turkey water activity aw moisture",
+          "threshold_used": 0.62,
+          "latency_ms": 18.8,
+          "error": null,
+          "top1_doc_id": "food_properties_27",
+          "top1_food_name": "fresh poultry",
+          "top1_score": 0.716862,
+          "top3_doc_ids": [
+            "food_properties_27",
+            "food_properties_28",
+            "food_properties_228"
+          ],
+          "top3_food_names": [
+            "fresh poultry",
+            "cured meat",
+            "bread crust"
+          ],
+          "canonical_food_name": "fresh poultry",
+          "expected_rank": 1,
+          "expected_score": 0.716862,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "M02",
+          "food_description": "duck",
+          "field": "water_activity",
+          "production_tier": "tier_2",
+          "tier": "medium",
+          "reformulated_query": "duck water activity aw moisture",
+          "threshold_used": 0.62,
+          "latency_ms": 21.1,
+          "error": null,
+          "top1_doc_id": "food_properties_27",
+          "top1_food_name": "fresh poultry",
+          "top1_score": 0.696059,
+          "top3_doc_ids": [
+            "food_properties_27",
+            "food_properties_28",
+            "food_properties_59"
+          ],
+          "top3_food_names": [
+            "fresh poultry",
+            "cured meat",
+            "dried whole egg"
+          ],
+          "canonical_food_name": "fresh poultry",
+          "expected_rank": 1,
+          "expected_score": 0.696059,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "M03",
+          "food_description": "goose",
+          "field": "water_activity",
+          "production_tier": "tier_2",
+          "tier": "medium",
+          "reformulated_query": "goose water activity aw moisture",
+          "threshold_used": 0.62,
+          "latency_ms": 21.1,
+          "error": null,
+          "top1_doc_id": "food_properties_228",
+          "top1_food_name": "bread crust",
+          "top1_score": 0.691058,
+          "top3_doc_ids": [
+            "food_properties_228",
+            "food_properties_27",
+            "food_properties_28"
+          ],
+          "top3_food_names": [
+            "bread crust",
+            "fresh poultry",
+            "cured meat"
+          ],
+          "canonical_food_name": "fresh poultry",
+          "expected_rank": 2,
+          "expected_score": 0.67806,
+          "correct_at_1": false,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "M04",
+          "food_description": "pheasant",
+          "field": "water_activity",
+          "production_tier": "tier_2",
+          "tier": "medium",
+          "reformulated_query": "pheasant water activity aw moisture",
+          "threshold_used": 0.62,
+          "latency_ms": 21.2,
+          "error": null,
+          "top1_doc_id": "food_properties_27",
+          "top1_food_name": "fresh poultry",
+          "top1_score": 0.720088,
+          "top3_doc_ids": [
+            "food_properties_27",
+            "food_properties_28",
+            "food_properties_59"
+          ],
+          "top3_food_names": [
+            "fresh poultry",
+            "cured meat",
+            "dried whole egg"
+          ],
+          "canonical_food_name": "fresh poultry",
+          "expected_rank": 1,
+          "expected_score": 0.720088,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "M05",
+          "food_description": "lamb",
+          "field": "water_activity",
+          "production_tier": "tier_2",
+          "tier": "medium",
+          "reformulated_query": "lamb water activity aw moisture",
+          "threshold_used": 0.62,
+          "latency_ms": 20.8,
+          "error": null,
+          "top1_doc_id": "food_properties_228",
+          "top1_food_name": "bread crust",
+          "top1_score": 0.724659,
+          "top3_doc_ids": [
+            "food_properties_228",
+            "food_properties_28",
+            "food_properties_27"
+          ],
+          "top3_food_names": [
+            "bread crust",
+            "cured meat",
+            "fresh poultry"
+          ],
+          "canonical_food_name": "fresh meat",
+          "expected_rank": 10,
+          "expected_score": 0.674347,
+          "correct_at_1": false,
+          "correct_at_3": false,
+          "gate_passed": true
+        },
+        {
+          "query_id": "M06",
+          "food_description": "pork",
+          "field": "water_activity",
+          "production_tier": "tier_2",
+          "tier": "medium",
+          "reformulated_query": "pork water activity aw moisture",
+          "threshold_used": 0.62,
+          "latency_ms": 19.6,
+          "error": null,
+          "top1_doc_id": "food_properties_28",
+          "top1_food_name": "cured meat",
+          "top1_score": 0.771941,
+          "top3_doc_ids": [
+            "food_properties_28",
+            "food_properties_26",
+            "food_properties_230"
+          ],
+          "top3_food_names": [
+            "cured meat",
+            "fresh meat",
+            "uncooked rice"
+          ],
+          "canonical_food_name": "fresh meat",
+          "expected_rank": 2,
+          "expected_score": 0.722916,
+          "correct_at_1": false,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "M07",
+          "food_description": "beef",
+          "field": "water_activity",
+          "production_tier": "tier_2",
+          "tier": "medium",
+          "reformulated_query": "beef water activity aw moisture",
+          "threshold_used": 0.62,
+          "latency_ms": 19.4,
+          "error": null,
+          "top1_doc_id": "food_properties_28",
+          "top1_food_name": "cured meat",
+          "top1_score": 0.767903,
+          "top3_doc_ids": [
+            "food_properties_28",
+            "food_properties_26",
+            "food_properties_228"
+          ],
+          "top3_food_names": [
+            "cured meat",
+            "fresh meat",
+            "bread crust"
+          ],
+          "canonical_food_name": "fresh meat",
+          "expected_rank": 2,
+          "expected_score": 0.730541,
+          "correct_at_1": false,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "M08",
+          "food_description": "eggs",
+          "field": "water_activity",
+          "production_tier": "tier_2",
+          "tier": "medium",
+          "reformulated_query": "eggs water activity aw moisture",
+          "threshold_used": 0.62,
+          "latency_ms": 18.4,
+          "error": null,
+          "top1_doc_id": "food_properties_59",
+          "top1_food_name": "dried whole egg",
+          "top1_score": 0.840463,
+          "top3_doc_ids": [
+            "food_properties_59",
+            "food_properties_58",
+            "food_properties_232"
+          ],
+          "top3_food_names": [
+            "dried whole egg",
+            "eggs",
+            "cereal dry"
+          ],
+          "canonical_food_name": "eggs",
+          "expected_rank": 2,
+          "expected_score": 0.818014,
+          "correct_at_1": false,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "M09",
+          "food_description": "cured ham",
+          "field": "water_activity",
+          "production_tier": "tier_2",
+          "tier": "medium",
+          "reformulated_query": "cured ham water activity aw moisture",
+          "threshold_used": 0.62,
+          "latency_ms": 18.2,
+          "error": null,
+          "top1_doc_id": "food_properties_28",
+          "top1_food_name": "cured meat",
+          "top1_score": 0.786674,
+          "top3_doc_ids": [
+            "food_properties_28",
+            "food_properties_22",
+            "food_properties_228"
+          ],
+          "top3_food_names": [
+            "cured meat",
+            "ham",
+            "bread crust"
+          ],
+          "canonical_food_name": "cured meat",
+          "expected_rank": 1,
+          "expected_score": 0.786674,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "M10",
+          "food_description": "cod",
+          "field": "ph",
+          "production_tier": "tier_2",
+          "tier": "medium",
+          "reformulated_query": "cod pH acidity",
+          "threshold_used": 0.62,
+          "latency_ms": 17.0,
+          "error": null,
+          "top1_doc_id": "food_properties_33",
+          "top1_food_name": "codfish boiled",
+          "top1_score": 0.809274,
+          "top3_doc_ids": [
+            "food_properties_33",
+            "food_properties_41",
+            "food_properties_34"
+          ],
+          "top3_food_names": [
+            "codfish boiled",
+            "trout sea",
+            "flounder boiled"
+          ],
+          "canonical_food_name": "codfish boiled",
+          "expected_rank": 1,
+          "expected_score": 0.809274,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "H01",
+          "food_description": "turkey",
+          "field": "ph",
+          "production_tier": "tier_2",
+          "tier": "hard",
+          "reformulated_query": "turkey pH acidity",
+          "threshold_used": 0.62,
+          "latency_ms": 16.9,
+          "error": null,
+          "top1_doc_id": "food_properties_25",
+          "top1_food_name": "chicken",
+          "top1_score": 0.699314,
+          "top3_doc_ids": [
+            "food_properties_25",
+            "food_properties_245",
+            "food_properties_182"
+          ],
+          "top3_food_names": [
+            "chicken",
+            "vinegar",
+            "peppers"
+          ],
+          "canonical_food_name": null,
+          "expected_rank": null,
+          "expected_score": null,
+          "correct_at_1": false,
+          "correct_at_3": false,
+          "gate_passed": false
+        },
+        {
+          "query_id": "H02",
+          "food_description": "duck",
+          "field": "ph",
+          "production_tier": "tier_2",
+          "tier": "hard",
+          "reformulated_query": "duck pH acidity",
+          "threshold_used": 0.62,
+          "latency_ms": 17.2,
+          "error": null,
+          "top1_doc_id": "food_properties_25",
+          "top1_food_name": "chicken",
+          "top1_score": 0.711071,
+          "top3_doc_ids": [
+            "food_properties_25",
+            "food_properties_34",
+            "food_properties_36"
+          ],
+          "top3_food_names": [
+            "chicken",
+            "flounder boiled",
+            "herring"
+          ],
+          "canonical_food_name": null,
+          "expected_rank": null,
+          "expected_score": null,
+          "correct_at_1": false,
+          "correct_at_3": false,
+          "gate_passed": false
+        },
+        {
+          "query_id": "H03",
+          "food_description": "lamb",
+          "field": "ph",
+          "production_tier": "tier_2",
+          "tier": "hard",
+          "reformulated_query": "lamb pH acidity",
+          "threshold_used": 0.62,
+          "latency_ms": 20.9,
+          "error": null,
+          "top1_doc_id": "food_properties_24",
+          "top1_food_name": "veal",
+          "top1_score": 0.716656,
+          "top3_doc_ids": [
+            "food_properties_24",
+            "food_properties_4",
+            "food_properties_3"
+          ],
+          "top3_food_names": [
+            "veal",
+            "milk acidophilus",
+            "milk goat"
+          ],
+          "canonical_food_name": null,
+          "expected_rank": null,
+          "expected_score": null,
+          "correct_at_1": false,
+          "correct_at_3": false,
+          "gate_passed": false
+        },
+        {
+          "query_id": "H04",
+          "food_description": "pork",
+          "field": "ph",
+          "production_tier": "tier_2",
+          "tier": "hard",
+          "reformulated_query": "pork pH acidity",
+          "threshold_used": 0.62,
+          "latency_ms": 18.5,
+          "error": null,
+          "top1_doc_id": "food_properties_22",
+          "top1_food_name": "ham",
+          "top1_score": 0.763726,
+          "top3_doc_ids": [
+            "food_properties_22",
+            "food_properties_44",
+            "food_properties_21"
+          ],
+          "top3_food_names": [
+            "ham",
+            "crab meat",
+            "beef ground"
+          ],
+          "canonical_food_name": null,
+          "expected_rank": null,
+          "expected_score": null,
+          "correct_at_1": false,
+          "correct_at_3": false,
+          "gate_passed": false
+        },
+        {
+          "query_id": "H05",
+          "food_description": "zarblax burger",
+          "field": "ph",
+          "production_tier": "tier_2",
+          "tier": "hard",
+          "reformulated_query": "zarblax burger pH acidity",
+          "threshold_used": 0.62,
+          "latency_ms": 19.5,
+          "error": null,
+          "top1_doc_id": "food_properties_238",
+          "top1_food_name": "chili sauce acidified",
+          "top1_score": 0.681991,
+          "top3_doc_ids": [
+            "food_properties_238",
+            "food_properties_35",
+            "food_properties_144"
+          ],
+          "top3_food_names": [
+            "chili sauce acidified",
+            "haddock filet broiled",
+            "cactus"
+          ],
+          "canonical_food_name": null,
+          "expected_rank": null,
+          "expected_score": null,
+          "correct_at_1": false,
+          "correct_at_3": false,
+          "gate_passed": false
+        },
+        {
+          "query_id": "H06",
+          "food_description": "zarblax burger",
+          "field": "water_activity",
+          "production_tier": "tier_2",
+          "tier": "hard",
+          "reformulated_query": "zarblax burger water activity aw moisture",
+          "threshold_used": 0.62,
+          "latency_ms": 22.7,
+          "error": null,
+          "top1_doc_id": "food_properties_28",
+          "top1_food_name": "cured meat",
+          "top1_score": 0.706577,
+          "top3_doc_ids": [
+            "food_properties_28",
+            "food_properties_228",
+            "food_properties_233"
+          ],
+          "top3_food_names": [
+            "cured meat",
+            "bread crust",
+            "crackers dry"
+          ],
+          "canonical_food_name": null,
+          "expected_rank": null,
+          "expected_score": null,
+          "correct_at_1": false,
+          "correct_at_3": false,
+          "gate_passed": false
+        },
+        {
+          "query_id": "P01",
+          "food_description": "raw chicken",
+          "field": "pathogen",
+          "production_tier": "pathogen_stage_1",
+          "tier": "pathogen",
+          "reformulated_query": "raw chicken food hazard",
+          "threshold_used": 0.75,
+          "latency_ms": 19.0,
+          "error": null,
+          "top1_doc_id": "pathogen_hazards_0",
+          "top1_food_name": "chicken raw",
+          "top1_score": 0.793025,
+          "top3_doc_ids": [
+            "pathogen_hazards_0",
+            "pathogen_hazards_3",
+            "pathogen_hazards_4"
+          ],
+          "top3_food_names": [
+            "chicken raw",
+            "chicken raw",
+            "chicken raw"
+          ],
+          "canonical_food_name": "chicken raw",
+          "expected_rank": 1,
+          "expected_score": 0.793025,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "P02",
+          "food_description": "raw beef",
+          "field": "pathogen",
+          "production_tier": "pathogen_stage_1",
+          "tier": "pathogen",
+          "reformulated_query": "raw beef food hazard",
+          "threshold_used": 0.75,
+          "latency_ms": 18.2,
+          "error": null,
+          "top1_doc_id": "pathogen_hazards_6",
+          "top1_food_name": "beef raw",
+          "top1_score": 0.80623,
+          "top3_doc_ids": [
+            "pathogen_hazards_6",
+            "pathogen_hazards_5",
+            "pathogen_hazards_9"
+          ],
+          "top3_food_names": [
+            "beef raw",
+            "beef raw",
+            "beef raw"
+          ],
+          "canonical_food_name": "beef raw",
+          "expected_rank": 1,
+          "expected_score": 0.80623,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "P03",
+          "food_description": "raw oysters",
+          "field": "pathogen",
+          "production_tier": "pathogen_stage_1",
+          "tier": "pathogen",
+          "reformulated_query": "raw oysters food hazard",
+          "threshold_used": 0.75,
+          "latency_ms": 20.3,
+          "error": null,
+          "top1_doc_id": "pathogen_hazards_18",
+          "top1_food_name": "oysters raw",
+          "top1_score": 0.818291,
+          "top3_doc_ids": [
+            "pathogen_hazards_18",
+            "pathogen_hazards_19",
+            "pathogen_hazards_17"
+          ],
+          "top3_food_names": [
+            "oysters raw",
+            "oysters raw",
+            "oysters raw"
+          ],
+          "canonical_food_name": "oysters raw",
+          "expected_rank": 1,
+          "expected_score": 0.818291,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "P04",
+          "food_description": "raw salmon",
+          "field": "pathogen",
+          "production_tier": "pathogen_stage_1",
+          "tier": "pathogen",
+          "reformulated_query": "raw salmon food hazard",
+          "threshold_used": 0.75,
+          "latency_ms": 19.0,
+          "error": null,
+          "top1_doc_id": "pathogen_hazards_23",
+          "top1_food_name": "salmon raw",
+          "top1_score": 0.794881,
+          "top3_doc_ids": [
+            "pathogen_hazards_23",
+            "pathogen_hazards_25",
+            "pathogen_hazards_24"
+          ],
+          "top3_food_names": [
+            "salmon raw",
+            "salmon raw",
+            "salmon raw"
+          ],
+          "canonical_food_name": "salmon raw",
+          "expected_rank": 1,
+          "expected_score": 0.794881,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        }
+      ],
+      "summary": {
+        "top1_accuracy": 0.566667,
+        "top3_accuracy": 0.766667,
+        "gate_pass_rate": 0.8,
+        "mean_expected_score": 0.7949,
+        "n_positive_queries": 24,
+        "n_errored_queries": 0,
+        "mean_query_latency_ms": 20.7,
+        "tier_accuracy": {
+          "easy": 0.8,
+          "medium": 0.5,
+          "hard": 0.0,
+          "pathogen": 1.0
+        }
+      }
+    },
+    {
+      "id": "mpnet-base-v2",
+      "name": "all-mpnet-base-v2",
+      "hf_model": "sentence-transformers/all-mpnet-base-v2",
+      "dim": 768,
+      "params_m": 110,
+      "is_baseline": false,
+      "training_objective": "general",
+      "load_time_s": 26.62,
+      "corpus_embed_time_s": 3.03,
+      "queries": [
+        {
+          "query_id": "E01",
+          "food_description": "chicken",
+          "field": "ph_aw_combined",
+          "production_tier": "tier_1",
+          "tier": "easy",
+          "reformulated_query": "chicken pH water activity properties",
+          "threshold_used": 0.62,
+          "latency_ms": 54.4,
+          "error": null,
+          "top1_doc_id": "food_properties_27",
+          "top1_food_name": "fresh poultry",
+          "top1_score": 0.729477,
+          "top3_doc_ids": [
+            "food_properties_27",
+            "food_properties_25",
+            "food_properties_26"
+          ],
+          "top3_food_names": [
+            "fresh poultry",
+            "chicken",
+            "fresh meat"
+          ],
+          "canonical_food_name": "chicken",
+          "expected_rank": 2,
+          "expected_score": 0.710281,
+          "correct_at_1": false,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "E02",
+          "food_description": "raw chicken",
+          "field": "ph_aw_combined",
+          "production_tier": "tier_1",
+          "tier": "easy",
+          "reformulated_query": "raw chicken pH water activity properties",
+          "threshold_used": 0.62,
+          "latency_ms": 19.8,
+          "error": null,
+          "top1_doc_id": "food_properties_25",
+          "top1_food_name": "chicken",
+          "top1_score": 0.74329,
+          "top3_doc_ids": [
+            "food_properties_25",
+            "food_properties_27",
+            "food_properties_26"
+          ],
+          "top3_food_names": [
+            "chicken",
+            "fresh poultry",
+            "fresh meat"
+          ],
+          "canonical_food_name": "chicken",
+          "expected_rank": 1,
+          "expected_score": 0.74329,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "E03",
+          "food_description": "white bread",
+          "field": "ph_aw_combined",
+          "production_tier": "tier_1",
+          "tier": "easy",
+          "reformulated_query": "white bread pH water activity properties",
+          "threshold_used": 0.62,
+          "latency_ms": 19.1,
+          "error": null,
+          "top1_doc_id": "food_properties_212",
+          "top1_food_name": "bread white",
+          "top1_score": 0.826476,
+          "top3_doc_ids": [
+            "food_properties_212",
+            "food_properties_228",
+            "food_properties_217"
+          ],
+          "top3_food_names": [
+            "bread white",
+            "bread crust",
+            "bread whole wheat"
+          ],
+          "canonical_food_name": "bread white",
+          "expected_rank": 1,
+          "expected_score": 0.826476,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "E04",
+          "food_description": "ground beef",
+          "field": "ph",
+          "production_tier": "tier_1",
+          "tier": "easy",
+          "reformulated_query": "ground beef pH acidity",
+          "threshold_used": 0.62,
+          "latency_ms": 19.8,
+          "error": null,
+          "top1_doc_id": "food_properties_21",
+          "top1_food_name": "beef ground",
+          "top1_score": 0.72422,
+          "top3_doc_ids": [
+            "food_properties_21",
+            "food_properties_24",
+            "food_properties_22"
+          ],
+          "top3_food_names": [
+            "beef ground",
+            "veal",
+            "ham"
+          ],
+          "canonical_food_name": "beef ground",
+          "expected_rank": 1,
+          "expected_score": 0.72422,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "E05",
+          "food_description": "veal",
+          "field": "ph",
+          "production_tier": "tier_1",
+          "tier": "easy",
+          "reformulated_query": "veal pH acidity",
+          "threshold_used": 0.62,
+          "latency_ms": 21.7,
+          "error": null,
+          "top1_doc_id": "food_properties_24",
+          "top1_food_name": "veal",
+          "top1_score": 0.729298,
+          "top3_doc_ids": [
+            "food_properties_24",
+            "food_properties_198",
+            "food_properties_35"
+          ],
+          "top3_food_names": [
+            "veal",
+            "squash yellow cooked",
+            "haddock filet broiled"
+          ],
+          "canonical_food_name": "veal",
+          "expected_rank": 1,
+          "expected_score": 0.729298,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "E06",
+          "food_description": "milk",
+          "field": "ph",
+          "production_tier": "tier_1",
+          "tier": "easy",
+          "reformulated_query": "milk pH acidity",
+          "threshold_used": 0.62,
+          "latency_ms": 21.8,
+          "error": null,
+          "top1_doc_id": "food_properties_4",
+          "top1_food_name": "milk acidophilus",
+          "top1_score": 0.763799,
+          "top3_doc_ids": [
+            "food_properties_4",
+            "food_properties_2",
+            "food_properties_1"
+          ],
+          "top3_food_names": [
+            "milk acidophilus",
+            "milk cow",
+            "buttermilk"
+          ],
+          "canonical_food_name": "milk cow",
+          "expected_rank": 2,
+          "expected_score": 0.684336,
+          "correct_at_1": false,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "E07",
+          "food_description": "fresh salmon",
+          "field": "ph",
+          "production_tier": "tier_1",
+          "tier": "easy",
+          "reformulated_query": "fresh salmon pH acidity",
+          "threshold_used": 0.62,
+          "latency_ms": 20.1,
+          "error": null,
+          "top1_doc_id": "food_properties_38",
+          "top1_food_name": "salmon fresh",
+          "top1_score": 0.796357,
+          "top3_doc_ids": [
+            "food_properties_38",
+            "food_properties_39",
+            "food_properties_41"
+          ],
+          "top3_food_names": [
+            "salmon fresh",
+            "salmon canned",
+            "trout sea"
+          ],
+          "canonical_food_name": "salmon fresh",
+          "expected_rank": 1,
+          "expected_score": 0.796357,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "E08",
+          "food_description": "canned tuna",
+          "field": "ph",
+          "production_tier": "tier_1",
+          "tier": "easy",
+          "reformulated_query": "canned tuna pH acidity",
+          "threshold_used": 0.62,
+          "latency_ms": 19.9,
+          "error": null,
+          "top1_doc_id": "food_properties_42",
+          "top1_food_name": "tuna fish canned",
+          "top1_score": 0.788162,
+          "top3_doc_ids": [
+            "food_properties_42",
+            "food_properties_37",
+            "food_properties_39"
+          ],
+          "top3_food_names": [
+            "tuna fish canned",
+            "mackerel canned",
+            "salmon canned"
+          ],
+          "canonical_food_name": "tuna fish canned",
+          "expected_rank": 1,
+          "expected_score": 0.788162,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "E09",
+          "food_description": "oysters",
+          "field": "ph",
+          "production_tier": "tier_1",
+          "tier": "easy",
+          "reformulated_query": "oysters pH acidity",
+          "threshold_used": 0.62,
+          "latency_ms": 20.2,
+          "error": null,
+          "top1_doc_id": "food_properties_48",
+          "top1_food_name": "oysters",
+          "top1_score": 0.778293,
+          "top3_doc_ids": [
+            "food_properties_48",
+            "food_properties_47",
+            "food_properties_49"
+          ],
+          "top3_food_names": [
+            "oysters",
+            "mussels",
+            "scallop"
+          ],
+          "canonical_food_name": "oysters",
+          "expected_rank": 1,
+          "expected_score": 0.778293,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "E10",
+          "food_description": "cooked white rice",
+          "field": "ph",
+          "production_tier": "tier_1",
+          "tier": "easy",
+          "reformulated_query": "cooked white rice pH acidity",
+          "threshold_used": 0.62,
+          "latency_ms": 19.2,
+          "error": null,
+          "top1_doc_id": "food_properties_221",
+          "top1_food_name": "rice white cooked",
+          "top1_score": 0.72685,
+          "top3_doc_ids": [
+            "food_properties_221",
+            "food_properties_222",
+            "food_properties_220"
+          ],
+          "top3_food_names": [
+            "rice white cooked",
+            "rice wild cooked",
+            "rice brown cooked"
+          ],
+          "canonical_food_name": "rice white cooked",
+          "expected_rank": 1,
+          "expected_score": 0.72685,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "M01",
+          "food_description": "turkey",
+          "field": "water_activity",
+          "production_tier": "tier_2",
+          "tier": "medium",
+          "reformulated_query": "turkey water activity aw moisture",
+          "threshold_used": 0.62,
+          "latency_ms": 19.3,
+          "error": null,
+          "top1_doc_id": "food_properties_27",
+          "top1_food_name": "fresh poultry",
+          "top1_score": 0.670328,
+          "top3_doc_ids": [
+            "food_properties_27",
+            "food_properties_26",
+            "food_properties_28"
+          ],
+          "top3_food_names": [
+            "fresh poultry",
+            "fresh meat",
+            "cured meat"
+          ],
+          "canonical_food_name": "fresh poultry",
+          "expected_rank": 1,
+          "expected_score": 0.670328,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "M02",
+          "food_description": "duck",
+          "field": "water_activity",
+          "production_tier": "tier_2",
+          "tier": "medium",
+          "reformulated_query": "duck water activity aw moisture",
+          "threshold_used": 0.62,
+          "latency_ms": 20.0,
+          "error": null,
+          "top1_doc_id": "food_properties_27",
+          "top1_food_name": "fresh poultry",
+          "top1_score": 0.585915,
+          "top3_doc_ids": [
+            "food_properties_27",
+            "food_properties_26",
+            "food_properties_58"
+          ],
+          "top3_food_names": [
+            "fresh poultry",
+            "fresh meat",
+            "eggs"
+          ],
+          "canonical_food_name": "fresh poultry",
+          "expected_rank": 1,
+          "expected_score": 0.585915,
+          "correct_at_1": false,
+          "correct_at_3": false,
+          "gate_passed": false
+        },
+        {
+          "query_id": "M03",
+          "food_description": "goose",
+          "field": "water_activity",
+          "production_tier": "tier_2",
+          "tier": "medium",
+          "reformulated_query": "goose water activity aw moisture",
+          "threshold_used": 0.62,
+          "latency_ms": 19.9,
+          "error": null,
+          "top1_doc_id": "food_properties_27",
+          "top1_food_name": "fresh poultry",
+          "top1_score": 0.574487,
+          "top3_doc_ids": [
+            "food_properties_27",
+            "food_properties_26",
+            "food_properties_58"
+          ],
+          "top3_food_names": [
+            "fresh poultry",
+            "fresh meat",
+            "eggs"
+          ],
+          "canonical_food_name": "fresh poultry",
+          "expected_rank": 1,
+          "expected_score": 0.574487,
+          "correct_at_1": false,
+          "correct_at_3": false,
+          "gate_passed": false
+        },
+        {
+          "query_id": "M04",
+          "food_description": "pheasant",
+          "field": "water_activity",
+          "production_tier": "tier_2",
+          "tier": "medium",
+          "reformulated_query": "pheasant water activity aw moisture",
+          "threshold_used": 0.62,
+          "latency_ms": 21.8,
+          "error": null,
+          "top1_doc_id": "food_properties_27",
+          "top1_food_name": "fresh poultry",
+          "top1_score": 0.613633,
+          "top3_doc_ids": [
+            "food_properties_27",
+            "food_properties_26",
+            "food_properties_59"
+          ],
+          "top3_food_names": [
+            "fresh poultry",
+            "fresh meat",
+            "dried whole egg"
+          ],
+          "canonical_food_name": "fresh poultry",
+          "expected_rank": 1,
+          "expected_score": 0.613633,
+          "correct_at_1": false,
+          "correct_at_3": false,
+          "gate_passed": false
+        },
+        {
+          "query_id": "M05",
+          "food_description": "lamb",
+          "field": "water_activity",
+          "production_tier": "tier_2",
+          "tier": "medium",
+          "reformulated_query": "lamb water activity aw moisture",
+          "threshold_used": 0.62,
+          "latency_ms": 19.9,
+          "error": null,
+          "top1_doc_id": "food_properties_26",
+          "top1_food_name": "fresh meat",
+          "top1_score": 0.653806,
+          "top3_doc_ids": [
+            "food_properties_26",
+            "food_properties_28",
+            "food_properties_27"
+          ],
+          "top3_food_names": [
+            "fresh meat",
+            "cured meat",
+            "fresh poultry"
+          ],
+          "canonical_food_name": "fresh meat",
+          "expected_rank": 1,
+          "expected_score": 0.653806,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "M06",
+          "food_description": "pork",
+          "field": "water_activity",
+          "production_tier": "tier_2",
+          "tier": "medium",
+          "reformulated_query": "pork water activity aw moisture",
+          "threshold_used": 0.62,
+          "latency_ms": 20.3,
+          "error": null,
+          "top1_doc_id": "food_properties_26",
+          "top1_food_name": "fresh meat",
+          "top1_score": 0.719557,
+          "top3_doc_ids": [
+            "food_properties_26",
+            "food_properties_28",
+            "food_properties_27"
+          ],
+          "top3_food_names": [
+            "fresh meat",
+            "cured meat",
+            "fresh poultry"
+          ],
+          "canonical_food_name": "fresh meat",
+          "expected_rank": 1,
+          "expected_score": 0.719557,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "M07",
+          "food_description": "beef",
+          "field": "water_activity",
+          "production_tier": "tier_2",
+          "tier": "medium",
+          "reformulated_query": "beef water activity aw moisture",
+          "threshold_used": 0.62,
+          "latency_ms": 18.9,
+          "error": null,
+          "top1_doc_id": "food_properties_26",
+          "top1_food_name": "fresh meat",
+          "top1_score": 0.776369,
+          "top3_doc_ids": [
+            "food_properties_26",
+            "food_properties_28",
+            "food_properties_27"
+          ],
+          "top3_food_names": [
+            "fresh meat",
+            "cured meat",
+            "fresh poultry"
+          ],
+          "canonical_food_name": "fresh meat",
+          "expected_rank": 1,
+          "expected_score": 0.776369,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "M08",
+          "food_description": "eggs",
+          "field": "water_activity",
+          "production_tier": "tier_2",
+          "tier": "medium",
+          "reformulated_query": "eggs water activity aw moisture",
+          "threshold_used": 0.62,
+          "latency_ms": 18.9,
+          "error": null,
+          "top1_doc_id": "food_properties_59",
+          "top1_food_name": "dried whole egg",
+          "top1_score": 0.782666,
+          "top3_doc_ids": [
+            "food_properties_59",
+            "food_properties_58",
+            "food_properties_27"
+          ],
+          "top3_food_names": [
+            "dried whole egg",
+            "eggs",
+            "fresh poultry"
+          ],
+          "canonical_food_name": "eggs",
+          "expected_rank": 2,
+          "expected_score": 0.76371,
+          "correct_at_1": false,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "M09",
+          "food_description": "cured ham",
+          "field": "water_activity",
+          "production_tier": "tier_2",
+          "tier": "medium",
+          "reformulated_query": "cured ham water activity aw moisture",
+          "threshold_used": 0.62,
+          "latency_ms": 17.5,
+          "error": null,
+          "top1_doc_id": "food_properties_28",
+          "top1_food_name": "cured meat",
+          "top1_score": 0.715378,
+          "top3_doc_ids": [
+            "food_properties_28",
+            "food_properties_22",
+            "food_properties_26"
+          ],
+          "top3_food_names": [
+            "cured meat",
+            "ham",
+            "fresh meat"
+          ],
+          "canonical_food_name": "cured meat",
+          "expected_rank": 1,
+          "expected_score": 0.715378,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "M10",
+          "food_description": "cod",
+          "field": "ph",
+          "production_tier": "tier_2",
+          "tier": "medium",
+          "reformulated_query": "cod pH acidity",
+          "threshold_used": 0.62,
+          "latency_ms": 18.7,
+          "error": null,
+          "top1_doc_id": "food_properties_33",
+          "top1_food_name": "codfish boiled",
+          "top1_score": 0.626297,
+          "top3_doc_ids": [
+            "food_properties_33",
+            "food_properties_36",
+            "food_properties_31"
+          ],
+          "top3_food_names": [
+            "codfish boiled",
+            "herring",
+            "bass striped broiled"
+          ],
+          "canonical_food_name": "codfish boiled",
+          "expected_rank": 1,
+          "expected_score": 0.626297,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "H01",
+          "food_description": "turkey",
+          "field": "ph",
+          "production_tier": "tier_2",
+          "tier": "hard",
+          "reformulated_query": "turkey pH acidity",
+          "threshold_used": 0.62,
+          "latency_ms": 18.2,
+          "error": null,
+          "top1_doc_id": "food_properties_25",
+          "top1_food_name": "chicken",
+          "top1_score": 0.52722,
+          "top3_doc_ids": [
+            "food_properties_25",
+            "food_properties_22",
+            "food_properties_169"
+          ],
+          "top3_food_names": [
+            "chicken",
+            "ham",
+            "okra cooked"
+          ],
+          "canonical_food_name": null,
+          "expected_rank": null,
+          "expected_score": null,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "H02",
+          "food_description": "duck",
+          "field": "ph",
+          "production_tier": "tier_2",
+          "tier": "hard",
+          "reformulated_query": "duck pH acidity",
+          "threshold_used": 0.62,
+          "latency_ms": 16.4,
+          "error": null,
+          "top1_doc_id": "food_properties_25",
+          "top1_food_name": "chicken",
+          "top1_score": 0.519184,
+          "top3_doc_ids": [
+            "food_properties_25",
+            "food_properties_90",
+            "food_properties_197"
+          ],
+          "top3_food_names": [
+            "chicken",
+            "loquat",
+            "squash hubbard cooked"
+          ],
+          "canonical_food_name": null,
+          "expected_rank": null,
+          "expected_score": null,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "H03",
+          "food_description": "lamb",
+          "field": "ph",
+          "production_tier": "tier_2",
+          "tier": "hard",
+          "reformulated_query": "lamb pH acidity",
+          "threshold_used": 0.62,
+          "latency_ms": 16.0,
+          "error": null,
+          "top1_doc_id": "food_properties_22",
+          "top1_food_name": "ham",
+          "top1_score": 0.571563,
+          "top3_doc_ids": [
+            "food_properties_22",
+            "food_properties_24",
+            "food_properties_21"
+          ],
+          "top3_food_names": [
+            "ham",
+            "veal",
+            "beef ground"
+          ],
+          "canonical_food_name": null,
+          "expected_rank": null,
+          "expected_score": null,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "H04",
+          "food_description": "pork",
+          "field": "ph",
+          "production_tier": "tier_2",
+          "tier": "hard",
+          "reformulated_query": "pork pH acidity",
+          "threshold_used": 0.62,
+          "latency_ms": 15.8,
+          "error": null,
+          "top1_doc_id": "food_properties_22",
+          "top1_food_name": "ham",
+          "top1_score": 0.621461,
+          "top3_doc_ids": [
+            "food_properties_22",
+            "food_properties_24",
+            "food_properties_21"
+          ],
+          "top3_food_names": [
+            "ham",
+            "veal",
+            "beef ground"
+          ],
+          "canonical_food_name": null,
+          "expected_rank": null,
+          "expected_score": null,
+          "correct_at_1": false,
+          "correct_at_3": false,
+          "gate_passed": false
+        },
+        {
+          "query_id": "H05",
+          "food_description": "zarblax burger",
+          "field": "ph",
+          "production_tier": "tier_2",
+          "tier": "hard",
+          "reformulated_query": "zarblax burger pH acidity",
+          "threshold_used": 0.62,
+          "latency_ms": 19.4,
+          "error": null,
+          "top1_doc_id": "food_properties_238",
+          "top1_food_name": "chili sauce acidified",
+          "top1_score": 0.502276,
+          "top3_doc_ids": [
+            "food_properties_238",
+            "food_properties_169",
+            "food_properties_15"
+          ],
+          "top3_food_names": [
+            "chili sauce acidified",
+            "okra cooked",
+            "cheese roquefort"
+          ],
+          "canonical_food_name": null,
+          "expected_rank": null,
+          "expected_score": null,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "H06",
+          "food_description": "zarblax burger",
+          "field": "water_activity",
+          "production_tier": "tier_2",
+          "tier": "hard",
+          "reformulated_query": "zarblax burger water activity aw moisture",
+          "threshold_used": 0.62,
+          "latency_ms": 21.4,
+          "error": null,
+          "top1_doc_id": "food_properties_26",
+          "top1_food_name": "fresh meat",
+          "top1_score": 0.619363,
+          "top3_doc_ids": [
+            "food_properties_26",
+            "food_properties_28",
+            "food_properties_27"
+          ],
+          "top3_food_names": [
+            "fresh meat",
+            "cured meat",
+            "fresh poultry"
+          ],
+          "canonical_food_name": null,
+          "expected_rank": null,
+          "expected_score": null,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "P01",
+          "food_description": "raw chicken",
+          "field": "pathogen",
+          "production_tier": "pathogen_stage_1",
+          "tier": "pathogen",
+          "reformulated_query": "raw chicken food hazard",
+          "threshold_used": 0.75,
+          "latency_ms": 19.6,
+          "error": null,
+          "top1_doc_id": "pathogen_hazards_4",
+          "top1_food_name": "chicken raw",
+          "top1_score": 0.833093,
+          "top3_doc_ids": [
+            "pathogen_hazards_4",
+            "pathogen_hazards_1",
+            "pathogen_hazards_3"
+          ],
+          "top3_food_names": [
+            "chicken raw",
+            "chicken raw",
+            "chicken raw"
+          ],
+          "canonical_food_name": "chicken raw",
+          "expected_rank": 1,
+          "expected_score": 0.833093,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "P02",
+          "food_description": "raw beef",
+          "field": "pathogen",
+          "production_tier": "pathogen_stage_1",
+          "tier": "pathogen",
+          "reformulated_query": "raw beef food hazard",
+          "threshold_used": 0.75,
+          "latency_ms": 18.5,
+          "error": null,
+          "top1_doc_id": "pathogen_hazards_7",
+          "top1_food_name": "beef raw",
+          "top1_score": 0.827361,
+          "top3_doc_ids": [
+            "pathogen_hazards_7",
+            "pathogen_hazards_5",
+            "pathogen_hazards_6"
+          ],
+          "top3_food_names": [
+            "beef raw",
+            "beef raw",
+            "beef raw"
+          ],
+          "canonical_food_name": "beef raw",
+          "expected_rank": 1,
+          "expected_score": 0.827361,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "P03",
+          "food_description": "raw oysters",
+          "field": "pathogen",
+          "production_tier": "pathogen_stage_1",
+          "tier": "pathogen",
+          "reformulated_query": "raw oysters food hazard",
+          "threshold_used": 0.75,
+          "latency_ms": 19.8,
+          "error": null,
+          "top1_doc_id": "pathogen_hazards_18",
+          "top1_food_name": "oysters raw",
+          "top1_score": 0.848536,
+          "top3_doc_ids": [
+            "pathogen_hazards_18",
+            "pathogen_hazards_19",
+            "pathogen_hazards_17"
+          ],
+          "top3_food_names": [
+            "oysters raw",
+            "oysters raw",
+            "oysters raw"
+          ],
+          "canonical_food_name": "oysters raw",
+          "expected_rank": 1,
+          "expected_score": 0.848536,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        },
+        {
+          "query_id": "P04",
+          "food_description": "raw salmon",
+          "field": "pathogen",
+          "production_tier": "pathogen_stage_1",
+          "tier": "pathogen",
+          "reformulated_query": "raw salmon food hazard",
+          "threshold_used": 0.75,
+          "latency_ms": 21.0,
+          "error": null,
+          "top1_doc_id": "pathogen_hazards_23",
+          "top1_food_name": "salmon raw",
+          "top1_score": 0.84044,
+          "top3_doc_ids": [
+            "pathogen_hazards_23",
+            "pathogen_hazards_25",
+            "pathogen_hazards_24"
+          ],
+          "top3_food_names": [
+            "salmon raw",
+            "salmon raw",
+            "salmon raw"
+          ],
+          "canonical_food_name": "salmon raw",
+          "expected_rank": 1,
+          "expected_score": 0.84044,
+          "correct_at_1": true,
+          "correct_at_3": true,
+          "gate_passed": true
+        }
+      ],
+      "summary": {
+        "top1_accuracy": 0.766667,
+        "top3_accuracy": 0.866667,
+        "gate_pass_rate": 0.866667,
+        "mean_expected_score": 0.7315,
+        "n_positive_queries": 24,
+        "n_errored_queries": 0,
+        "mean_query_latency_ms": 20.6,
+        "tier_accuracy": {
+          "easy": 0.8,
+          "medium": 0.6,
+          "hard": 0.8333,
+          "pathogen": 1.0
+        }
+      }
+    }
+  ]
+}

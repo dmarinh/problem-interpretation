@@ -213,6 +213,82 @@ A long working session that started with a single bug report (the bread query's 
 
 When mocking `get_hazards_for_food()`, the mock must return results in already-sorted order. The real function sorts; the mock doesn't. The grounding service takes `ranked[0]` — first element — trusting that the list is pre-sorted. Tests for grounding service behavior should pass sorted data; tests for sorting behavior belong in `TestGetHazardsForFood`.
 
+### 2026-05-15 — Experiment 2.1 (Embedder Comparison): benchmark harness, test polarity, environment-aware tests
+
+**Context:** Implemented the full Exp 2.1 benchmark: ground-truth corpus, pure-function unit tests, ChromaDB-backed experiment runner, Streamlit viewer.
+
+**What went well**
+
+- **Phase-gated sequence worked cleanly.** Writing failing tests before the implementation caught three real bugs before a single ChromaDB call was made: the bogus `CORPUS_META` import in `save_results()`, the rounding precision mismatch in `_compute_embedder_summary`, and the `.env`-vs-default conflict in `_get_threshold`. The red-test phase is load-bearing, not ceremonial.
+- **Code-reviewer agent found the `async def main()` dead code and the bare `except Exception` in `_query_collection`** that would have silently attributed a filter-construction bug to embedder quality. Both were caught in the review pass, not in testing, because tests don't exercise error paths.
+- **Negative-control polarity is non-obvious and the tests enforced it precisely.** For hard-tier queries (empty `acceptable_food_names`), `correct_at_1 = True` means *no document cleared the threshold* — the opposite of positive queries. This inverted polarity must be in the tests, not just in comments. `TestScoreQueryResult.test_negative_control_*` are the only reliable guard against accidentally normalising this back to the standard polarity.
+
+**Failure modes surfaced**
+
+- **`.env` overrides silently change what settings-reading tests assert.** `test_tier_1` was written with hard-coded `0.70` (the default), but `.env` had `FOOD_PROPERTIES_CONFIDENCE=0.62`. The test failed. `test_reads_from_settings` passed because it checks the mapping, not the value. Rule: for any threshold test that reads from settings, assert against `settings.<field>`, not the default literal. Hard-coded literals only work when no `.env` override exists, which is never guaranteed.
+
+- **`pytest.approx` default relative tolerance is `1e-6`, not `1e-4`.** `round(5/6, 4) = 0.8333` has a relative error of `4e-5` vs `5/6 = 0.8333...`, which exceeds `1e-6`. Fix: round to at least 6 decimal places for accuracy ratios, or skip the `round()` entirely on metrics that tests compare with `pytest.approx`. When writing aggregate functions that will be unit-tested, keep rounding precision above `1e-6` or accept that the test must specify `abs=` tolerance explicitly.
+
+- **Bare `except Exception: return []` in a query helper turns filter bugs into silent zero-hit results.** A malformed ChromaDB filter raises an exception; the bare except returns `[]`; `_score_query_result` sees no results; `correct_at_1` is `False`; the failure is attributed to the embedder. There is no other signal. Fix: at minimum, `print` the exception before returning. For experiment code where a silent failure is indistinguishable from "embedder is just bad", logging the error is correctness-critical.
+
+- **Dead `async def` on a fully synchronous function.** `main()` was declared `async` but called no `await`. The `asyncio.run(main())` wrapper works but signals false intent and can mislead future contributors about where async safety is required. For benchmark scripts with no async I/O, keep `def main()`.
+
+**What to do differently**
+
+- When writing tests for functions that read from `settings.*`, always import settings inside the test and assert against the settings field, not a literal. The literal is valid only when the test environment is guaranteed clean (no `.env` file). Benchmark tests run in the development environment where `.env` is present.
+- After writing a `try/except` in any code path that contributes to experiment metrics, ask: "if this except fires silently, does the result look like a real measurement?" If yes, add logging.
+
+---
+
+### 2026-05-15 — Silent-success on error path (Exp 2.1 dry run)
+
+Two bugs surfaced on the first dry run against the hard stratum. Both were preventable.
+
+**BUG 1 — ChromaDB version interface mismatch (`embed_query` missing)**
+
+`_STEmbeddingFunction` implemented only `__call__`. ChromaDB ≥ 0.6 calls `embed_query(text: str)` at query time (not `__call__`), so all 6 queries errored with `AttributeError`. Ingestion worked because ChromaDB's ingestion path still uses `__call__`. The fix: implement all three entry points — `__call__`, `embed_documents`, and `embed_query` — so the wrapper is version-agnostic. The original rationale for the local class was "avoid chromadb internals that vary by version," but the fix required knowing those internals anyway. Consider using `chromadb.utils.embedding_functions.SentenceTransformerEmbeddingFunction` in future if the local wrapper keeps drifting.
+
+**BUG 2 — Empty top-K silently satisfies the negative-control polarity**
+
+The negative-control rule is `correct_at_1 = top1_score < threshold`. When `_query_collection` raised and previously returned `[]`, `_score_query_result` saw an empty list, took `top1_score = 0.0` (the fallback for no results), compared `0.0 < threshold` → `True`, and reported `correct_at_1=True`. An all-error run produced 100% accuracy on the hard stratum. This is the "silent-success on error path" pattern: a code path that should be an observable failure instead looks like a correct result.
+
+**Pattern: silent-success on error path**
+
+Adjacent to the 2026-04-30 sort-then-threshold lesson (where `from_string()` silently returned `None`, making the two-stage logic inert). The class of failure: an error condition that produces output indistinguishable from a genuine pass. The fix in both cases was the same: make the error observable in the data, then exclude it from the denominator.
+
+Prevention checklist for any scoring harness:
+1. Ask "if the retrieval step errors, what does the scoring function receive?" Trace the result through all branches.
+2. Check whether any branch has polarity such that empty-or-zero input produces a True result. If so, the error path masquerades as a pass.
+3. Add a unit test that injects an error record (e.g. `correct_at_1=None, error=<str>`) and asserts the summary does not count it as a success.
+
+**Structural fix applied:**
+- `_query_collection` now propagates exceptions (no catch-and-return-empty).
+- `run_embedder_queries` catches at the call site, sets `error=str(exc)`, fills all scored fields with `None`, prints the error visibly.
+- `_compute_embedder_summary` separates `valid` and `errored` lists; uses `len(valid)` for all accuracy denominators; returns `None` (not 0% or 100%) when `n_valid == 0`; reports `n_errored_queries` as a first-class summary field.
+- `TestComputeEmbedderSummaryErrors` locks this out: `test_all_errors_returns_none_accuracy` asserts 6 errored hard-tier queries yield `top1_accuracy=None`, not `1.0`.
+
+---
+
+### 2026-05-15 — Return contract change propagation (Exp 2.1 second dry run)
+
+**BUG 3 — bespoke wrapper vs. built-in interface drift**
+
+After adding `embed_query(self, text: str)` to fix BUG 1, ChromaDB called it as `embed_query(input="...")` (keyword argument). The parameter name `text` vs `input` caused a `TypeError`. The root cause: a bespoke wrapper that must track ChromaDB's internal calling convention across versions will always lag. Fix: drop the wrapper entirely, use `chromadb.utils.embedding_functions.SentenceTransformerEmbeddingFunction(model_name=..., normalize_embeddings=True)`. The built-in is maintained to match ChromaDB's current protocol. The original rationale for the bespoke class ("avoid chromadb internals that vary by version") was exactly backwards — the bespoke class IS a dependency on chromadb internals; the built-in is the stable interface.
+
+**Rule:** When a third-party library provides an official adapter for its own protocol, use it. A bespoke adapter that manually reimplements the protocol signature is a maintenance liability, not an insulation layer.
+
+**BUG 4 — return contract change without consumer sweep**
+
+Changing `_compute_embedder_summary` to return `None` for accuracy when all queries errored was the correct fix. But every consumer of those values assumed `float`, not `float | None`. The f-string `f"{x:.0%}"` crashes on `None`; `max(..., key=lambda e: e["summary"].get("top1_accuracy", 0))` raises `TypeError` when the value is `None` (not absent). The unit test for BUG 2 verified the function returned `None` correctly; it did not verify the rest of the pipeline survived `None`. Result: the fix introduced a new crash on the happy path of `print_summary` and `run_experiment`.
+
+**Rule:** When a function's return contract is widened to include `None`, every call site that formats, sorts, or arithmetically combines the value must be updated in the same change. The pattern for finding call sites: grep for the key name (`"top1_accuracy"`) across the module; touch every site that applies a format spec or comparison operator. Add at least one test that calls a downstream consumer (not just the function itself) with the `None` case — `test_print_summary_does_not_crash_on_none_accuracy` is the template.
+
+**Integration test pattern (no model load, no real ChromaDB):**
+
+Mock a collection object with a `query()` method that always raises. Pass it to `run_embedder_queries` → `_compute_embedder_summary` → `save_results` → `print_summary`. Assert: (1) all records have `error != None`, (2) `top1_accuracy is None`, (3) `json.load(latest.json)` does not raise, (4) `print_summary` does not raise. This exercises the full error path without requiring sentence-transformers or ChromaDB, runs in ~50ms, and would have caught both BUG 2 and BUG 4 before the first dry run.
+
+---
+
 *End of lessons.md. Append future sessions below.*
 
 ---
@@ -550,3 +626,71 @@ Three test helpers in `test_api_translation.py` created `RetrievalResult` object
 - When renaming a settings field, grep the full set of env-var artefacts before closing the session — not just `.env`. A single `grep -r OLD_VAR_NAME .` from the repo root catches all of them at once.
 - Before deleting a routing fallback, grep for every construction site of the object the fallback was designed to route, and verify each construction site sets the primary routing key (`attributed_field`). If it doesn't, add it before deleting the fallback.
 - Before declaring a simplification correct, run retrieval spot-checks against common foods where the two designs would diverge — specifically foods whose best full-property doc and best single-property doc are different documents. The divergence is invisible to unit tests (which mock the store) and to integration tests that use the real store only against foods that happen to have a unique best doc for all fields.
+
+---
+
+### 2026-05-15 — Exp 2.1 BUG 1: duplicate decision logic diverged silently
+
+**Context:** Experiment 2.1 (Embedder Comparison) has two surfaces that render a switch/no-switch recommendation: the terminal `print_summary()` and the Streamlit dashboard page. The terminal version was written first; the dashboard version was written later with the correct hard-stratum constraint (zero false positives required). The terminal version was never updated. On the first full 4-embedder run, the terminal printed "Switch to mpnet-base-v2 (+7%)" while the dashboard correctly said "Do not switch — false positives on the hard stratum."
+
+**Root cause:** The decision rule existed in two places with different implementations. Neither surface imported from the other; each computed its own answer inline.
+
+**Fix:** Extracted `compute_recommendation(embedder_results: list[dict]) -> dict` in the experiment module. Both terminal and dashboard import and call it. The rule lives once.
+
+**Pattern name:** Single-source-of-truth violation. The canonical form is: *surface A is written first (often simpler), surface B is written later (with the correct rule), surface A is never updated.* Common in CLIs + dashboards, API + SDK wrappers, and anywhere the same decision is rendered in two formats.
+
+**What to do differently:**
+- When a recommendation or decision is computed for display, ask "where else will this be displayed?" before writing the inline logic. If the answer is "at least one other place," extract the function first.
+- The hard-stratum constraint was the safety-critical part of the rule (false positives corrupt production retrieval). A safety-critical rule that lives in only one of two display surfaces is the same as a safety-critical rule that does not exist.
+- Unit-test the decision function in isolation before wiring it to any surface. A test that asserts `action == "no_safe_candidates"` on the BUG 1 input would have caught the divergence at the moment the second surface was written.
+
+---
+
+### 2026-05-16 — Gate-style scripts: wiring verification vs. result observation
+
+**Context:** `exp_2_2_gate3_dryrun.py` was written to verify that the harness (doc builders, embedder load, ChromaDB ingest, query routing, polarity logic) was wired correctly before launching the full 12-cell sweep. The gate3 script initially exited with code 1 when `hard_fpr > 0`, treating H11/H12 false positives as a gate-blocking condition. Daniel's review caught this as a category error: the script was conflating "harness works" with "baseline embedder passes the decision rule."
+
+**Rule:** Gate-style verification scripts must distinguish two different kinds of outputs:
+- **Wiring checks** (gating): doc count > 0, embedder loaded, all queries returned results, polarity logic fired correctly. These gate the full sweep — if they fail, the harness is broken and results would be meaningless.
+- **Result observations** (non-gating): hard_fpr value, MRR value, which specific queries failed. These are findings from running the harness against real data. Exiting on an undesirable observation conflates "the instrument is working" with "the measurement matches my expectation."
+
+**Why this matters:** H11/H12 false positives were the exact signal the corpus was designed to produce — they confirmed the hard-stratum design was functioning correctly. Exiting 1 on `hard_fpr > 0` would have prevented the sweep from running precisely when the harness was doing its job. The harness's job is to produce the measurement honestly, not to pre-filter results.
+
+**What to do differently:**
+- Write gate-style scripts with two sections: (1) hard gates that exit 1 on wiring failures, (2) observations printed as findings, never as gate conditions.
+- Label the distinction in a comment at the gate-exit point: "Gate N passes if all WIRING CHECKS succeeded. `<metric>` is a result observation, not a harness check. Exiting 1 here would conflate 'harness works' with 'baseline passes the decision rule' — a category error."
+- A "gate" script that exits 1 on an undesirable metric value is not a gate — it is a pre-filter that destroys the experimental signal it was designed to collect.
+
+---
+
+### 2026-05-16 — F1-maximising calibration is the wrong objective when FP/FN costs are asymmetric
+
+**Context:** Exp 2.2 threshold calibration initially used F1 maximisation. On the first full sweep, most cells optimised at threshold 0.30 (the sweep floor), and BGE cells reported `hard_fpr=1.0` at their "optimal" threshold. This is not a bug in the harness — F1 does exactly what F1 does. It is the wrong objective for PTM.
+
+**Why F1 is wrong here:** PTM's audit-honesty regime makes false positives strictly costlier than false negatives. A FP silently grounds pH/aw from an unrelated doc; a FN falls back to a conservative default with an honest audit trail. F1 does not distinguish these costs. When the positive-to-negative ratio in the calibration set heavily favours positives (as it does here), F1 reward for recall drives the optimal threshold to the sweep floor.
+
+**Rule:** When FP and FN costs differ, use a constrained objective rather than F1: find the highest-F1 threshold subject to FPR <= ceiling. The ceiling encodes the FP budget explicitly. If no threshold in the sweep satisfies the constraint, report `viable=False` honestly — do not paper over it with a permissive default.
+
+**What changed:** Added `FPR_CEILING = 0.05` (defensible for a 12-query hard stratum; revisit if stratum exceeds ~30 queries). `_threshold_sweep()` now returns `{viable, optimal_threshold, fpr_at_optimal, sweep: [...]}`. The full 61-point sweep curve is persisted. Cells where the constraint cannot be met surface `viable=False` rather than a spuriously low threshold.
+
+**Practical finding:** BGE cells needed a recalibrated tier_2 threshold of 0.79-0.86 (vs. production 0.62) to achieve FPR=0. At those thresholds, MRR dropped substantially but three cells (bge-small x current, bge-small x verbose, bge-base x verbose) achieved mrr_easy=1.0 and qualified for the decision rule. The recommendation changed from "no_safe_cells" to "switch to bge-small x verbose (+25% MRR)".
+
+---
+
+### 2026-05-16 — Threshold-dependent and rank-based metrics must not share a field name
+
+**What went well:**
+- The bug (gate-filtered MRR mislabelled as `mrr`) was caught by noticing that `mrr` changed when the calibrated threshold changed — a rank-based metric by definition cannot be threshold-dependent. The diagnostic was simple: if raising the threshold drops `mrr`, the field is not a pure MRR.
+- All four fixes (pure/gate-filtered MRR split, undefined-FPR detection, hard-stratum rename, tri-state viability) were implemented in one pass with no regressions. Adding `pure_reciprocal_rank` to `_score_query_result` and a `_backfill_pure_rr()` helper for old records kept the `--recalibrate` path functional without a full re-sweep.
+
+**What surfaced:**
+- **False FPR=0 from zero negatives.** tier_1 had no hard-stratum queries (all hard queries route through tier_2). Every threshold trivially achieved FPR=0.0 (0÷0), so `viable=True` was always returned — but it was meaningless. Detection rule: count negatives before the sweep; if `n_negatives == 0`, return `viable=None` with an explicit `reason` field rather than a spuriously reassuring `True`.
+- **Medium MRR near zero was a reporting artifact, not an embedder failure.** Gate-filtered `mrr_medium` was 0.00–0.15 for all 12 cells because the calibrated threshold frequently sat above the score of the correct medium-difficulty doc. Pure `mrr_medium` (rank-based) is 0.19–0.78 — the doc **is** being retrieved; it just doesn't always clear the gate. The gap means medium-difficulty queries are a threshold-calibration problem, not a corpus or embedder problem.
+- **Inverted polarity must be named.** `top1_by_stratum["hard"]` measured negative-control pass rate, not accuracy — the "correct" outcome for a hard-stratum query is `top1_score < threshold`. Storing this as `top1_by_stratum["hard"]` alongside easy/medium/pathogen top-1 accuracy implied the same polarity. Renamed to `hard_negative_control_pass_rate` to make the inversion explicit.
+
+**Rules:**
+- Separate threshold-invariant metrics (`mrr`, computed from `expected_rank`) from threshold-dependent metrics (`mrr_gate_filtered`, computed from the first acceptable doc above threshold). Never store both under the same field name across different versions of the data.
+- `viable=True` from a sweep with no negatives is a false positive. FPR is undefined (0÷0), not zero. Detect it explicitly; return `viable=None` with `reason="FPR_undefined_no_negatives_in_tier"`.
+- Tri-state viability (`"true"` / `"partial"` / `"false"`) is more honest than boolean when some tiers have undefined FPR due to corpus structure — `"partial"` signals "calibration meaningful where measurable" rather than collapsing to `False` and incorrectly blocking viable cells.
+
+**Revised recommendation (after fix):** Switch to `minilm-l6-v2_verbose`. Delta pure MRR = +0.002 vs baseline. Same family, verbose format, 22M params. The previous "switch to bge-small x verbose" recommendation was an artefact of gate-filtered MRR at a specific calibrated threshold — it was not stable across threshold changes.

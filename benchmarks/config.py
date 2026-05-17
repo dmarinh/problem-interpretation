@@ -331,4 +331,78 @@ MODELS = [
 ]
 
 
+# ---------------------------------------------------------------------------
+# Embedders to evaluate (Experiment 2.1 — Retrieval Quality)
+# ---------------------------------------------------------------------------
+# Each dict has:
+#   id                   — short identifier used in filenames and CLI flags
+#   name                 — display name for tables and charts
+#   hf_model             — HuggingFace model identifier (sentence-transformers)
+#   dim                  — embedding dimension (384 or 768)
+#   params_m             — parameter count in millions
+#   is_baseline          — True for the current production embedder
+#   training_objective   — "general" or "retrieval" (for decision chart coloring)
+#   input_prefix_query   — prefix prepended to query strings (None for non-e5)
+#   input_prefix_passage — prefix prepended to passage strings (None for non-e5)
+#
+# The 2×2 design: two sizes (small 22-33M / base 109-110M) × two objectives
+# (general-purpose SBERT vs retrieval-optimised BGE). The e5 family is
+# deferred because it requires prefix handling (non-None input_prefix_*).
+
+EMBEDDERS = [
+    {
+        "id": "minilm-l6-v2",
+        "name": "all-MiniLM-L6-v2 (baseline)",
+        "hf_model": "sentence-transformers/all-MiniLM-L6-v2",
+        "dim": 384,
+        "params_m": 22,
+        "is_baseline": True,
+        "training_objective": "general",
+        "input_prefix_query": None,
+        "input_prefix_passage": None,
+        # Current production embedder. 22M params, 384-dim.
+        # General-purpose SBERT family. Known failure: non-chicken poultry
+        # species (turkey, duck) score below 0.62 retrieval gate for pH.
+    },
+    {
+        "id": "bge-small-en-v1.5",
+        "name": "BGE small EN v1.5",
+        "hf_model": "BAAI/bge-small-en-v1.5",
+        "dim": 384,
+        "params_m": 33,
+        "is_baseline": False,
+        "training_objective": "retrieval",
+        "input_prefix_query": None,
+        "input_prefix_passage": None,
+        # 33M params, 384-dim. Retrieval-optimised (vs general semantic similarity).
+        # MTEB retrieval leader for its size class. Same size tier as MiniLM.
+    },
+    {
+        "id": "bge-base-en-v1.5",
+        "name": "BGE base EN v1.5",
+        "hf_model": "BAAI/bge-base-en-v1.5",
+        "dim": 768,
+        "params_m": 109,
+        "is_baseline": False,
+        "training_objective": "retrieval",
+        "input_prefix_query": None,
+        "input_prefix_passage": None,
+        # 109M params, 768-dim. Retrieval-optimised, base-tier.
+        # Strongest single retrieval candidate in this shortlist.
+    },
+    {
+        "id": "mpnet-base-v2",
+        "name": "all-mpnet-base-v2",
+        "hf_model": "sentence-transformers/all-mpnet-base-v2",
+        "dim": 768,
+        "params_m": 110,
+        "is_baseline": False,
+        "training_objective": "general",
+        "input_prefix_query": None,
+        "input_prefix_passage": None,
+        # 110M params, 768-dim. General-purpose SBERT, base-tier.
+        # Considered the strongest English general-purpose sentence embedder
+        # in the SBERT family. Pair with BGE base for size-matched A/B.
+    },
+]
 

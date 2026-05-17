@@ -58,9 +58,16 @@ def main():
     ph_stochasticity = st.Page(
         "pages/4_ph_stochasticity.py", title="pH Stochasticity", icon=":material/science:"
     )
+    embedder_comparison = st.Page(
+        "pages/5_embedder_comparison.py", title="Embedder Comparison", icon=":material/compare:"
+    )
+    embedder_doc_format = st.Page(
+        "pages/6_embedder_doc_format.py", title="Embedder × Doc Format", icon=":material/text_fields:"
+    )
 
     nav = st.navigation(
-        [overview, model_comparison, ph_stochasticity, run_experiments],
+        [overview, model_comparison, ph_stochasticity, embedder_comparison,
+         embedder_doc_format, run_experiments],
         position="hidden",
     )
 
@@ -82,6 +89,12 @@ def main():
     )
     st.sidebar.page_link(
         "pages/4_ph_stochasticity.py", label="pH Stochasticity", icon=":material/science:"
+    )
+    st.sidebar.page_link(
+        "pages/5_embedder_comparison.py", label="Embedder Comparison", icon=":material/compare:"
+    )
+    st.sidebar.page_link(
+        "pages/6_embedder_doc_format.py", label="Embedder × Doc Format", icon=":material/text_fields:"
     )
     st.sidebar.page_link(
         "pages/3_run_experiments.py", label="Run Experiments", icon=":material/play_circle:"

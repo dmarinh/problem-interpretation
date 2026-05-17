@@ -1,0 +1,5 @@
+embedder_id,embedder_name,hf_model,dim,params_m,is_baseline,training_objective,top1_accuracy,top3_accuracy,gate_pass_rate,mean_expected_score,n_positive_queries,n_errored_queries,mean_query_latency_ms,load_time_s,corpus_embed_time_s,tier_easy,tier_medium,tier_hard,tier_pathogen
+minilm-l6-v2,all-MiniLM-L6-v2 (baseline),sentence-transformers/all-MiniLM-L6-v2,384,22,True,general,0.7,0.766667,0.766667,0.6795,24,0,6.4,7.23,0.69,0.8,0.3,1.0,1.0
+bge-small-en-v1.5,BGE small EN v1.5,BAAI/bge-small-en-v1.5,384,33,False,retrieval,0.7,0.766667,0.8,0.8249,24,0,9.9,15.32,0.93,1.0,0.7,0.0,1.0
+bge-base-en-v1.5,BGE base EN v1.5,BAAI/bge-base-en-v1.5,768,109,False,retrieval,0.566667,0.766667,0.8,0.7949,24,0,20.7,23.68,2.94,0.8,0.5,0.0,1.0
+mpnet-base-v2,all-mpnet-base-v2,sentence-transformers/all-mpnet-base-v2,768,110,False,general,0.766667,0.866667,0.866667,0.7315,24,0,20.6,26.62,3.03,0.8,0.6,0.8333,1.0

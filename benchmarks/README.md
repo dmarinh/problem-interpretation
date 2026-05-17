@@ -8,17 +8,24 @@ quantitative evidence that can be reviewed in the Streamlit dashboard.
 
 ```
 benchmarks/
-├── config.py                           # Models to evaluate, paths
+├── config.py                           # Models, embedders, shared paths
 ├── datasets/
 │   ├── extraction_queries.json         # 20 queries with expert ground truth
-│   └── ph_aw_foods.json               # 15 foods across 3 difficulty tiers
+│   ├── ph_aw_foods.json               # 15 foods across 3 difficulty tiers
+│   └── retrieval_queries.json         # 30 retrieval ground-truth queries (Exp 2.1)
 ├── experiments/
 │   ├── exp_1_1_ph_stochasticity.py    # pH stochasticity Monte Carlo
+│   ├── exp_2_1_embedder_comparison.py  # Sentence-transformer embedder selection
 │   └── exp_3_3_model_comparison.py     # LLM model selection benchmark
 ├── results/                            # Timestamped outputs
 │   ├── exp_1_1_ph_stochasticity/
 │   │   ├── results_YYYYMMDD_HHMMSS.json
 │   │   └── latest.json
+│   ├── exp_2_1_embedder_comparison/
+│   │   ├── results_YYYYMMDD_HHMMSS.json  # Full data (dict, not list)
+│   │   ├── summary_YYYYMMDD_HHMMSS.csv   # One row per embedder
+│   │   ├── latest.json / latest.csv
+│   │   └── _chroma/<embedder_id>/         # Isolated ChromaDB (safe to delete)
 │   └── exp_3_3_model_comparison/
 │       ├── results_YYYYMMDD_HHMMSS.json
 │       ├── summary_YYYYMMDD_HHMMSS.csv
@@ -31,6 +38,50 @@ benchmarks/
 ```
 
 ## Experiments
+
+### Exp 2.1 — Embedder Comparison
+
+**Claim:** The production embedder (all-MiniLM-L6-v2) may under-perform on
+species-name queries (e.g. "cod" → codfish category row) because general-purpose
+training doesn't prioritise food-type cues over property-axis cues (pH, aw).
+
+**What it does:** Evaluates four sentence-transformer models in a 2×2 design
+(size: 384-dim / 768-dim × objective: general / retrieval-optimised) against a
+stratified corpus of 30 ground-truth retrieval queries. Each embedder gets its
+own isolated ChromaDB collection; the production store is never touched.
+
+**Strata:**
+- `easy` (10): specific-food row exists in the knowledge base — should be near 100% for all embedders.
+- `medium` (10): only a category-level row exists — the diagnostic stratum where embedder choice matters.
+- `hard` (6): negative controls — no matching row should clear the confidence threshold (false-positive test).
+- `pathogen` (4): hazard retrieval with `data_type=food_pathogen_hazard` filter.
+
+**Key metrics:** top-1 accuracy, top-3 accuracy, gate pass rate, mean expected
+cosine score (per stratum and overall), model load time, corpus embed time,
+per-query latency.
+
+```bash
+# Dry run — baseline embedder only, 3 easy queries
+python -m benchmarks.experiments.exp_2_1_embedder_comparison \
+    --embedders minilm-l6-v2 --queries-subset easy --top-k 5
+
+# Full 2x2 run (downloads ~500 MB of models on first run)
+python -m benchmarks.experiments.exp_2_1_embedder_comparison
+
+# Two specific candidates
+python -m benchmarks.experiments.exp_2_1_embedder_comparison \
+    --embedders minilm-l6-v2,bge-base-en-v1.5
+
+# Skip MLflow tracking
+python -m benchmarks.experiments.exp_2_1_embedder_comparison --no-mlflow
+```
+
+**Embedder IDs:** `minilm-l6-v2` (baseline), `bge-small-en-v1.5`, `bge-base-en-v1.5`, `mpnet-base-v2`
+
+**Prerequisites:** `sentence-transformers` and `chromadb` (already in project deps).
+No API keys required — runs fully offline after model download.
+
+---
 
 ### Exp 1.1 — pH Stochasticity
 
@@ -136,5 +187,5 @@ streamlit run benchmarks/visualizations/app.py
 python -m streamlit run benchmarks/visualizations/app.py
 ```
 
-Pages: Overview (cost vs. accuracy), Model Comparison (field-level detail),
-Run Experiments (launch from browser), pH Stochasticity (Exp 1.1 results).
+Pages: Overview, Model Comparison (Exp 3.3), Run Experiments,
+pH Stochasticity (Exp 1.1), Embedder Comparison (Exp 2.1).
