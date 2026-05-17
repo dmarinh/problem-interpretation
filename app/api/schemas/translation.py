@@ -266,6 +266,13 @@ class DefaultImputedInfo(BaseModel):
     field_name: str
     default_value: float | str
     reason: str
+    source: str | None = Field(
+        default=None,
+        description=(
+            "ValueSource variant (e.g. 'long_window_default', 'conservative_default'). "
+            "Null for defaults added before this field was introduced."
+        ),
+    )
 
 
 class RangeClampInfo(BaseModel):

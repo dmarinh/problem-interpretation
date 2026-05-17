@@ -48,6 +48,7 @@ class ValueSource(str, Enum):
     RAG_PATHOGEN_CATEGORY_FALLBACK = "rag_pathogen_category_fallback"  # Organism inferred from food category via IFT-2003-T1 associations ranked by CDC annual deaths; fires when food-specific hazard lookup (Stages 1+2) yields no confident result
     CONSERVATIVE_DEFAULT = "conservative_default"  # Safety default applied
     COMPOSITE_FOOD_DEFAULT = "composite_food_default"  # Retrieval deliberately skipped: food identified as composite dish; single-ingredient documents do not represent the mixture's properties reliably. Conservative default applied.
+    LONG_WINDOW_DEFAULT = "long_window_default"  # Duration unspecified; long observation window assumed so prediction trajectory reaches cap. Epistemically distinct from CONSERVATIVE_DEFAULT: duration is a scenario dimension, not an environmental property with a safety-floor.
     CLARIFICATION_RESPONSE = "clarification_response"  # From user clarification
     CLAMPED_TO_RANGE = "clamped_to_range"     # Adjusted to valid range
     CALCULATED = "calculated"                  # Derived from other values
@@ -291,6 +292,16 @@ class DefaultImputed(BaseModel):
     )
     reason: str = Field(
         description="Why this default is conservative for the model type"
+    )
+    source: ValueSource | None = Field(
+        default=None,
+        description=(
+            "Optional override for the ValueSource assigned in field_audit. "
+            "When set, the route builder uses this value instead of inferring "
+            "CONSERVATIVE_DEFAULT or COMPOSITE_FOOD_DEFAULT from composite_skip. "
+            "Use for source variants that are neither conservative-default nor "
+            "composite-food-default (e.g., LONG_WINDOW_DEFAULT)."
+        ),
     )
 
 
