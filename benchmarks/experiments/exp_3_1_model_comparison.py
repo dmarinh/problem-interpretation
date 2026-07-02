@@ -245,7 +245,7 @@ def configure_model(model_config: dict):
 
     api_key = None
     env_var = model_config.get("api_key_env_var")
-    if env_var:
+    if isinstance(env_var, str):
         api_key = os.getenv(env_var)
         if not api_key:
             raise ValueError(f"Environment variable '{env_var}' not set. Add it to .env")
@@ -1008,7 +1008,7 @@ async def main():
         env_var = m.get("api_key_env_var")
         if env_var is None:
             available.append(m)
-        elif os.getenv(env_var):
+        elif isinstance(env_var, str) and os.getenv(env_var):
             available.append(m)
         else:
             print(f"  Skipping {m['name']}: {env_var} not set in .env")

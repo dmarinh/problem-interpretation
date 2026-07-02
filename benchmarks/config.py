@@ -70,18 +70,18 @@ MODELS = [
     #     # $5/M in, $25/M out. 1M context, adaptive thinking. Anthropic flagship.
     #     # PTM quality anchor; released Apr 16, 2026.
     # },
-    {
-        "name": "GPT-5.5",
-        "litellm_model": "openai/gpt-5.5",
-        "api_key_env_var": "OPENAI_API_KEY",
-        "api_base": None,
-        "instructor_mode": None,
-        "drop_params": True,  # GPT-5 only accepts temperature=1; drop to use model default
-        "tier": 1,
-        # $5/M in, $30/M out. 1.05M context. Released Apr 23, 2026.
-        # Beats Opus 4.7 and Gemini 3.1 Pro on Terminal-Bench 2.0 and FrontierMath.
-        # OpenAI flagship; provider-independence triangulation point.
-    },
+    # {
+    #     "name": "GPT-5.5",
+    #     "litellm_model": "openai/gpt-5.5",
+    #     "api_key_env_var": "OPENAI_API_KEY",
+    #     "api_base": None,
+    #     "instructor_mode": None,
+    #     "drop_params": True,  # GPT-5 only accepts temperature=1; drop to use model default
+    #     "tier": 1,
+    #     # $5/M in, $30/M out. 1.05M context. Released Apr 23, 2026.
+    #     # Beats Opus 4.7 and Gemini 3.1 Pro on Terminal-Bench 2.0 and FrontierMath.
+    #     # OpenAI flagship; provider-independence triangulation point.
+    # },
     # {
     #     "name": "Gemini 3.1 Pro",
     #     "litellm_model": "gemini/gemini-3.1-pro-preview",
@@ -107,6 +107,16 @@ MODELS = [
     #     "tier": 2,
     #     # $1/M in, $5/M out. 200K context. Anthropic budget tier.
     #     # ~5x cheaper than Sonnet 4.6 for typical PTM payloads.
+    # },
+    # {
+    #     "name": "Claude 3.5 Haiku",
+    #     "litellm_model": "anthropic/claude-3-5-haiku",
+    #     "api_key_env_var": "ANTHROPIC_API_KEY",
+    #     "api_base": None,
+    #     "instructor_mode": None,
+    #     "tier": 2,
+    #     # $0.80/M in, $4.00/M out. Anthropic mid-tier; fastest and efficient.
+    #     # Pair with Claude 3.5 Sonnet to test within-family scaling effects.
     # },
     # {
     #     "name": "Claude Sonnet 4.6",
@@ -150,6 +160,36 @@ MODELS = [
         # $2.50/M in, $10/M out. 128K context. Released May 2024.
         # Pre-reasoning-era flagship; most-cited proprietary baseline in 2024-2025
         # RAG and structured-output literature. Cross-paper comparability anchor.
+    },
+    {
+        "name": "GPT-4o Mini",
+        "litellm_model": "openai/gpt-4o-mini",
+        "api_key_env_var": "OPENAI_API_KEY",
+        "api_base": None,
+        "instructor_mode": None,
+        "tier": 2,
+        # $0.15/M in, $0.60/M out. OpenAI mid-tier; cheapest option for scale.
+        # Pair with GPT-4o to test within-family scaling effects.
+    },
+    {
+        "name": "Gemini 2.5 Flash",
+        "litellm_model": "gemini/gemini-2.5-flash",
+        "api_key_env_var": "GOOGLE_API_KEY",
+        "api_base": None,
+        "instructor_mode": None,
+        "tier": 2,
+        # ~$0.075/M in, ~$0.30/M out. Google mid-tier; standard fast model.
+        # Pair with Gemini 2.5 Pro to test within-family scaling effects.
+    },
+    {
+        "name": "Gemini 2.5 Flash-Lite",
+        "litellm_model": "gemini/gemini-2.5-flash-lite",
+        "api_key_env_var": "GOOGLE_API_KEY",
+        "api_base": None,
+        "instructor_mode": None,
+        "tier": 2,
+        # ~$0.0375/M in, ~$0.15/M out. Google low-tier; cheapest efficient option.
+        # Pair with Gemini 2.5 Flash to test within-family scaling effects.
     },
     # {
     #     "name": "Gemini 2.0 Flash",
