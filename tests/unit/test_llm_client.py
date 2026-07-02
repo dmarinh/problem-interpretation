@@ -9,13 +9,19 @@ from pathlib import Path
 class TestSettings:
     """Tests for Settings class."""
     
-    def test_settings_loads_defaults(self):
+    def test_settings_loads_defaults(self, monkeypatch):
         """Settings should have sensible defaults."""
         from app.config import Settings
-        
+
+        # litellm (imported transitively elsewhere in the suite) calls
+        # dotenv.load_dotenv() at import time, which leaks the real .env's
+        # DEBUG=true into os.environ. _env_file=None only skips the dotenv
+        # *file* source, not real env vars, so clear it explicitly here.
+        monkeypatch.delenv("DEBUG", raising=False)
+
         # Create fresh instance (ignores .env)
         s = Settings(_env_file=None)
-        
+
         assert s.app_name == "Problem Interpretation Module"
         assert s.debug is False
         assert s.port == 8000

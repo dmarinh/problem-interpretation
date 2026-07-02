@@ -61,19 +61,19 @@ def corpus() -> list[dict]:
 
 class TestLoadCorpus:
     def test_total_count(self, corpus):
-        assert len(corpus) == 30
+        assert len(corpus) == 60
 
     def test_stratum_easy(self, corpus):
-        assert sum(1 for q in corpus if q["tier"] == "easy") == 10
+        assert sum(1 for q in corpus if q["tier"] == "easy") == 18
 
     def test_stratum_medium(self, corpus):
-        assert sum(1 for q in corpus if q["tier"] == "medium") == 10
+        assert sum(1 for q in corpus if q["tier"] == "medium") == 20
 
     def test_stratum_hard(self, corpus):
-        assert sum(1 for q in corpus if q["tier"] == "hard") == 6
+        assert sum(1 for q in corpus if q["tier"] == "hard") == 12
 
     def test_stratum_pathogen(self, corpus):
-        assert sum(1 for q in corpus if q["tier"] == "pathogen") == 4
+        assert sum(1 for q in corpus if q["tier"] == "pathogen") == 10
 
     def test_positive_entries_have_food_names(self, corpus):
         positives = [q for q in corpus if q["tier"] != "hard"]

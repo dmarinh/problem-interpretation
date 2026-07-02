@@ -89,6 +89,7 @@ data/sources/**/*.csv
 # =============================================================================
 data/vector_store/*
 !data/vector_store/.gitkeep
+tests/data/vector_store/*
 
 # =============================================================================
 # Data - Manifests (local state)
@@ -130,6 +131,7 @@ benchmarks/results/**
 # MLflow tracking artifacts (SQLite DB, mlruns/ directory)
 mlruns/
 mlruns.db
+mlflow.db
 
 # =============================================================================
 # Local notes (not for version control)

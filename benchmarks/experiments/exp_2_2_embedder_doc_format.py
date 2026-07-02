@@ -84,9 +84,6 @@ try:
 except AttributeError:
     pass
 
-from dotenv import load_dotenv
-load_dotenv(PROJECT_ROOT / ".env")
-
 from benchmarks.config import EMBEDDERS, DATASETS_DIR, RESULTS_DIR
 from app.config import settings
 
@@ -1496,6 +1493,9 @@ def log_to_mlflow(cells: list[dict], out_dir: Path, run_timestamp: str):
 
 def main():
     global FPR_CEILING  # may be overridden by --fpr-ceiling; declared here so all uses below see it
+    from dotenv import load_dotenv
+    load_dotenv(PROJECT_ROOT / ".env")
+
     parser = argparse.ArgumentParser(description="Exp 2.2: Embedder x Doc Text Format")
     parser.add_argument(
         "--embedders", type=str, default=None,

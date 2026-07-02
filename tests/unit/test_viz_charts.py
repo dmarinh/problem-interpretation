@@ -292,19 +292,19 @@ def test_field_accuracy_heatmap_colorscale_step_thresholds():
     fig = charts.field_accuracy_heatmap(results)
     colorscale = list(fig.data[0].colorscale)
 
-    # Endpoints stay anchored.
-    assert colorscale[0][1].lower() == "#d62728"   # 0% → red
-    assert colorscale[-1][1].lower() == "#2ca02c"  # 100% → green
+    # Endpoints stay anchored (PTM brand palette — see ui/style.py).
+    assert colorscale[0][1].lower() == "#b84a2e"   # 0% → terracotta
+    assert colorscale[-1][1].lower() == "#2a6347"  # 100% → forest green
 
     # Amber step: a breakpoint at exactly 0.7 must exist and be amber.
     amber_at_70 = next((s for s in colorscale if s[0] == 0.7), None)
     assert amber_at_70 is not None, "Expected a breakpoint at 0.7 for amber threshold"
-    assert amber_at_70[1].lower() == "#ffc107"
+    assert amber_at_70[1].lower() == "#a67b12"
 
     # Green step: a breakpoint at exactly 0.9 must exist and be green.
     green_at_90 = next((s for s in colorscale if s[0] == 0.9), None)
     assert green_at_90 is not None, "Expected a breakpoint at 0.9 for green threshold"
-    assert green_at_90[1].lower() == "#2ca02c"
+    assert green_at_90[1].lower() == "#2a6347"
 
 
 def test_field_accuracy_heatmap_colorscale_below_amber_is_red():
@@ -330,7 +330,7 @@ def test_field_accuracy_heatmap_colorscale_below_amber_is_red():
     assert red_at_6999 is not None, (
         "Expected a red breakpoint at 0.6999 to create a hard step at 70%"
     )
-    assert red_at_6999[1].lower() == "#d62728"
+    assert red_at_6999[1].lower() == "#b84a2e"
 
 
 def test_field_accuracy_heatmap_colorscale_below_green_is_amber():
@@ -353,7 +353,7 @@ def test_field_accuracy_heatmap_colorscale_below_green_is_amber():
     assert amber_at_8999 is not None, (
         "Expected an amber breakpoint at 0.8999 to create a hard step at 90%"
     )
-    assert amber_at_8999[1].lower() == "#ffc107"
+    assert amber_at_8999[1].lower() == "#a67b12"
 
 
 def test_field_accuracy_heatmap_colorscale_zmin_zmax():
@@ -397,7 +397,7 @@ def test_field_accuracy_heatmap_colorscale_has_exactly_six_stops():
 
 def test_model_type_matrix_failure_flags_title(results_list):
     fig = charts.model_type_matrix(results_list)
-    assert fig.layout.title.font.color == "#D62728"
+    assert fig.layout.title.font.color == "#B84A2E"
     assert set(fig.data[0].x) == {"E1", "M1"}
 
 
@@ -428,7 +428,7 @@ def test_model_type_matrix_all_fail_flags_red_title():
         },
     ]
     fig = charts.model_type_matrix(results)
-    assert fig.layout.title.font.color == "#D62728"
+    assert fig.layout.title.font.color == "#B84A2E"
     # Cells are all zero (fail).
     assert all(cell == 0 for row in fig.data[0].z for cell in row)
 
@@ -478,7 +478,7 @@ def test_model_type_matrix_missing_ok_field_fails_closed():
     ]
     fig = charts.model_type_matrix(results)
     assert fig.data[0].z[0][0] == 0
-    assert fig.layout.title.font.color == "#D62728"
+    assert fig.layout.title.font.color == "#B84A2E"
 
 
 def test_model_type_matrix_all_pass_keeps_default_title():
@@ -496,7 +496,7 @@ def test_model_type_matrix_all_pass_keeps_default_title():
         }
     ]
     fig = charts.model_type_matrix(results)
-    assert fig.layout.title.font.color != "#D62728"
+    assert fig.layout.title.font.color != "#B84A2E"
 
 
 def test_latency_comparison_has_p50_and_p95_traces(summary_df):
@@ -990,7 +990,7 @@ class TestBoundaryCrossingHistogram:
         vlines = [s for s in fig.layout.shapes if s.type == "line" and s.x0 == s.x1]
         boundary = [s for s in vlines if s.x0 == charts.PH_SAFETY_BOUNDARY]
         assert boundary, "pH 4.6 vertical line not found"
-        assert boundary[0].line.color == "#D62728"
+        assert boundary[0].line.color == "#B84A2E"
 
     def test_reference_ph_line_present_when_provided(self):
         fig = charts.boundary_crossing_histogram(_PH_SAMPLES_CROSSING, "salsa", reference_ph=4.5)
@@ -1211,7 +1211,7 @@ class TestGrowthPropagationChart:
         vlines = [s for s in fig.layout.shapes if s.type == "line" and s.x0 == s.x1]
         threshold_lines = [s for s in vlines if s.x0 == pytest.approx(_LOG_THRESHOLD)]
         assert threshold_lines, f"No vertical line found at x={_LOG_THRESHOLD}"
-        assert threshold_lines[0].line.color == "#D62728"
+        assert threshold_lines[0].line.color == "#B84A2E"
 
     def test_impacted_bars_sorted_to_top(self, gp_foods):
         """Impacted foods must appear at the TOP of the Y axis.
@@ -1321,7 +1321,7 @@ class TestGrowthPropagationChart:
         colors = bar.marker.color
         if isinstance(colors, str):
             colors = [colors]
-        assert all(c == "#2CA02C" for c in colors)
+        assert all(c == "#2A6347" for c in colors)
 
     def test_all_foods_impacted_no_green_bars(self):
         """When every bar reaches the threshold, all bars are red."""
@@ -1332,7 +1332,7 @@ class TestGrowthPropagationChart:
         colors = bar.marker.color
         if isinstance(colors, str):
             colors = [colors]
-        assert all(c == "#D62728" for c in colors)
+        assert all(c == "#B84A2E" for c in colors)
 
     def test_title_contains_threshold_value(self, gp_foods):
         """Figure title must include the threshold so it's self-documenting.

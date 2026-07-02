@@ -342,9 +342,9 @@ class TestDifficultyColors:
         """Spec §Colors: easy=green, medium=amber, hard=red."""
         from benchmarks.visualizations.lib.charts import DIFFICULTY_COLORS
 
-        assert DIFFICULTY_COLORS["easy"] == "#2CA02C"
-        assert DIFFICULTY_COLORS["medium"] == "#FFC107"
-        assert DIFFICULTY_COLORS["hard"] == "#D62728"
+        assert DIFFICULTY_COLORS["easy"] == "#2A6347"
+        assert DIFFICULTY_COLORS["medium"] == "#A67B12"
+        assert DIFFICULTY_COLORS["hard"] == "#B84A2E"
 
 
 # ---------------------------------------------------------------------------

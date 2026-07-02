@@ -108,9 +108,6 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from dotenv import load_dotenv
-load_dotenv(PROJECT_ROOT / ".env")
-
 from benchmarks.config import EMBEDDERS, DATASETS_DIR, RESULTS_DIR
 from app.config import settings
 
@@ -980,6 +977,9 @@ def print_summary(embedder_results: list[dict]):
 # ---------------------------------------------------------------------------
 
 def main():
+    from dotenv import load_dotenv
+    load_dotenv(PROJECT_ROOT / ".env")
+
     parser = argparse.ArgumentParser(description="Exp 2.1: Embedder Comparison")
     parser.add_argument(
         "--embedders", type=str, default=None,
