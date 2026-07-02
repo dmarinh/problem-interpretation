@@ -210,6 +210,19 @@ class TestT1Barley:
         prov = (await grounding_service.ground_scenario(make_scenario("barley"))).provenance["organism"]
         assert prov.extraction_method == "category_fallback_ranked_by_annual_deaths"
 
+    @pytest.mark.asyncio
+    async def test_full_citations_populated(self, grounding_service: GroundingService) -> None:
+        """full_citations must contain both IFT and CDC source IDs with non-empty values."""
+        grounded = await grounding_service.ground_scenario(make_scenario("barley"))
+
+        fb = grounded.provenance["organism"].pathogen_category_fallback
+        assert fb is not None
+        cites = fb.full_citations
+        assert "IFT-2003-T1" in cites, "IFT source ID must be present"
+        assert cites["IFT-2003-T1"], "IFT citation must be non-empty"
+        assert "CDC-2019-T1T2" in cites, "CDC source ID for Salmonella must be present"
+        assert cites["CDC-2019-T1T2"], "CDC citation must be non-empty"
+
 
 # ---------------------------------------------------------------------------
 # T2 — mascarpone → dairy → 3 IFT categories; Campylobacter in skipped
@@ -277,6 +290,19 @@ class TestT2Mascarpone:
 
         assert grounded.provenance["organism"].source == ValueSource.RAG_PATHOGEN_CATEGORY_FALLBACK
 
+    @pytest.mark.asyncio
+    async def test_full_citations_populated(self, grounding_service: GroundingService) -> None:
+        """full_citations must contain both IFT and CDC source IDs with non-empty values."""
+        grounded = await grounding_service.ground_scenario(make_scenario("mascarpone"))
+
+        fb = grounded.provenance["organism"].pathogen_category_fallback
+        assert fb is not None
+        cites = fb.full_citations
+        assert "IFT-2003-T1" in cites, "IFT source ID must be present"
+        assert cites["IFT-2003-T1"], "IFT citation must be non-empty"
+        assert "CDC-2019-T1T2" in cites, "CDC source ID for Salmonella must be present"
+        assert cites["CDC-2019-T1T2"], "CDC citation must be non-empty"
+
 
 # ---------------------------------------------------------------------------
 # T3 — boiled egg → eggs → eggs and egg products
@@ -323,6 +349,19 @@ class TestT3BoiledEgg:
 
         fb = grounded.provenance["organism"].pathogen_category_fallback
         assert fb.skipped_pathogens == []
+
+    @pytest.mark.asyncio
+    async def test_full_citations_populated(self, grounding_service: GroundingService) -> None:
+        """full_citations must contain both IFT and CDC source IDs with non-empty values."""
+        grounded = await grounding_service.ground_scenario(make_scenario("boiled egg"))
+
+        fb = grounded.provenance["organism"].pathogen_category_fallback
+        assert fb is not None
+        cites = fb.full_citations
+        assert "IFT-2003-T1" in cites, "IFT source ID must be present"
+        assert cites["IFT-2003-T1"], "IFT citation must be non-empty"
+        assert "CDC-2019-T1T2" in cites, "CDC source ID for Salmonella must be present"
+        assert cites["CDC-2019-T1T2"], "CDC citation must be non-empty"
 
 
 # ---------------------------------------------------------------------------

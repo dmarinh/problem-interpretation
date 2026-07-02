@@ -90,6 +90,10 @@ class PathogenCategoryFallbackInfo(BaseModel):
         default_factory=list,
         description="Candidates ranked above the selected one that failed ComBaseOrganism mapping; each entry has {pathogen, reason}",
     )
+    full_citations: dict[str, str] = Field(
+        default_factory=dict,
+        description="Formatted bibliographic citations keyed by source_id; covers ift_source_id and every candidate's source_id",
+    )
 
 
 class CategoryBridgeInfo(BaseModel):

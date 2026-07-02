@@ -244,6 +244,7 @@ def _build_field_audit(result: TranslationResult) -> dict[str, FieldAuditEntry]:
                     source_id=pcf.selected_pathogen.source_id,
                 ),
                 skipped_pathogens=pcf.skipped_pathogens,
+                full_citations=pcf.full_citations,
             )
 
         field_audit[field_name] = FieldAuditEntry(

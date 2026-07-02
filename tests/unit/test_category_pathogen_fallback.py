@@ -14,6 +14,7 @@ from app.services.grounding.grounding_service import (
 )
 from app.models.enums import ComBaseOrganism
 from app.models.metadata import ValueSource
+from app.services.audit.citations import get_full_citations
 
 
 # ---------------------------------------------------------------------------
@@ -55,6 +56,23 @@ def call_fallback(service: GroundingService, food_description: str) -> GroundedV
     grounded = GroundedValues()
     service._category_pathogen_fallback(food_description, grounded)
     return grounded
+
+
+# ---------------------------------------------------------------------------
+# TestGetFullCitationsUnknownId
+# ---------------------------------------------------------------------------
+
+class TestGetFullCitationsUnknownId:
+    """Unknown source IDs must be silently omitted — not raised, not given placeholder text."""
+
+    def test_unknown_id_returns_empty_dict(self):
+        assert get_full_citations(["NONEXISTENT-SOURCE-ID-XYZ"]) == {}
+
+    def test_mixed_ids_only_known_returned(self):
+        result = get_full_citations(["NONEXISTENT-SOURCE-ID-XYZ", "IFT-2003-T1"])
+        assert "NONEXISTENT-SOURCE-ID-XYZ" not in result
+        assert "IFT-2003-T1" in result
+        assert result["IFT-2003-T1"]  # non-empty
 
 
 # ---------------------------------------------------------------------------

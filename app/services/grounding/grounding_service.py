@@ -1325,6 +1325,9 @@ class GroundingService:
         if selected is None or selected_organism is None:
             return
 
+        _pcf_source_ids = list(dict.fromkeys(
+            ["IFT-2003-T1"] + [c.source_id for c in ranked]
+        ))
         fallback_info = PathogenCategoryFallbackInfo(
             ptm_category=ptm_category,
             ift_categories=list(ift_categories),  # defensive copy — ift_categories is a ref into _ift_alignment
@@ -1332,6 +1335,7 @@ class GroundingService:
             candidate_pathogens=ranked,
             selected_pathogen=selected,
             skipped_pathogens=skipped,
+            full_citations=get_full_citations(_pcf_source_ids),
         )
 
         grounded.set(

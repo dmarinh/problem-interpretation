@@ -226,6 +226,7 @@ class PathogenCategoryFallbackAuditInfo(BaseModel):
     candidate_pathogens: list[PathogenCandidateInfo]
     selected_pathogen: PathogenCandidateInfo
     skipped_pathogens: list[dict]
+    full_citations: dict[str, str] = Field(default_factory=dict)
 
 
 class FieldAuditEntry(BaseModel):
