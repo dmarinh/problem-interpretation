@@ -290,7 +290,7 @@ st.caption(
     "Foods are ordered left → right by increasing variance."
 )
 
-model_names = [r.get("model") or "—" for r in results]
+model_names = [r.get("model") or "—" for r in reversed(results)]
 if len(results) > 1:
     selected_model = st.selectbox("Select model", model_names, key="violin_model")
     model_foods = next(

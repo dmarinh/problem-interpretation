@@ -2,10 +2,9 @@
 Page 6: Embedder × Doc Text Format (Experiment 2.2)
 
 Narrative flow (top to bottom):
-  Header → Recommendation panel → Cell grid heatmaps → Stratum definitions →
-  MRR by stratum → Doc-format effect → Threshold sweep curves →
-  Corpus expander → Per-query deep dive → Doc format examples →
-  Per-cell threshold table → Further observations
+  Header → Recommendation panel → Cell grid heatmap (MRR) → Stratum definitions →
+  MRR by stratum → Doc-format effect →
+  Corpus expander → Per-query deep dive → Doc format examples
 """
 
 from __future__ import annotations
@@ -144,11 +143,11 @@ def _cell_grid_heatmap(cells: list[dict], metric: str, title: str, fmt: str = ".
 
 
 def _mrr_stratum_bars(cells: list[dict]) -> go.Figure:
-    """Grouped bar chart: pure MRR per stratum, coloured by format_id."""
+    """Grouped bar chart: MRR per stratum, coloured by format_id."""
     rows = []
     for c in cells:
         ms = c["summary"].get("mrr_by_stratum", {})
-        for stratum in ("easy", "medium", "pathogen"):
+        for stratum in ("easy", "medium", "hard"):
             rows.append({
                 "cell_id":    c["cell_id"],
                 "embedder":   _EMB_LABEL.get(c["embedder_id"], c["embedder_id"]),
@@ -169,9 +168,9 @@ def _mrr_stratum_bars(cells: list[dict]) -> go.Figure:
         barmode="group",
         facet_col="embedder",
         color_discrete_map={k: v for k, v in _FORMAT_COLOR.items()},
-        labels={"mrr": "Pure MRR", "stratum": "Stratum", "label": "Format"},
-        title="Pure MRR by Difficulty Stratum",
-        category_orders={"stratum": ["easy", "medium", "pathogen"],
+        labels={"mrr": "MRR", "stratum": "Stratum", "label": "Format"},
+        title="MRR by Difficulty Stratum",
+        category_orders={"stratum": ["easy", "medium", "hard"],
                          "label":   ["terse", "current", "verbose"]},
     )
     fig.update_yaxes(tickformat=".0%", range=[0, 1.10], title="")
@@ -202,11 +201,11 @@ def _format_effect_chart(cells: list[dict]) -> go.Figure:
         color="format_id",
         barmode="group",
         color_discrete_map={k: v for k, v in _FORMAT_COLOR.items()},
-        labels={"mrr_medium": "Pure MRR (medium)", "embedder": "Embedder", "format_id": "Format"},
-        title="Format Effect on Medium-Stratum Pure MRR",
+        labels={"mrr_medium": "MRR (medium)", "embedder": "Embedder", "format_id": "Format"},
+        title="Format Effect on Medium-Stratum MRR",
         category_orders={"format_id": ["terse", "current", "verbose"]},
     )
-    fig.update_yaxes(tickformat=".0%", range=[0, 1.10], title="Pure MRR (medium stratum)")
+    fig.update_yaxes(tickformat=".0%", range=[0, 1.10], title="MRR (medium stratum)")
     fig.update_xaxes(title="")
     fig.update_layout(legend_title="Format", height=340)
     return apply_ptm_template(fig)
@@ -280,11 +279,32 @@ def _sweep_chart(cells: list[dict], tier: str, rec_cell_id: str, base_cell_id: s
 inject_css()
 
 st.title("Experiment 2.2 — Embedder × Doc Text Format")
-st.caption(
-    "2-factor retrieval benchmark: 4 embedders × 3 doc text formats = 12 cells. "
-    "Primary metric: pure MRR (rank-based, threshold-invariant). "
-    "Hard-stratum queries are negative controls — the right behaviour is silence."
-)
+with st.expander("▸ What does this experiment do?"):
+    st.markdown(
+        """
+Experiment 2.1 showed that the choice of embedding model significantly affects how well
+the pipeline retrieves category-level knowledge-base rows for species-level queries
+(e.g. "turkey" → *fresh poultry*). This experiment asks a second question: **does the way
+we write the embedded document text matter as much as the model?**
+
+The same four embedders from Experiment 2.1 are tested against three document text formats:
+
+- **Terse** — minimal text, field values only (e.g. `chicken (poultry): pH 5.5 to 6.0`)
+- **Current** — the production format, with some natural language structure
+- **Verbose** — full grammatical sentences describing each property
+
+This gives **12 cells** (4 embedders × 3 formats). Each cell is evaluated on the same
+30-query benchmark split into three difficulty levels:
+
+- **Easy** — foods with an exact row in the knowledge base (should always work)
+- **Medium** — species-level queries where only a category row exists — *the actual problem*
+- **Hard** — negative controls with no correct answer, measuring false-positive risk
+
+The primary metric is **MRR** (Mean Reciprocal Rank) — rank-based and threshold-independent,
+so it separates retrieval quality from gating artefacts. Hard-stratum MRR must be 0.00;
+any non-zero value means an unrelated document was returned and the cell is disqualified.
+"""
+    )
 
 # ── Load data ─────────────────────────────────────────────────────────────────
 data = _load_latest()
@@ -321,7 +341,7 @@ col_q.metric("Queries",   n_q)
 col_s.metric(
     "Strata",
     f"easy {sc.get('easy', 0)} · med {sc.get('medium', 0)} "
-    f"· hard {sc.get('hard', 0)} · path {sc.get('pathogen', 0)}",
+    f"· hard {sc.get('hard', 0)}",
 )
 
 st.divider()
@@ -365,61 +385,22 @@ else:
         st.success(f"{icon} **Verdict: Switch to `{best_cid}`**")
 
         rc1, rc2, rc3, rc4 = st.columns(4)
-        rc1.metric("Baseline (pure MRR)", f"{base_mrr:.3f}", help=base_cid)
+        rc1.metric("Baseline (MRR)", f"{base_mrr:.3f}", help=base_cid)
         rc2.metric(
-            "Recommended (pure MRR)", f"{best_mrr:.3f}",
+            "Recommended (MRR)", f"{best_mrr:.3f}",
             delta=f"{delta_mrr:+.4f}" if delta_mrr is not None else None,
             help=best_cid,
         )
         rc3.metric(
             "Δ mrr_medium", f"{delta_m:+.3f}" if delta_m is not None else "—",
-            help="Pure MRR on medium-difficulty queries (species probes)"
+            help="MRR on medium-difficulty queries (species probes)"
         )
         rc4.metric("Viable", "PARTIAL", help="tier_1 FPR is undefined (no negatives route through tier_1)")
 
-        # Calibrated thresholds for recommended cell
-        rec_cal = best_sum.get("threshold_calibration", {})
-        t1  = rec_cal.get("tier_1", {})
-        t2  = rec_cal.get("tier_2", {})
-        pa  = rec_cal.get("pathogen_stage_1", {})
-
-        def _thr_md(tier_label: str, cal: dict) -> str:
-            prod = cal.get("production_threshold")
-            prod_s = f"{prod:.2f}" if prod is not None else "?"
-            if cal.get("viable") is None:
-                return (
-                    f"**{tier_label}:** `null — undefined`  \n"
-                    f"<small>No negative controls in this tier on this corpus. "
-                    f"FPR is 0/0 (indeterminate). Production: {prod_s}</small>"
-                )
-            opt = cal.get("optimal_threshold")
-            opt_s = f"{opt:.2f}" if opt is not None else "—"
-            f1_s  = f"{cal['f1_at_optimal']:.4f}" if cal.get("f1_at_optimal") is not None else "—"
-            fpr_s = f"{cal['fpr_at_optimal']:.0%}" if cal.get("fpr_at_optimal") is not None else "—"
-            return (
-                f"**{tier_label}:** `{opt_s}`  \n"
-                f"<small>Production: {prod_s} · F1 at calibrated: {f1_s} · FPR: {fpr_s}</small>"
-            )
-
-        st.markdown("**Calibrated thresholds for recommended cell:**")
-        thr_col1, thr_col2, thr_col3 = st.columns(3)
-        thr_col1.markdown(_thr_md("tier_1",   t1), unsafe_allow_html=True)
-        thr_col2.markdown(_thr_md("tier_2",   t2), unsafe_allow_html=True)
-        thr_col3.markdown(_thr_md("pathogen", pa), unsafe_allow_html=True)
-
-        st.caption(
-            "**Cost:** Re-embed corpus with verbose doc format; rebuild ChromaDB collection; "
-            "recalibrate production threshold on the new score distribution before deployment."
-        )
-        st.caption(
-            "**Tiebreak note:** mpnet-base-v2_verbose has marginally higher pure MRR but the "
-            "decision rule selects the smaller model within the 0.02 ΔMRR band "
-            "(22M vs 110M parameters)."
-        )
 
     elif action == "keep_baseline":
         st.info(
-            f"{icon} **Keep baseline (`{base_cid}`)** — no candidate improves pure MRR "
+            f"{icon} **Keep baseline (`{base_cid}`)** — no candidate improves MRR "
             f"while meeting all viability criteria. "
             f"Best candidate delta: {delta_mrr:+.4f}" if delta_mrr is not None else "."
         )
@@ -434,54 +415,69 @@ else:
 
 st.divider()
 
-# ── Section 3: Cell grid heatmaps ─────────────────────────────────────────────
-st.header("Cell Grid — Pure MRR and Hard FPR")
+# ── Section 3: Cell grid heatmap ──────────────────────────────────────────────
+st.header("Cell Grid — MRR")
 st.caption(
     "Each cell is one (embedder × format) combination. "
-    "Green = high MRR / zero FPR. Red = low MRR / high FPR. "
-    "Hard FPR should be 0.00 — any non-zero value means the system grounded values "
-    "from an unrelated document."
+    "Green = high MRR. Red = low MRR."
 )
+with st.expander("▸ MRR rationale"):
+    st.markdown(
+        """
+**Mean Reciprocal Rank (MRR)** measures how highly the correct document is ranked in the
+retrieval results — without depending on whether its score cleared the confidence threshold.
 
-hm1, hm2 = st.columns(2)
-with hm1:
-    st.plotly_chart(
-        _cell_grid_heatmap(cells, "mrr", "Pure MRR", fmt=".3f"),
-        use_container_width=True,
+For each query, the **Reciprocal Rank (RR)** is:
+
+- **1.0** if the correct document is ranked #1
+- **0.5** if it is ranked #2
+- **0.33** if it is ranked #3
+- **0.0** if it does not appear in the top-K results at all
+
+MRR is the average of RR across all queries.
+
+**Why use MRR instead of accuracy?**
+Accuracy (Top-1) conflates two separate failure modes: the correct doc may be ranked first
+but its cosine score is too low to clear the confidence gate (a *gating* problem), or it
+may not be ranked first at all (a *retrieval* problem). MRR measures only the retrieval
+quality — independent of threshold — so it isolates whether the embedder and doc format are
+finding the right document, regardless of calibration.
+
+**Reading the values:**
+A cell with MRR = 1.0 means every query retrieved the correct document at rank #1.
+A cell with MRR = 0.5 means the correct document was typically ranked #2.
+Hard-stratum MRR should be 0.0 — a non-zero value means an unrelated document was returned.
+"""
     )
-with hm2:
-    st.plotly_chart(
-        _cell_grid_heatmap(cells, "hard_fpr", "Hard FPR (negatives)",
-                           fmt=".3f", colorscale="RdYlGn", reversescale=True),
-        use_container_width=True,
-    )
+
+st.plotly_chart(
+    _cell_grid_heatmap(cells, "mrr", "MRR", fmt=".3f"),
+    use_container_width=True,
+)
 
 st.divider()
 
 # ── Section 4: Stratum definitions callout ────────────────────────────────────
 st.header("Accuracy by Difficulty Stratum")
 st.markdown(
-    "**Reading the four difficulty strata:**\n\n"
+    "**Reading the three difficulty strata:**\n\n"
     "- **Easy** — foods that have their own row in the knowledge base: chicken, white bread, "
-    "salmon. *Every cell should hit ~100% pure MRR. Failures here indicate a retrieval regression.*\n\n"
+    "salmon. *Every cell should hit ~100% MRR. Failures here indicate a retrieval regression.*\n\n"
     "- **Medium** — species-level queries like 'turkey' or 'lamb' where no species-specific row "
     "exists, but a category row does (`fresh poultry`, `fresh meat`). "
-    "*This is the diagnostic stratum.* Pure MRR separates embedders that retrieve the right "
+    "*This is the diagnostic stratum.* MRR separates embedders that retrieve the right "
     "category doc from those that miss it entirely.\n\n"
     "- **Hard** — negative controls. Queries with no correct answer in the knowledge base — "
     "turkey pH, lamb pH, made-up foods like `zarblax burger`. "
-    "*The right behaviour is silence: no doc above the confidence gate.* "
-    "Shown as `hard_negative_control_pass_rate` in the threshold table below.\n\n"
-    "- **Pathogen** — hazard retrieval (chicken, beef, salmon, oysters). "
-    "*A sanity check, not a discriminating stratum.* All cells should pass."
+    "*The right behaviour is silence: no doc should rank above the confidence gate.* "
+    "MRR should be 0.00 — any non-zero value means an unrelated doc was returned."
 )
 
 # ── Section 5: MRR by stratum ─────────────────────────────────────────────────
 st.plotly_chart(_mrr_stratum_bars(cells), use_container_width=True)
 st.caption(
-    "Pure MRR shows where the canonical doc ranks in the top-K — independent of threshold. "
-    "Compare this with mrr_gate_filtered (threshold-dependent) in the threshold table to see "
-    "how much of the medium-stratum MRR gap is a gating issue vs a retrieval issue."
+    "MRR shows where the canonical doc ranks in the top-K — independent of threshold. "
+    "Hard-stratum bars should be at 0%: any non-zero value means an unrelated doc was ranked above zero."
 )
 
 st.divider()
@@ -490,39 +486,14 @@ st.divider()
 st.header("Doc Text Format Effect on Medium-Stratum MRR")
 st.plotly_chart(_format_effect_chart(cells), use_container_width=True)
 st.caption(
-    "Format moves pure MRR on medium-difficulty queries by 0.20–0.30 across embedders. "
+    "Format moves MRR on medium-difficulty queries by 0.20–0.30 across embedders. "
     "The recommendation pairs the smallest model (MiniLM-L6, 22M params) with its best format "
     "(verbose), matching the per-embedding performance of larger models at a fraction of the cost."
 )
 
 st.divider()
 
-# ── Section 7: Threshold sweep curves ─────────────────────────────────────────
-st.header("Threshold Calibration Sweep")
-st.caption(
-    "FPR-constrained calibration: argmax F1 subject to FPR ≤ 5%. "
-    "One line per cell. Recommended cell (solid green) and baseline (dashed amber) are labelled. "
-    "tier_1 is omitted — all 12 cells have no negative controls in that tier (FPR = 0/0, undefined). "
-    "pathogen curves are shown but have no calibrated threshold marker for the same reason."
-)
-
-sw1, sw2 = st.columns(2)
-_rec_cid  = best_cid or ""
-_base_cid = base_cid or ""
-with sw1:
-    st.plotly_chart(
-        _sweep_chart(cells, "tier_2", _rec_cid, _base_cid),
-        use_container_width=True,
-    )
-with sw2:
-    st.plotly_chart(
-        _sweep_chart(cells, "pathogen_stage_1", _rec_cid, _base_cid),
-        use_container_width=True,
-    )
-
-st.divider()
-
-# ── Section 8: Corpus expander ────────────────────────────────────────────────
+# ── Section 7: Corpus expander ────────────────────────────────────────────────
 with st.expander("▸ View the 60 queries and ground truth"):
     try:
         with open(_DATASETS_DIR / "retrieval_queries.json", encoding="utf-8") as _f:
@@ -550,7 +521,7 @@ st.header("Per-Query Deep Dive")
 st.caption(
     "Inspect how each cell scored a specific query. "
     "Default: **M01 (turkey)** — rank #1 doc is correct, but the cosine score sits below "
-    "the production threshold. Pure MRR = 1.0; gate-filtered MRR = 0.0."
+    "the production threshold. MRR = 1.0; gate-filtered MRR = 0.0."
 )
 
 # Collect all query IDs (from the first cell; all share the same corpus)
@@ -593,14 +564,14 @@ if _all_qids:
             "Top-1 score":    f"{q['top1_score']:.4f}" if q.get("top1_score") is not None else "—",
             "Expected rank":  q.get("expected_rank") or "—",
             "Expected score": f"{q['expected_score']:.4f}" if q.get("expected_score") is not None else "—",
-            "Pure RR":        f"{q['pure_reciprocal_rank']:.4f}" if q.get("pure_reciprocal_rank") is not None else "—",
+            "RR":        f"{q['pure_reciprocal_rank']:.4f}" if q.get("pure_reciprocal_rank") is not None else "—",
             "GF RR":          f"{q['reciprocal_rank']:.4f}" if q.get("reciprocal_rank") is not None else "—",
             "Gate passed":    "✓" if q.get("gate_passed") else "✗",
         })
 
     if _dive_rows:
         st.dataframe(pd.DataFrame(_dive_rows), use_container_width=True, hide_index=True)
-        st.caption("Pure RR = pure reciprocal rank (rank-based). GF RR = gate-filtered (threshold-dependent).")
+        st.caption("RR = reciprocal rank (rank-based). GF RR = gate-filtered (threshold-dependent).")
 
     with st.expander("Top-3 results per cell"):
         for cell in cells:
@@ -640,53 +611,3 @@ with st.expander("▸ Doc text format examples (chicken)"):
     except Exception as _exc:
         st.warning(f"Could not build format examples: {_exc}")
 
-st.divider()
-
-# ── Section 11: Per-cell threshold table ──────────────────────────────────────
-st.header("Per-Cell Calibration Thresholds")
-st.caption(
-    "Calibrated = highest-F1 threshold where hard-stratum FPR ≤ 5%. "
-    "null — undefined = no negative-control queries route through this tier on this corpus "
-    "(FPR is 0/0, not 0). Production thresholds shown for reference."
-)
-
-_thr_rows = []
-for cell in cells:
-    tc = cell["summary"].get("threshold_calibration", {})
-    t1 = tc.get("tier_1", {})
-    t2 = tc.get("tier_2", {})
-    pa = tc.get("pathogen_stage_1", {})
-
-    _thr_rows.append({
-        "Cell":               cell["cell_id"],
-        "Embedder":           _EMB_LABEL.get(cell["embedder_id"], cell["embedder_id"]),
-        "Format":             cell["format_id"],
-        "Viable":             cell["summary"].get("viable_at_calibrated_threshold", "?"),
-        "hard_ncpr":          cell["summary"].get("hard_negative_control_pass_rate"),
-        "tier_1 (cal)":       _fmt_thr(None, t1.get("production_threshold"), undefined=t1.get("viable") is None),
-        "tier_2 (cal)":       _fmt_thr(t2.get("optimal_threshold"), t2.get("production_threshold"), undefined=t2.get("viable") is None),
-        "pathogen (cal)":     _fmt_thr(pa.get("optimal_threshold"), pa.get("production_threshold"), undefined=pa.get("viable") is None),
-        "tier_2 FPR@cal":     f"{t2.get('fpr_at_optimal', 0):.1%}" if t2.get("fpr_at_optimal") is not None else "—",
-        "pathogen FPR@cal":   f"{pa.get('fpr_at_optimal', 0):.1%}" if pa.get("fpr_at_optimal") is not None else "—",
-    })
-
-_thr_df = pd.DataFrame(_thr_rows)
-st.dataframe(
-    _thr_df.style.format({"hard_ncpr": "{:.0%}"}, na_rep="—"),
-    use_container_width=True, hide_index=True,
-)
-
-st.divider()
-
-# ── Section 12: Further observations ─────────────────────────────────────────
-st.header("Further Observations")
-st.markdown(
-    "Beyond the embedder/format recommendation, the pure MRR analysis surfaces a structural "
-    "observation: the canonical doc is already ranked at #1 for the majority of medium-stratum "
-    "queries across all four embedders, but its cosine score frequently sits below the "
-    "production threshold of 0.62. The species-probe failures identified in exp 2.1 are "
-    "therefore partly a gating problem, not purely a retrieval problem. A single-cell "
-    "threshold sweep on the current production stack would characterise the score-distribution "
-    "trade-off and could yield further improvements independent of the embedder/format choice. "
-    "Filed for a follow-up experiment."
-)

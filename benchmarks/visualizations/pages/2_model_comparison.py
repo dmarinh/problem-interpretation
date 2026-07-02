@@ -2,11 +2,13 @@
 Page 2: Model Comparison (Experiment 3.1)
 
 Section-by-section viewer for the LLM model comparison benchmark.
-Narrative flow: Run info → Summary table → Key charts → Deep dive → Recommendation.
+Narrative flow: Description → Run info → Summary table → Key charts →
+  Corpus → Deep dive → Recommendation.
 """
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -120,8 +122,37 @@ def _compute_recommendation(df: pd.DataFrame) -> dict:
 inject_css()
 
 _EXPERIMENT_ID = "exp_3_1_model_comparison"
+_DATASETS_DIR  = _PROJECT_ROOT / "benchmarks" / "datasets"
 
 st.title("Experiment 3.1 — LLM Model Comparison")
+with st.expander("▸ What does this experiment do?"):
+    st.markdown(
+        """
+The pipeline uses an LLM to parse natural language food safety queries into a structured
+extraction: organism, temperature, duration, pH, water activity, and — most critically —
+**model type** (GROWTH vs THERMAL_INACTIVATION vs NON_THERMAL_SURVIVAL).
+
+This experiment asks: **which LLM best serves this extraction task?**
+
+Multiple models are tested against a benchmark of food safety scenarios at three difficulty levels:
+
+- **Easy** — single-food, unambiguous scenarios (e.g. "chicken at 25°C for 4 hours")
+- **Medium** — some ambiguity, less common foods, or implicit signals
+- **Hard** — multi-step scenarios, edge cases, conflicting or missing signals
+
+The primary metrics are:
+
+- **Accuracy** — % of fields correctly extracted, averaged over all queries and repeated runs
+- **Model Type** — safety-critical: a misclassification of GROWTH vs THERMAL_INACTIVATION
+  reverses the direction of conservative defaults, potentially producing optimistic predictions
+  for thermal inactivation scenarios. Must be 100% for production eligibility.
+- **Consistency** — % agreement across repeated runs of the same query (determinism)
+- **Cost and latency** — practical production constraints
+
+The production pick is the cheapest model with Model Type accuracy = 100% and overall
+accuracy ≥ 80%. The quality pick is the most accurate model that also achieves 100% Model Type.
+"""
+    )
 
 # ── 4a: Data loading ─────────────────────────────────────────────────────────
 # Respect sidebar run selection (app.py stores it in session_state).
@@ -130,25 +161,6 @@ if selected_run:
     results, df = load_run_by_timestamp(_EXPERIMENT_ID, selected_run)
 else:
     results, df = load_latest_results(_EXPERIMENT_ID)
-
-# Safety-critical banner (Phase 7): any model_type_ok failure → red alert.
-# model_type misclassification (GROWTH vs THERMAL_INACTIVATION) reverses the
-# sign of bias corrections — a misclassifying model produces optimistic values
-# for thermal inactivation scenarios, which is a direct food safety risk.
-if results:
-    any_failure = any(
-        not q.get("model_type_ok", False)
-        for r in results
-        for q in r.get("queries", [])
-        if "model_type" in q.get("field_scores", {})
-    )
-    if any_failure:
-        st.error(
-            "**Safety alert: model type classification failures detected.** "
-            "One or more models misclassified GROWTH vs THERMAL_INACTIVATION. "
-            "Do not use these models for production food safety queries without review. "
-            "See the Model Type Matrix section below."
-        )
 
 # No-results state.
 if results is None:
@@ -188,7 +200,6 @@ if df is not None and not df.empty:
         "model": "Model",
         "instructor_mode": "Mode",
         "accuracy": "Accuracy",
-        "consistency": "Consistency",
         "model_type_accuracy": "Model Type",
         "schema_compliance": "Schema",
         "latency_p50_s": "P50 (s)",
@@ -222,13 +233,51 @@ if df is not None and not df.empty:
         if src in cols_present:
             fmt[label] = spec
 
+    _COL_CONFIG = {
+        "Model":      st.column_config.TextColumn("Model",
+            help="LLM model name."),
+        "Mode":       st.column_config.TextColumn("Mode",
+            help="Instructor extraction mode: TOOLS (tool-calling) or JSON (json-mode). "
+                 "Affects how the model formats its structured output."),
+        "Accuracy":   st.column_config.TextColumn("Accuracy",
+            help="% of query fields correctly extracted, averaged over all queries and repeated runs. "
+                 "Primary quality metric."),
+        "Consistency": st.column_config.TextColumn("Consistency",
+            help="% agreement across repeated runs of the same query. "
+                 "Low consistency means the model gives different answers to identical inputs."),
+        "Model Type": st.column_config.TextColumn("Model Type",
+            help="Safety-critical. % of queries where GROWTH / THERMAL_INACTIVATION / "
+                 "NON_THERMAL_SURVIVAL was correctly classified. "
+                 "A miss reverses conservative defaults for thermal scenarios. "
+                 "Must be 100% for production eligibility."),
+        "Schema":     st.column_config.TextColumn("Schema",
+            help="% of responses that produced a valid, schema-conforming Pydantic output. "
+                 "Values below 100% indicate extraction failures that fell back to defaults."),
+        "P50 (s)":    st.column_config.TextColumn("P50 (s)",
+            help="Median response latency in seconds. Interactive target: < 3 s."),
+        "P95 (s)":    st.column_config.TextColumn("P95 (s)",
+            help="95th-percentile (tail) latency in seconds. Matters for worst-case user experience."),
+        "Cost/call":  st.column_config.TextColumn("Cost/call",
+            help="Average USD cost per query (input + output tokens at the model's current pricing)."),
+        "Easy":       st.column_config.TextColumn("Easy",
+            help="Accuracy on easy queries: single-food, unambiguous scenarios. "
+                 "All models should score near 100%."),
+        "Medium":     st.column_config.TextColumn("Medium",
+            help="Accuracy on medium queries: some ambiguity or less common foods. "
+                 "Where cheaper models begin to degrade."),
+        "Hard":       st.column_config.TextColumn("Hard",
+            help="Accuracy on hard queries: multi-step scenarios and edge cases. "
+                 "The most discriminating stratum."),
+    }
+    col_config_present = {k: v for k, v in _COL_CONFIG.items() if k in display_df.columns}
+
     styler = display_df.style.format(fmt, na_rep="—")
     if acc_style_cols:
         styler = styler.map(_acc_style, subset=acc_style_cols)
     if "Model Type" in display_df.columns:
         styler = styler.map(_model_type_style, subset=["Model Type"])
 
-    st.dataframe(styler, use_container_width=True, hide_index=True)
+    st.dataframe(styler, use_container_width=True, hide_index=True, column_config=col_config_present)
 else:
     st.warning("Summary CSV not available for this run.")
 
@@ -299,7 +348,28 @@ if df is not None and not df.empty:
 
 st.divider()
 
-# ── 4j: Per-query deep dive ──────────────────────────────────────────────────
+# ── 4j: Corpus expander ───────────────────────────────────────────────────────
+with st.expander("▸ View the benchmark queries and ground truth"):
+    try:
+        with open(_DATASETS_DIR / "extraction_queries.json", encoding="utf-8") as _f:
+            _raw_queries = json.load(_f).get("queries", [])
+        _q_df = pd.DataFrame([
+            {
+                "id":         q.get("id"),
+                "difficulty": q.get("difficulty"),
+                "query":      q.get("text"),
+                "model_type": (q.get("expected") or {}).get("implied_model_type"),
+                "notes":      q.get("notes", ""),
+            }
+            for q in _raw_queries
+        ])
+        st.dataframe(_q_df, use_container_width=True, hide_index=True)
+    except Exception as _exc:
+        st.warning(f"Could not load benchmark queries: {_exc}")
+
+st.divider()
+
+# ── 4k: Per-query deep dive ───────────────────────────────────────────────────
 st.header("Per-Query Deep Dive")
 
 # Collect the ordered union of query IDs across all models.
@@ -345,17 +415,7 @@ if query_ids:
     if deep_rows:
         st.dataframe(pd.DataFrame(deep_rows), use_container_width=True, hide_index=True)
 
-    with st.expander("Raw extraction JSON"):
-        for r in results:
-            q = {q2["query_id"]: q2 for q2 in r.get("queries", [])}.get(selected_qid)
-            if q is None:
-                continue
-            st.subheader(r["model"])
-            details = q.get("details", [])
-            st.json(
-                details if details
-                else {"note": "No per-run detail records stored for this query."}
-            )
+
 else:
     st.info("No query data available.")
 

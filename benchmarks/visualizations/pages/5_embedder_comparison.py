@@ -2,7 +2,7 @@
 Page 5: Embedder Comparison (Experiment 2.1)
 
 Narrative flow:
-  Run info → Summary table → 2×2 design chart → Stratum definitions →
+  Description → Run info → Summary table → 2×2 design chart → Stratum definitions →
   Stratum accuracy → Corpus → Per-query deep dive → Recommendation.
 """
 
@@ -121,7 +121,7 @@ def _design_chart(embedders: list[dict]) -> go.Figure:
 
 def _stratum_bars(embedders: list[dict]) -> go.Figure:
     """Grouped bar chart: accuracy per stratum per embedder."""
-    tiers = ["easy", "medium", "hard", "pathogen"]
+    tiers = ["easy", "medium", "hard"]
     fig = go.Figure()
 
     for e in embedders:
@@ -151,10 +151,31 @@ def _stratum_bars(embedders: list[dict]) -> go.Figure:
 inject_css()
 
 st.title("Experiment 2.1 — Embedder Comparison")
-st.caption(
-    "Does a different sentence-transformer embedder fix known retrieval failures? "
-    "2×2 design: small/base × general/retrieval-optimised."
-)
+with st.expander("▸ What does this experiment do?"):
+    st.markdown(
+        """
+The pipeline looks up food safety properties (pH, water activity) from a knowledge base by
+converting a food description into a vector embedding and finding the nearest document.
+The production embedder (`all-MiniLM-L6-v2`) has a known failure mode: when you ask about
+*turkey* or *lamb*, it cannot find the right document because the knowledge base only has
+category-level rows (*fresh poultry*, *fresh meat*) — not species-specific ones.
+The embedder's representation of "turkey" is not close enough to "fresh poultry" to clear
+the confidence gate, so the pipeline returns no value and falls back to a conservative default.
+
+This experiment asks: **does a different embedding model fix that?**
+
+Four models are tested in a 2×2 design — small vs. base parameter count, general-purpose
+vs. retrieval-optimised training — against a 30-query benchmark split into three difficulty levels:
+
+- **Easy** — foods with an exact row in the knowledge base (should always work for any embedder)
+- **Medium** — species-level queries where only a category row exists — *the actual problem*
+- **Hard** — negative controls with no correct answer, measuring false-positive risk
+
+The hard constraint is: a candidate must score 100% on the Hard stratum before any accuracy
+improvement is even considered. One false positive means an unrelated document silently passes
+through as a food property value.
+"""
+    )
 
 # ── Load data ────────────────────────────────────────────────────────────────
 data, df = _load_latest()
@@ -187,55 +208,103 @@ col_q.metric("Queries", n_queries)
 col_s.metric(
     "Strata",
     f"easy {stratum_counts.get('easy', 0)} · med {stratum_counts.get('medium', 0)} "
-    f"· hard {stratum_counts.get('hard', 0)} · path {stratum_counts.get('pathogen', 0)}",
+    f"· hard {stratum_counts.get('hard', 0)}",
 )
 
 st.divider()
 
 # ── Section 2: Summary table ─────────────────────────────────────────────────
 st.header("Embedder Summary")
-st.caption("Sorted by top-1 accuracy. Green ≥ 90% · Amber ≥ 70% · Red < 70%.")
+st.caption("Sorted by top-1 accuracy. Green ≥ 90% · Amber ≥ 70% · Red < 70%. Hover column headers for definitions.")
 
 if df is not None and not df.empty:
     _COL_MAP = {
-        "embedder_name":        "Embedder",
-        "dim":                  "Dim",
-        "params_m":             "Params (M)",
-        "training_objective":   "Objective",
-        "top1_accuracy":        "Top-1",
-        "top3_accuracy":        "Top-3",
-        "gate_pass_rate":       "Gate pass",
-        "mean_expected_score":  "Mean score",
-        "tier_easy":            "Easy",
-        "tier_medium":          "Medium",
-        "tier_hard":            "Hard",
-        "tier_pathogen":        "Pathogen",
-        "load_time_s":          "Load (s)",
-        "corpus_embed_time_s":  "Embed (s)",
-        "mean_query_latency_ms": "Query (ms)",
+        "embedder_name":       "Embedder",
+        "dim":                 "Dim",
+        "params_m":            "Params (M)",
+        "training_objective":  "Objective",
+        "top1_accuracy":       "Top-1",
+        "top3_accuracy":       "Top-3",
+        "gate_pass_rate":      "Gate pass",
+        "mean_expected_score": "Mean score",
     }
     cols_present = [c for c in _COL_MAP if c in df.columns]
     display_df = (
-        df[cols_present]
+        df.loc[:, cols_present]
         .rename(columns=_COL_MAP)
         .sort_values("Top-1", ascending=False)
         .reset_index(drop=True)
     )
 
     pct_cols = [_COL_MAP[c] for c in cols_present
-                if c in {"top1_accuracy", "top3_accuracy", "gate_pass_rate",
-                         "tier_easy", "tier_medium", "tier_hard", "tier_pathogen"}]
+                if c in {"top1_accuracy", "top3_accuracy", "gate_pass_rate"}]
     acc_style_cols = [_COL_MAP[c] for c in cols_present
-                      if c in {"top1_accuracy", "tier_easy", "tier_medium",
-                                "tier_hard", "tier_pathogen"}]
+                      if c in {"top1_accuracy"}]
     fmt: dict[str, str] = {c: "{:.1%}" for c in pct_cols}
     if "Mean score" in display_df.columns:
         fmt["Mean score"] = "{:.4f}"
 
+    _COL_CONFIG = {
+        "Embedder":   st.column_config.TextColumn(
+            "Embedder",
+            help="Sentence-transformer model name.",
+        ),
+        "Dim":        st.column_config.NumberColumn(
+            "Dim",
+            help="Embedding vector dimensionality. Higher = richer representations, more memory.",
+        ),
+        "Params (M)": st.column_config.NumberColumn(
+            "Params (M)",
+            help="Model parameter count in millions — proxy for compute cost and load time.",
+        ),
+        "Objective":  st.column_config.TextColumn(
+            "Objective",
+            help=(
+                "Training objective. "
+                "'general' = sentence similarity (e.g. MiniLM, MPNet). "
+                "'retrieval' = bi-encoder optimised for asymmetric search (e.g. BGE)."
+            ),
+        ),
+        "Top-1":      st.column_config.TextColumn(
+            "Top-1",
+            help=(
+                "Primary metric. % of queries where the right doc is ranked #1 "
+                "AND its cosine score clears the production threshold. "
+                "A miss here means the pipeline retrieves the wrong doc."
+            ),
+        ),
+        "Top-3":      st.column_config.TextColumn(
+            "Top-3",
+            help=(
+                "% of queries where the right doc appears in the top-3 results above threshold. "
+                "If Top-3 > Top-1, the right doc exists but ranking is the problem."
+            ),
+        ),
+        "Gate pass":  st.column_config.TextColumn(
+            "Gate pass",
+            help=(
+                "% of queries where the canonical doc's score clears the threshold, regardless of rank. "
+                "Gate pass > Top-1 means the right doc scores high enough but another doc outranks it. "
+                "Gate pass < Top-1 is structurally impossible."
+            ),
+        ),
+        "Mean score": st.column_config.TextColumn(
+            "Mean score",
+            help=(
+                "Average cosine similarity of the canonical doc across positive queries "
+                "(negative controls excluded). "
+                "Reference: Tier-2 gate = 0.62, Tier-1 gate = 0.70. "
+                "Below 0.62 means the embedder cannot reliably clear the gate."
+            ),
+        ),
+    }
+
+    col_config_present = {k: v for k, v in _COL_CONFIG.items() if k in display_df.columns}
+
     styler = display_df.style.format(fmt, na_rep="—")
     if acc_style_cols:
         styler = styler.map(_acc_style, subset=acc_style_cols)
-    st.dataframe(styler, use_container_width=True, hide_index=True)
+    st.dataframe(styler, use_container_width=True, hide_index=True, column_config=col_config_present)
 else:
     st.warning("Summary CSV not available.")
 
@@ -256,7 +325,7 @@ st.divider()
 # ── Section 4: Stratum definitions callout ────────────────────────────────────
 st.header("Accuracy by Difficulty Stratum")
 st.markdown(
-    "**Reading the four difficulty strata:**\n\n"
+    "**Reading the three difficulty strata:**\n\n"
     "- **Easy** (10 queries): foods that have their own row in the knowledge base — "
     "chicken, white bread, milk, salmon. "
     "*Every embedder should hit ~100%.* "
@@ -267,10 +336,7 @@ st.markdown(
     "- **Hard** (6 queries): negative controls. Queries with no correct answer in the knowledge base — "
     "turkey pH, lamb pH, made-up foods like \"zarblax burger\". "
     "*The right behaviour is silence: no doc above the confidence gate.* "
-    "Any other behaviour means the embedder is grounding values on unrelated docs.\n\n"
-    "- **Pathogen** (4 queries): hazard retrieval — chicken, beef, salmon, oysters. "
-    "*A sanity check; not a discriminating stratum.* "
-    "All embedders should pass; failure here would indicate a broken harness, not a worse embedder."
+    "Any other behaviour means the embedder is grounding values on unrelated docs."
 )
 
 # ── Section 5: Stratum bar chart ──────────────────────────────────────────────
@@ -279,19 +345,21 @@ st.plotly_chart(_stratum_bars(embedders), use_container_width=True)
 st.divider()
 
 # ── Section 6: Corpus expander ────────────────────────────────────────────────
-with st.expander("▸ View the 30 queries and ground truth"):
+_FIELD_SUFFIX = {
+    "ph_aw_combined": "pH water activity properties",
+    "ph":             "pH acidity",
+    "water_activity": "water activity aw moisture",
+    "pathogen":       "food hazard",
+}
+
+with st.expander("▸ View the 30 queries"):
     try:
         with open(_DATASETS_DIR / "retrieval_queries.json", encoding="utf-8") as _f:
             _raw_queries = json.load(_f).get("queries", [])
         _corpus_df = pd.DataFrame([
             {
-                "id":                    q.get("id"),
-                "food_description":      q.get("food_description"),
-                "field":                 q.get("field"),
-                "tier":                  q.get("tier"),
-                "production_tier":       q.get("production_tier"),
-                "acceptable_food_names": ", ".join(q.get("acceptable_food_names") or []),
-                "comment":               q.get("comment", ""),
+                "id":         q.get("id"),
+                "query_sent": f"{q.get('food_description', '')} {_FIELD_SUFFIX.get(q.get('field', ''), '')}".strip(),
             }
             for q in _raw_queries
         ])
