@@ -714,3 +714,17 @@ Three test helpers in `test_api_translation.py` created `RetrievalResult` object
 **Rules:**
 - When adding a new `ValueSource` variant for a default that is epistemically different from `CONSERVATIVE_DEFAULT`, always add the `d.source is not None` guard in the route builder's `default_source` logic so the existing source inference remains correct for all historical defaults.
 - For features with a configurable threshold (like `default_long_window_minutes`), bind test assertions to the live settings attribute (`svc_module.settings.default_long_window_minutes`), not a hardcoded literal, to prevent the test from failing silently when the default is changed.
+
+---
+
+### 2026-05-18 — Producer-consumer parity for new provenance blocks: full_citations required (second instance)
+
+**Context:** `PathogenCategoryFallbackInfo` / `PathogenCategoryFallbackAuditInfo` shipped in the previous phase carrying `source_id` fields (on `PathogenCandidate`) and `ift_source_id`, but no `full_citations: dict[str, str]` field. The frontend diagnosed the asymmetry: adjacent retrieval blocks rendered as clickable `CitationButton` components; the fallback block rendered the same source IDs as plain text. This is the second instance of the same pattern (first: 2026-05-07, audit completeness on validation failure).
+
+**Root cause:** The original plan chose route-layer-only placement for `full_citations` (smaller diff, no internal model change). On review, this was a self-contradiction: the plan's own design rule ("any block carrying `source_id` fields must also carry `full_citations`") applies equally to the internal `PathogenCategoryFallbackInfo` model and the API schema. Leaving the model layer without `full_citations` preserved the asymmetry one layer deeper — internal consumers of `ValueProvenance.pathogen_category_fallback` would still see source IDs without citation text.
+
+**Fix:** Option (a) — match the retrieval block pattern. `full_citations: dict[str, str]` added to both `PathogenCategoryFallbackInfo` (internal, `app/models/metadata.py`) and `PathogenCategoryFallbackAuditInfo` (API schema, `app/api/schemas/translation.py`). Populated at `fallback_info` construction time in `_category_pathogen_fallback()` using the existing `get_full_citations()` import. Source IDs collected with `dict.fromkeys(["IFT-2003-T1"] + [c.source_id for c in ranked])` — IFT first, CDC deduped by `dict.fromkeys`, deterministic insertion order. Route layer passes `full_citations=pcf.full_citations` directly (no new logic).
+
+**Design rule (codified):** Any new Pydantic class that carries a field named `source_id` (or items with `source_id`) must also carry `full_citations: dict[str, str] = Field(default_factory=dict)`. This applies at both the internal-model layer and the API schema layer, consistent with how `RetrievalResult` and `RetrievalTopMatchInfo` pair `source_ids` with `full_citations`. The check is mechanical: after writing a new provenance block class, grep for `source_id` in its fields; if present, verify `full_citations` also exists before closing the PR.
+
+**What to do differently:** When a plan's own codified rule would be violated by the plan's proposed placement decision, flag the violation in the plan itself rather than choosing the smaller diff. "Smaller diff" is not a valid reason to exempt a new model from the same contract that existing models follow.
