@@ -54,9 +54,9 @@ class ComBaseOrganism(str, Enum):
     """
     AEROMONAS_HYDROPHILA = "ah"
     BACILLUS_CEREUS = "bc"
-    BROCHOTHRIX_THERMOSPHACTA = "bl"
+    BROCHOTHRIX_THERMOSPHACTA = "bt"
     BACILLUS_SUBTILIS = "bs"
-    BACILLUS_STEAROTHERMOPHILUS = "bt"
+    BACILLUS_LICHENIFORMIS = "bl"
     CLOSTRIDIUM_BOTULINUM_NONPROT = "cbn"
     CLOSTRIDIUM_BOTULINUM_PROT = "cbp"
     CLOSTRIDIUM_PERFRINGENS = "cp"
@@ -84,15 +84,15 @@ class ComBaseOrganism(str, Enum):
             # Brochothrix
             "brochothrix": cls.BROCHOTHRIX_THERMOSPHACTA,
             "brochothrix thermosphacta": cls.BROCHOTHRIX_THERMOSPHACTA,
-            "bl": cls.BROCHOTHRIX_THERMOSPHACTA,
+            "bt": cls.BROCHOTHRIX_THERMOSPHACTA,
             # Bacillus subtilis
             "bacillus subtilis": cls.BACILLUS_SUBTILIS,
             "b. subtilis": cls.BACILLUS_SUBTILIS,
             "bs": cls.BACILLUS_SUBTILIS,
-            # Bacillus stearothermophilus
-            "bacillus stearothermophilus": cls.BACILLUS_STEAROTHERMOPHILUS,
-            "b. stearothermophilus": cls.BACILLUS_STEAROTHERMOPHILUS,
-            "bt": cls.BACILLUS_STEAROTHERMOPHILUS,
+            # Bacillus licheniformis
+            "bacillus licheniformis": cls.BACILLUS_LICHENIFORMIS,
+            "b. licheniformis": cls.BACILLUS_LICHENIFORMIS,
+            "bl": cls.BACILLUS_LICHENIFORMIS,
             # Clostridium botulinum non-proteolytic
             "clostridium botulinum non-proteolytic": cls.CLOSTRIDIUM_BOTULINUM_NONPROT,
             "c. botulinum non-proteolytic": cls.CLOSTRIDIUM_BOTULINUM_NONPROT,

@@ -114,8 +114,82 @@ class TestComBaseModelRegistry:
         """Should list available organisms."""
         if len(registry) == 0:
             pytest.skip("combase_models.csv not found")
-        
+
         organisms = registry.list_organisms()
-        
+
         assert len(organisms) > 0
         assert ComBaseOrganism.LISTERIA_MONOCYTOGENES in organisms or len(organisms) > 0
+
+
+class TestComBaseOrganismMatchesCSV:
+    """
+    Enum-CSV reconciliation (A0.5a). Every ComBaseOrganism member's .value
+    (OrganismID) must load data/combase_models.csv row(s) whose Org name is
+    recognizably that organism, not a different one wearing the same short
+    code. Regression test for the historical bl/bt swap: BROCHOTHRIX_THERMOSPHACTA
+    was "bl" (Bacillus licheniformis's row) and BACILLUS_STEAROTHERMOPHILUS was
+    "bt" (Brochothrix thermosphacta's row, for an organism the CSV never had).
+    """
+
+    # Expected substring (case-insensitive) that must appear in at least one
+    # combase_models.csv Org value loaded under this organism's OrganismID.
+    _EXPECTED_NAME_SUBSTRING: dict = {
+        ComBaseOrganism.AEROMONAS_HYDROPHILA: "aeromonas hydrophila",
+        ComBaseOrganism.BACILLUS_CEREUS: "bacillus cereus",
+        ComBaseOrganism.BROCHOTHRIX_THERMOSPHACTA: "thermosphacta",
+        ComBaseOrganism.BACILLUS_SUBTILIS: "bacillus subtilis",
+        ComBaseOrganism.BACILLUS_LICHENIFORMIS: "bacillus licheniformis",
+        ComBaseOrganism.CLOSTRIDIUM_BOTULINUM_NONPROT: "clostridium botulinum (non-prot.)",
+        ComBaseOrganism.CLOSTRIDIUM_BOTULINUM_PROT: "clostridium botulinum (prot.)",
+        ComBaseOrganism.CLOSTRIDIUM_PERFRINGENS: "clostridium perfringens",
+        ComBaseOrganism.ESCHERICHIA_COLI: "escherichia coli",
+        ComBaseOrganism.LISTERIA_MONOCYTOGENES: "listeria monocytogenes",
+        ComBaseOrganism.PSEUDOMONAS: "pseudomonas",
+        ComBaseOrganism.SALMONELLA: "salmonella",
+        ComBaseOrganism.SHIGELLA_FLEXNERI: "shigella flexneri",
+        ComBaseOrganism.STAPHYLOCOCCUS_AUREUS: "staphylococcus aureus",
+        ComBaseOrganism.YERSINIA_ENTEROCOLITICA: "yersinia enterocolitica",
+    }
+
+    @pytest.fixture
+    def registry(self) -> ComBaseModelRegistry:
+        """Create and load registry."""
+        reg = ComBaseModelRegistry()
+        csv_path = Path("data/combase_models.csv")
+        if csv_path.exists():
+            reg.load_from_csv(csv_path)
+        return reg
+
+    @pytest.mark.parametrize("organism", list(ComBaseOrganism))
+    def test_organism_value_resolves_to_matching_csv_row(self, registry, organism):
+        """Every member's OrganismID must load row(s) naming this organism."""
+        if len(registry) == 0:
+            pytest.skip("combase_models.csv not found")
+
+        models = registry.get_models_for_organism(organism)
+        assert models, f"No CSV rows loaded for {organism.name} (OrganismID={organism.value!r})"
+
+        expected = self._EXPECTED_NAME_SUBSTRING[organism]
+        assert any(expected in m.organism_name.lower() for m in models), (
+            f"{organism.name} (OrganismID={organism.value!r}) loaded Org names "
+            f"{[m.organism_name for m in models]}, none containing {expected!r}"
+        )
+
+    def test_brochothrix_resolves_to_brochothrix_row(self, registry):
+        """from_string('brochothrix') must load the Brochothrix thermosphacta row,
+        not Bacillus licheniformis (the historical bl/bt swap)."""
+        if len(registry) == 0:
+            pytest.skip("combase_models.csv not found")
+
+        organism = ComBaseOrganism.from_string("brochothrix")
+        assert organism == ComBaseOrganism.BROCHOTHRIX_THERMOSPHACTA
+
+        model = registry.get_model(organism, ModelType.GROWTH, Factor4Type.NONE)
+        assert model is not None
+        assert "thermosphacta" in model.organism_name.lower()
+
+    def test_bacillus_stearothermophilus_no_longer_resolves(self):
+        """B. stearothermophilus has no CSV row; the alias must fail closed to None."""
+        assert ComBaseOrganism.from_string("bacillus stearothermophilus") is None
+        assert ComBaseOrganism.from_string("b. stearothermophilus") is None
+        assert not hasattr(ComBaseOrganism, "BACILLUS_STEAROTHERMOPHILUS")

@@ -543,21 +543,21 @@ Clamping is applied by StandardizationService before payload construction. The e
 |---|---|---|
 | `AEROMONAS_HYDROPHILA` | ah | Aeromonas hydrophila |
 | `BACILLUS_CEREUS` | bc | Bacillus cereus (with CO2) |
-| `BROCHOTHRIX_THERMOSPHACTA` | bl | Bacillus licheniformis (CSV Org name) |
+| `BROCHOTHRIX_THERMOSPHACTA` | bt | Brochothrix thermosphacta |
 | `BACILLUS_SUBTILIS` | bs | Bacillus subtilis |
-| `BACILLUS_STEAROTHERMOPHILUS` | bt | Brochothrix thermosphacta |
+| `BACILLUS_LICHENIFORMIS` | bl | Bacillus licheniformis |
 | `CLOSTRIDIUM_BOTULINUM_NONPROT` | cbn | Clostridium botulinum (non-prot.) |
 | `CLOSTRIDIUM_BOTULINUM_PROT` | cbp | Clostridium botulinum (prot.) |
 | `CLOSTRIDIUM_PERFRINGENS` | cp | Clostridium perfringens |
 | `ESCHERICHIA_COLI` | ec | Escherichia coli (with CO2) |
 | `LISTERIA_MONOCYTOGENES` | lm | Listeria monocytogenes/innocua (with CO2/nitrite/lactic/acetic) |
-| `PSEUDOMONAS` | ps | (in enum, not found in CSV head — needs verification) |
+| `PSEUDOMONAS` | ps | Pseudomonas spp. |
 | `SALMONELLA` | ss | Salmonellae (with CO2/nitrite) |
 | `SHIGELLA_FLEXNERI` | sf | Shigella flexneri (with nitrite) |
 | `STAPHYLOCOCCUS_AUREUS` | sa | Staphylococcus aureus |
 | `YERSINIA_ENTEROCOLITICA` | ye | Yersinia enterocolitica (with CO2/lactic) |
 
-**Note on enum–CSV mismatch:** The `ComBaseOrganism` enum (`app/models/enums.py`) has `BROCHOTHRIX_THERMOSPHACTA = "bl"`, but the CSV row with `OrganismID=bl` is "Bacillus licheniformis". Conversely, the row for Brochothrix thermosphacta uses `OrganismID=bt`. The enum value `BACILLUS_STEAROTHERMOPHILUS = "bt"` maps to the Brochothrix thermosphacta CSV row. This is a naming inconsistency in the CSV or the enum; the predictions still execute correctly since the registry key is the code, not the name.
+**Enum-CSV reconciliation (Phase A0.5a, 2026-07-15):** A prior version of this table documented `BROCHOTHRIX_THERMOSPHACTA = "bl"` / `BACILLUS_STEAROTHERMOPHILUS = "bt"` as a harmless naming inconsistency, reasoning that "predictions still execute correctly since the registry key is the code, not the name." That was false: `ComBaseOrganism.from_string("brochothrix")` returned `"bl"`, which loaded the *Bacillus licheniformis* CSV row's coefficients under the Brochothrix name — a wrong-answer bug on a live path, not a cosmetic label mismatch. `BACILLUS_STEAROTHERMOPHILUS` had no corresponding row in `data/combase_models.csv` at all (verified across all `ModelID`s) and has been removed; its aliases ("bacillus stearothermophilus", "b. stearothermophilus") now resolve to `None`, so an unresolvable organism fails closed rather than silently loading the wrong model. `BACILLUS_LICHENIFORMIS` (`bl`) was added since its CSV row is real and was previously unreachable. This mapping is now verified by a parametrized test (`tests/unit/test_combase_models.py::TestComBaseOrganismMatchesCSV`) asserting every enum member's `.value` loads a CSV row whose `Org` name matches the member — the class of drift this section previously documented as benign is now caught automatically rather than trusted to a spec note.
 
 ### 5.5 Startup Loading
 
