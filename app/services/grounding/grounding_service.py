@@ -36,7 +36,7 @@ from app.config.rules import (
     find_temperature_interpretation_with_fallback,
     find_duration_interpretation,
 )
-from app.models.enums import ComBaseOrganism
+from app.models.enums import ComBaseOrganism, OrganismGroundingFailureStage
 from app.models.extraction import (
     ExtractedScenario,
     ExtractedEnvironmentalConditions,
@@ -47,6 +47,7 @@ from app.models.extraction import (
 from app.models.metadata import (
     ValueProvenance, ValueSource, RetrievalResult, RunnerUpResult, SkippedDocInfo,
     CategoryBridgeInfo, PathogenCategoryFallbackInfo, PathogenCandidate,
+    OrganismGroundingFailure,
 )
 from app.rag.retrieval import RetrievalService, get_retrieval_service, RetrievalResponse
 from app.services.grounding.taxonomy_bridge import TaxonomyBridge
@@ -333,6 +334,12 @@ class GroundedValues:
         # matched keyword (e.g. {"ph": "chili", "water_activity": "chili"}).
         # The route builder reads this to assign COMPOSITE_FOOD_DEFAULT source.
         self.composite_skip: dict[str, str] = {}
+        # Populated at each early return of _category_pathogen_fallback() when
+        # organism grounding fails closed. The organism equivalent of
+        # bridge_attempts: a structured near-miss record instead of a silent
+        # return. Purely additive — mark_ungrounded()'s warning string still
+        # fires unchanged. None when organism grounding succeeds.
+        self.organism_failure: OrganismGroundingFailure | None = None
 
     @property
     def has_steps(self) -> bool:
@@ -1255,11 +1262,19 @@ class GroundingService:
         existing ungrounded path.
         """
         if not self._taxonomy_bridge:
+            grounded.organism_failure = OrganismGroundingFailure(
+                stage=OrganismGroundingFailureStage.BRIDGE_DISABLED,
+                detail="Taxonomy bridge is disabled (PTM_TAXONOMY_BRIDGE_ENABLED=false)",
+            )
             return
 
         # Step 1: Resolve food → ptm_category via FoodEx2 bridge
         resolution = self._taxonomy_bridge.resolve(food_description)
         if resolution is None:
+            grounded.organism_failure = OrganismGroundingFailure(
+                stage=OrganismGroundingFailureStage.FOOD_UNRECOGNISED,
+                detail=f"Taxonomy bridge could not resolve '{food_description}' to a FoodEx2 category",
+            )
             return
 
         ptm_category = resolution.ptm_category
@@ -1267,6 +1282,12 @@ class GroundingService:
         # Step 2: Map ptm_category → IFT categories
         ift_categories = self._ift_alignment.get(ptm_category)
         if not ift_categories:
+            grounded.organism_failure = OrganismGroundingFailure(
+                stage=OrganismGroundingFailureStage.CATEGORY_HAS_NO_HAZARD_DATA,
+                detail=f"Category '{ptm_category}' has no IFT-2003-T1 hazard mapping",
+                resolved_category=ptm_category,
+                match_score=resolution.match_score,
+            )
             return
 
         # Step 3: Gather union of pathogen names across all IFT categories;
@@ -1281,6 +1302,10 @@ class GroundingService:
                     candidate_names.append(pathogen)
 
         if not candidate_names:
+            grounded.organism_failure = OrganismGroundingFailure(
+                stage=OrganismGroundingFailureStage.INTERNAL_NO_MAPPABLE_CANDIDATE,
+                detail=f"No pathogens found in pathogen_food_associations.csv for IFT categories {list(ift_categories)}",
+            )
             return
 
         # Step 4: Rank by annual_deaths_us from pathogen_characteristics.csv.
@@ -1304,6 +1329,10 @@ class GroundingService:
         ranked.sort(key=lambda c: c.annual_deaths_us, reverse=True)
 
         if not ranked:
+            grounded.organism_failure = OrganismGroundingFailure(
+                stage=OrganismGroundingFailureStage.INTERNAL_NO_MAPPABLE_CANDIDATE,
+                detail="All candidate pathogens are absent from pathogen_characteristics.csv",
+            )
             return
 
         # Step 5: Select the top-ranked candidate that maps to a ComBaseOrganism;
@@ -1323,6 +1352,10 @@ class GroundingService:
             break
 
         if selected is None or selected_organism is None:
+            grounded.organism_failure = OrganismGroundingFailure(
+                stage=OrganismGroundingFailureStage.INTERNAL_NO_MAPPABLE_CANDIDATE,
+                detail="All ranked candidate pathogens failed ComBaseOrganism mapping",
+            )
             return
 
         _pcf_source_ids = list(dict.fromkeys(

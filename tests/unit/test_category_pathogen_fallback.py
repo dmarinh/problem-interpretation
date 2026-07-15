@@ -12,7 +12,7 @@ from app.services.grounding.grounding_service import (
     GroundedValues,
     _PATHOGEN_NAME_NORMALIZATION,
 )
-from app.models.enums import ComBaseOrganism
+from app.models.enums import ComBaseOrganism, OrganismGroundingFailureStage
 from app.models.metadata import ValueSource
 from app.services.audit.citations import get_full_citations
 
@@ -174,6 +174,8 @@ class TestCategoryFallbackEdgeCases:
         grounded = call_fallback(service, "barley")
 
         assert not grounded.has("organism"), "No organism should be grounded when all candidates are unmappable"
+        assert grounded.organism_failure is not None
+        assert grounded.organism_failure.stage == OrganismGroundingFailureStage.INTERNAL_NO_MAPPABLE_CANDIDATE
 
     def test_pathogen_absent_from_characteristics_excluded_from_ranking(self):
         """A pathogen present in associations but absent from characteristics is not ranked."""
@@ -235,6 +237,8 @@ class TestCategoryFallbackEdgeCases:
         grounded = call_fallback(service, "barley")
 
         assert not grounded.has("organism")
+        assert grounded.organism_failure is not None
+        assert grounded.organism_failure.stage == OrganismGroundingFailureStage.BRIDGE_DISABLED
 
     def test_no_ift_mapping_returns_without_grounding(self):
         """When ptm_category has no IFT row (e.g. condiment), fallback must not ground anything.
@@ -251,6 +255,10 @@ class TestCategoryFallbackEdgeCases:
         grounded = call_fallback(service, "mustard")
 
         assert not grounded.has("organism")
+        assert grounded.organism_failure is not None
+        assert grounded.organism_failure.stage == OrganismGroundingFailureStage.CATEGORY_HAS_NO_HAZARD_DATA
+        assert grounded.organism_failure.resolved_category is not None
+        assert grounded.organism_failure.match_score is not None
 
     def test_zero_deaths_ranked_last_not_excluded(self):
         """Pathogens with annual_deaths_us=0 rank last but are still candidates."""

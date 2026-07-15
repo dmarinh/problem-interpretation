@@ -31,7 +31,7 @@ from unittest.mock import MagicMock, AsyncMock
 
 from app.services.grounding.grounding_service import GroundingService
 from app.services.grounding.taxonomy_bridge import TaxonomyBridge
-from app.models.enums import ComBaseOrganism
+from app.models.enums import ComBaseOrganism, OrganismGroundingFailureStage
 from app.models.metadata import ValueSource
 from app.models.extraction import (
     ExtractedScenario,
@@ -384,6 +384,14 @@ class TestN1Frobnitz:
 
         assert not any("IFT-2003-T1" in w for w in grounded.warnings)
 
+    @pytest.mark.asyncio
+    async def test_organism_failure_recorded(self, grounding_service: GroundingService) -> None:
+        """organism_failure records FOOD_UNRECOGNISED — the taxonomy bridge returned None."""
+        grounded = await grounding_service.ground_scenario(make_scenario("frobnitz"))
+
+        assert grounded.organism_failure is not None
+        assert grounded.organism_failure.stage == OrganismGroundingFailureStage.FOOD_UNRECOGNISED
+
 
 # ---------------------------------------------------------------------------
 # N2 — mustard: bridge → condiment → no IFT category → fallback returns early
@@ -407,6 +415,16 @@ class TestN2Mustard:
         grounded = await grounding_service.ground_scenario(make_scenario("mustard"))
 
         assert not any("IFT-2003-T1" in w for w in grounded.warnings)
+
+    @pytest.mark.asyncio
+    async def test_organism_failure_recorded(self, grounding_service: GroundingService) -> None:
+        """organism_failure records CATEGORY_HAS_NO_HAZARD_DATA with the resolved category and a match score."""
+        grounded = await grounding_service.ground_scenario(make_scenario("mustard"))
+
+        assert grounded.organism_failure is not None
+        assert grounded.organism_failure.stage == OrganismGroundingFailureStage.CATEGORY_HAS_NO_HAZARD_DATA
+        assert grounded.organism_failure.resolved_category == "condiment"
+        assert grounded.organism_failure.match_score is not None
 
 
 # ---------------------------------------------------------------------------

@@ -267,6 +267,19 @@ class ClarificationReason(str, Enum):
     ORGANISM_NOT_SUPPORTED = "organism_not_supported"
 
 
+class OrganismGroundingFailureStage(str, Enum):
+    """Where organism grounding failed closed, for structured audit traceability.
+
+    Populated by GroundingService._category_pathogen_fallback() at each of its
+    six early-return points. Purely additive — the existing mark_ungrounded()
+    warning string is unchanged; this is a structured parallel record.
+    """
+    BRIDGE_DISABLED = "bridge_disabled"
+    FOOD_UNRECOGNISED = "food_unrecognised"
+    CATEGORY_HAS_NO_HAZARD_DATA = "category_has_no_hazard_data"
+    INTERNAL_NO_MAPPABLE_CANDIDATE = "internal_no_mappable_candidate"
+
+
 class SessionStatus(str, Enum):
     """Status of an interpretation session."""
     PENDING = "pending"

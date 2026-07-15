@@ -749,6 +749,8 @@ Organism is treated as a user-required field, symmetric with duration. If neithe
 
 **Duration split (Phase 9.7, 2026-05-17):** Duration previously used the same required-field pattern as organism. As of Phase 9.7, single-step duration has been moved to the defaulted-field category (`LONG_WINDOW_DEFAULT`); a missing single-step duration now results in `success=True` with a 10080-min default. Multi-step duration remains a required field (a missing step duration is a structurally malformed claim). Organism retains the required-field behavior because no single organism is a safe default across all food categories.
 
+**Structured failure record (Phase A0, 2026-07-15):** The fail-closed behavior above was previously traceable only through a flat `mark_ungrounded()` warning string. `_category_pathogen_fallback()`'s six early returns (bridge disabled, bridge miss, no IFT row, no candidate pathogens, no ranked candidates, all candidates unmapped) now each populate `GroundedValues.organism_failure` with a structured `OrganismGroundingFailure` (`stage: OrganismGroundingFailureStage`, `detail`, and — for the category-resolved-but-no-hazard-data case only — `resolved_category`/`match_score`), mirroring the existing `bridge_attempts` near-miss record for ph/aw. The three internal-only branches (no candidate pathogens, no ranked candidates, all candidates unmapped) — unreachable with current CSVs and indistinguishable to any consumer — collapse into a single `INTERNAL_NO_MAPPABLE_CANDIDATE` stage, disambiguated by `detail`. Purely additive: `mark_ungrounded()`, its warning string, and `missing_required`/`success=False` behavior are unchanged. No API schema change; this is an internal audit record, not yet surfaced in `field_audit`.
+
 ### 8.14 Ground truth evaluation framework (methodology)
 **Status:** ✅ Agreed.
 
@@ -841,7 +843,7 @@ For each open concern, the table below captures the concern in one line and the 
 
 ### 11.1 Cumulative conservative bias (a subsidiary concern under #1 and #2)
 
-The system stacks several conservative heuristics: upper-bound selection from RAG ranges (for growth direction), conservative defaults for missing values (Salmonella, abuse temperature, neutral pH, high aw), and ComBase default lag h₀ values per organism. Compounded, the predicted log increase can be 2.5–3.5× higher than a reasonable human calculation. Risk: "crying wolf" — operators learn to discount the tool.
+The system stacks several conservative heuristics: upper-bound selection from RAG ranges (for growth direction), conservative defaults for missing values (abuse temperature, neutral pH, high aw — organism has no default; see §8.13), and ComBase default lag h₀ values per organism. Compounded, the predicted log increase can be 2.5–3.5× higher than a reasonable human calculation. Risk: "crying wolf" — operators learn to discount the tool.
 
 **Note (2026-04-28):** The earlier ×1.2 / ×0.8 duration multiplier was part of this stack until Phase 9.3, when it was removed (see §8.7). Conservatism is now committed in two well-defined places only — default values and range-bound selection — which simplifies the bias-stack analysis but does not eliminate it. Multiple conservative defaults can still compound; the principle is unchanged.
 

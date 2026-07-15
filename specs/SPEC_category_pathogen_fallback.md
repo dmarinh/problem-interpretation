@@ -233,7 +233,7 @@ All queries use explicit T and duration to neutralise the missing-duration archi
 |---|---|---|
 | T1 | "barley at 25 °C for 4 hours" | Bridge → `grain` → `cereal grains`. Candidates: Salmonella (238), *C. botulinum* (9), *S. aureus* (6), *B. cereus* (0 — excluded). Selected: **Salmonella**. `source=RAG_PATHOGEN_CATEGORY_FALLBACK`. Warning emitted. Citations: `IFT-2003-T1` + the CDC source for Salmonella nontyphoidal. |
 | T2 | "mascarpone at 25 °C for 4 hours" | Bridge → `dairy` → union over {milk and milk products, cheese and cheese products, butter and margarine}. Selected: **Salmonella** (238) over Listeria (172). Verifies union mechanic. Warning names `dairy`. |
-| T3 | "maple syrup at 25 °C for 4 hours" | Bridge → `sweetener` → `sugars and syrups` → only *C. botulinum* listed. Selected: ***C. botulinum***. Verifies degenerate ranking (single candidate). |
+| T3 | "maple syrup at 25 °C for 4 hours" | **STALE (2026-07-15):** described behavior can no longer occur. `category_alignment_v4.csv:3` dropped the FoodEx2 "Sugar plants" mapping on 2026-05-07 ("Refined sugar already exists as a row in food_properties.csv... no need for a FoodEx2 bridge"), and `ift_category_alignment.csv` has no `sweetener` row. The taxonomy bridge can no longer resolve any food to `ptm_category="sweetener"` — "maple syrup" now returns `None` at the bridge step instead, recorded as `OrganismGroundingFailureStage.FOOD_UNRECOGNISED`. Whether the `sweetener` mapping should be restored is a separate decision; not addressed here. |
 
 **N-class (fallback returns ungrounded; request fails):**
 

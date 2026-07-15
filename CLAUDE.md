@@ -82,9 +82,11 @@ Each experiment in `benchmarks/experiments/` produces timestamped JSON/CSV under
 
 ### Safety-critical conservative defaults
 Missing values default to worst-case for growth:
-- Organism → Salmonella, Temperature → 25°C (abuse), pH → 7.0 (neutral), water activity → 0.99
+- Temperature → 25°C (abuse), pH → 7.0 (neutral), water activity → 0.99
 
 These are intentional. Do not make them more optimistic. For safety-critical metrics (model type classification, conservative defaults, safety gates), missing data must default to the worst-case interpretation — never borrow a semantically-different field as a fallback (use `.get(key, False)`, not `.get(key, some_other_field)`).
+
+Organism has no conservative default and fails closed: when the user's own statement, the food-specific RAG hazard lookup, and the category-level pathogen fallback all fail to resolve a pathogen, organism stays ungrounded and the request fails with `missing_required`. A fabricated organism for an unrecognised food would be stamped `CONSERVATIVE_DEFAULT` in the audit, which misrepresents provenance — failing closed is consistent with the category fallback's own fail-closed discipline.
 
 ### Enums only — no free text to the engine
 All engine inputs use controlled enums (`app/models/enums.py`). Free text resolved via rapidfuzz before reaching the engine.

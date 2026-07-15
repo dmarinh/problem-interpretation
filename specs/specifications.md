@@ -140,7 +140,7 @@ Higher-priority sources are never overwritten by lower-priority sources.
 1. Ground environmental conditions (pH, aw, CO2, nitrite, lactic acid, acetic acid) from `ExtractedScenario.environmental_conditions` — `USER_EXPLICIT` source
 2. Ground pathogen from `scenario.pathogen_mentioned` — `USER_EXPLICIT` via `ComBaseOrganism.from_string()` alias dict lookup
 3. Three-tier RAG retrieval for food pH and aw (only if not already grounded) — see **Food property retrieval** below
-4. Two-stage RAG lookup for pathogen (only if organism not yet grounded): Stage 1 calls `query_pathogen_hazards()` to resolve the food description to a canonical `food_name` metadata key; Stage 2 calls `get_hazards_for_food(food_name)` to fetch all hazard documents for that food and selects the pathogen with the highest `annual_deaths_us` (deterministic danger ranking). `extraction_method` is `"ranked_by_annual_deaths"` on success. When Stage 1 is below threshold, Stage 2 returns empty, or Stage 2's top document has no `ComBaseOrganism` mapping, the **category-level pathogen fallback** fires instead: resolves food → `ptm_category` (FoodEx2 bridge, threshold 80) → IFT-2003-T1 categories (from `data/rag/ift_category_alignment.csv`) → union of pathogens (from `data/rag/pathogen_food_associations.csv`) → ranked by `annual_deaths_us` (from `data/rag/pathogen_characteristics.csv`) → top `ComBaseOrganism`-mappable candidate. `extraction_method` is `"category_fallback_ranked_by_annual_deaths"`; `source` is `RAG_PATHOGEN_CATEGORY_FALLBACK`. Full provenance is attached as `ValueProvenance.pathogen_category_fallback` (`PathogenCategoryFallbackInfo`). A transparency warning is appended to `GroundedValues.warnings`. The fallback fails closed at every step (bridge miss, no IFT mapping, no characteristics entry, all candidates unmapped) — the organism stays ungrounded, not defaulted. Pathogens absent from `pathogen_characteristics.csv` are excluded from ranking; pathogens with `annual_deaths_us = 0` are ranked last but not excluded.
+4. Two-stage RAG lookup for pathogen (only if organism not yet grounded): Stage 1 calls `query_pathogen_hazards()` to resolve the food description to a canonical `food_name` metadata key; Stage 2 calls `get_hazards_for_food(food_name)` to fetch all hazard documents for that food and selects the pathogen with the highest `annual_deaths_us` (deterministic danger ranking). `extraction_method` is `"ranked_by_annual_deaths"` on success. When Stage 1 is below threshold, Stage 2 returns empty, or Stage 2's top document has no `ComBaseOrganism` mapping, the **category-level pathogen fallback** fires instead: resolves food → `ptm_category` (FoodEx2 bridge, threshold 80) → IFT-2003-T1 categories (from `data/rag/ift_category_alignment.csv`) → union of pathogens (from `data/rag/pathogen_food_associations.csv`) → ranked by `annual_deaths_us` (from `data/rag/pathogen_characteristics.csv`) → top `ComBaseOrganism`-mappable candidate. `extraction_method` is `"category_fallback_ranked_by_annual_deaths"`; `source` is `RAG_PATHOGEN_CATEGORY_FALLBACK`. Full provenance is attached as `ValueProvenance.pathogen_category_fallback` (`PathogenCategoryFallbackInfo`). A transparency warning is appended to `GroundedValues.warnings`. The fallback fails closed at every step (bridge disabled, bridge miss, no IFT mapping, no candidate pathogens, no characteristics entry, all candidates unmapped) — the organism stays ungrounded, not defaulted. Each of these six early-return points populates `GroundedValues.organism_failure` with a structured `OrganismGroundingFailure` (`stage`, `detail`, and — for the category-resolved-but-no-hazard-data case — `resolved_category`/`match_score`) in addition to the existing `mark_ungrounded()` warning string, mirroring how `bridge_attempts` records a structured near-miss for ph/aw (see Tier 3 below). `None` when organism grounding succeeds via any path. Pathogens absent from `pathogen_characteristics.csv` are excluded from ranking; pathogens with `annual_deaths_us = 0` are ranked last but not excluded.
 
 **Food property retrieval (`_ground_food_properties`):** Composite-food guard followed by a three-tier design.
 
@@ -236,13 +236,14 @@ When a required value is absent from `GroundedValues`:
 
 | Field | Default | Rationale |
 |---|---|---|
-| `organism` | `SALMONELLA` | Leading cause of foodborne illness, broadly applicable (`app/config/settings.py`) |
 | `temperature_celsius` (GROWTH/NON_THERMAL) | `25.0°C` (`settings.default_temperature_abuse_c`) | Abuse temperature — warm enough for rapid growth |
 | `temperature_celsius` (THERMAL_INACTIVATION) | `60.0°C` (`settings.default_temperature_inactivation_conservative_c`) | Below typical pasteurization — conservative for less kill |
 | `ph` | `7.0` (`settings.default_ph_neutral`) | Neutral; near-optimal for pathogen growth; no protective acidity |
 | `water_activity` | `0.99` (`settings.default_water_activity`) | High; maximizes predicted growth |
 | `duration_minutes` (single-step only) | `10080.0 min` (7 days) (`settings.default_long_window_minutes`) | Single-step only — long window ensuring trajectory reaches cap. Source: `LONG_WINDOW_DEFAULT`. Multi-step duration is a required field. |
 | `initial_inoculum_log_cfu` | `model.defaults.inoculum` from `DefaultInoc` CSV column; fallback `3.0` when registry unavailable | Model-specific experimental inoculum; fallback used only when the ComBase registry lookup fails |
+
+`organism` is not in this table — it is not defaulted. See "Missing required values" below.
 
 Each imputation produces a `DefaultImputed(field_name, imputed_value, reason, source)` appended to `StandardizationResult.defaults_imputed`. `source` carries the `ValueSource` variant (`LONG_WINDOW_DEFAULT` for duration; `None` for older defaults that predate the field). A warning string is also emitted for missing critical fields (organism, temperature) and for the long-window duration default.
 
@@ -268,7 +269,13 @@ For multi-step scenarios, `_build_multi_step_profile()` iterates `grounded.steps
 
 **Duration pass-through:** Duration is passed unchanged. USER_INFERRED values carry their own conservatism via the rule's chosen point.
 
-**Missing required values:** If `organism`, `temperature`, or `duration` is absent after all defaults, `StandardizationResult.missing_required` is populated and the orchestrator raises an error.
+**Missing required values:** `StandardizationResult.missing_required` is populated in exactly two reachable cases:
+- `organism` ungrounded after all grounding paths (user statement, food-specific RAG hazard lookup, category-level pathogen fallback) fail — `standardization_service.py:132-136`. Organism has no default.
+- A multi-step step with an unresolvable duration, recorded as `"duration (step N)"` — `standardization_service.py:713-718`. Multi-step temperature falls back to its conservative default; multi-step duration does not.
+
+Single-step duration can never populate `missing_required` — it always falls back to `LONG_WINDOW_DEFAULT` (see the table above). Single-step temperature likewise always falls back to a default and cannot populate it.
+
+Consequence: `orchestrator.py:181-184` sets `SessionStatus.FAILED`, `success=False`, `error="Missing required values: ..."`. These two cases are the only reachable end-user failure modes of the pipeline (excluding out-of-scope/information-query intent classification and unhandled exceptions).
 
 **Singleton:** `get_standardization_service()` / `reset_standardization_service()`
 
@@ -365,7 +372,7 @@ Both are returned in `ComBaseExecutionResult` and exposed in the API response.
 8. Preservatives present (nitrite, lactic acid, acetic acid) → `NON_THERMAL_SURVIVAL`
 9. Default: `GROWTH`
 
-The determination reason is propagated into `ComBaseModelAudit.selection_reason`.
+`_determine_model_type()` returns `tuple[ModelType, str]`, not a bare `ModelType`. Each of the nine branches above constructs and returns its own reason string inline (some are static, e.g. `"scenario flag: is_cooking_scenario"`; others are f-strings embedding the triggering value, e.g. `f"temperature heuristic ({temp}°C > 50°C → thermal inactivation)"`) — there is no separate reason-formatting step. The caller unpacks both into `effective_model_type, model_type_reason` and passes `model_type_reason` into `ComBaseModelAudit.selection_reason`.
 
 **Audit metadata is post-standardization:** The orchestrator calls `_ground_values()` before standardization, but `add_provenance()` writes `ValueProvenance` objects to `metadata.provenance`. Since `StandardizationService` mutates `ValueProvenance` objects in-place (setting `prov.standardization`, clearing `prov.range_pending`), the provenance objects in `metadata.provenance` already carry the post-standardization state by the time the API layer reads them.
 
@@ -411,6 +418,7 @@ A flat key-value store (not a Pydantic model):
 - `ungrounded_fields: list[str]` — fields that could not be resolved
 - `steps: list[GroundedStep]` — multi-step time-temperature steps (separate from flat values)
 - `bridge_attempts: dict[str, CategoryBridgeInfo]` — keyed by field name ("ph", "water_activity"); populated when the taxonomy bridge resolved a category but no curated row exists in `category_level_rows.csv` for the `(category, state, field)` triple; read by StandardizationService to emit bridge-aware reason strings in `DefaultImputed` (includes `query_state` so the reason can name both category and state)
+- `organism_failure: OrganismGroundingFailure | None` — the organism equivalent of `bridge_attempts`: populated at each of the six early-return points in `_category_pathogen_fallback()` (see §3.2) with `stage`, `detail`, and — for `CATEGORY_HAS_NO_HAZARD_DATA` only — `resolved_category`/`match_score`; `None` when organism grounding succeeds
 
 Key names in `values`: `"temperature_celsius"`, `"duration_minutes"`, `"ph"`, `"water_activity"`, `"organism"`, `"co2_percent"`, `"nitrite_ppm"`, `"lactic_acid_ppm"`, `"acetic_acid_ppm"`.
 
@@ -642,7 +650,7 @@ Every value that flows through the pipeline accumulates a `ValueProvenance` in `
 |---|---|---|---|---|
 | RAG retrieval | GroundingService | `RetrievalResult` in `metadata.retrievals` | — | When retrieval fails |
 | Range-bound selection | StandardizationService | `RangeBoundSelection` on `prov.standardization` | — | No warning |
-| Default imputation | StandardizationService | `DefaultImputed` in `defaults_imputed` | `defaults_imputed` list | Yes (for organism and temperature) |
+| Default imputation | StandardizationService | `DefaultImputed` in `defaults_imputed` | `defaults_imputed` list | Yes (for temperature) |
 | Range clamp | StandardizationService | `RangeClamp` in `range_clamps` | `range_clamps` list | Yes |
 
 ### 7.2 Audit Snapshot Timing
@@ -708,12 +716,13 @@ There is no bias-correction layer. No duration multiplier. No temperature bump. 
 
 | Field | Default | Conservative direction |
 |---|---|---|
-| organism | Salmonella | Broadly applicable worst-case |
 | temperature (GROWTH/NON_THERMAL) | 25.0°C | Abuse temperature — rapid growth |
 | temperature (THERMAL_INACTIVATION) | 60.0°C | Below pasteurization — less kill |
 | pH | 7.0 | Neutral — optimal for growth, no acid protection |
 | water_activity | 0.99 | High — maximizes growth |
 | duration_minutes (single-step only) | 10080.0 min | Long window — trajectory reaches physical cap |
+
+`organism` is not defaulted — it fails closed. If unresolved after grounding, it populates `missing_required` (see §3.3).
 
 ### 9.3 Range-Bound Selection Direction
 
@@ -846,7 +855,7 @@ When an embedding match fires, `ValueProvenance.extraction_method = "embedding_f
 
 On orchestrator exception: returns `TranslationResponse(success=False, error=str(e))`.
 
-On missing required values: `success=False, error="Missing required values: organism, temperature"`.
+On missing required values: `success=False, error="Missing required values: organism"`.
 
 On intent classification failure: `success=False, error="Query is out of scope..."` or `"Information queries not yet implemented"`.
 
@@ -947,6 +956,8 @@ LiteLLM + Instructor. Model specified via `LLM_MODEL`. Supported providers inclu
 | `h0` | Initial physiological state parameter from Baranyi model — present in CSV data but not used in the current calculator |
 | `InterpretationMetadata` | Session-level audit container accumulating provenance, defaults, clamps, warnings, and context blocks |
 | `μ_max` | Maximum specific growth rate (1/h); negative for inactivation models |
+| `OrganismGroundingFailure` | Structured record on `GroundedValues.organism_failure` of where organism grounding failed closed: `stage` (`OrganismGroundingFailureStage`), `detail`, and — for `CATEGORY_HAS_NO_HAZARD_DATA` only — `resolved_category`/`match_score`. The organism equivalent of `bridge_attempts`/`CategoryBridgeInfo`. `None` on success. Purely additive to the existing `mark_ungrounded()` warning string. |
+| `OrganismGroundingFailureStage` | Enum naming which of the six early-return points in `_category_pathogen_fallback()` fired: `BRIDGE_DISABLED`, `FOOD_UNRECOGNISED`, `CATEGORY_HAS_NO_HAZARD_DATA`, `INTERNAL_NO_MAPPABLE_CANDIDATE` (merges three branches unreachable with current CSVs — empty candidate union, all candidates absent from characteristics, all ranked candidates unmappable — distinguished only by `detail`) |
 | `range_pending` | Pipeline signal on `ValueProvenance`: True when the stored value is the range lower bound and bound selection has not yet occurred; always False in serialized output |
 | `RangeBoundSelection` | Structured record of a range-bound selection event (direction, before_value, after_value, reason) |
 | `RangeClamp` | Structured record of a range clamping event (original_value, clamped_value, valid_min, valid_max) |
@@ -954,7 +965,7 @@ LiteLLM + Instructor. Model specified via `LLM_MODEL`. Supported providers inclu
 | `TCS` | Time/Temperature Control for Safety — regulatory food classification |
 | `TranslationResult` | Top-level return from the orchestrator (.state, .success, .error, .execution_result, .metadata) |
 | `ValueProvenance` | Per-field metadata tracking source, extraction method, range bounds, and standardization events |
-| `ValueSource` | Categorical reliability tier: USER_EXPLICIT, USER_INFERRED, RAG_RETRIEVAL (primary food-properties query), RAG_RETRIEVAL_FALLBACK (per-field Tier 2 fallback query), RAG_RETRIEVAL_CATEGORY_BRIDGE (Tier 3 FoodEx2 bridge), RAG_PATHOGEN_CATEGORY_FALLBACK (organism inferred from food category via IFT-2003-T1, ranked by CDC annual deaths), CONSERVATIVE_DEFAULT, COMPOSITE_FOOD_DEFAULT (retrieval deliberately skipped — food identified as composite dish), LONG_WINDOW_DEFAULT (single-step duration unspecified; 7-day window assumed), FUZZY_MATCH, CALCULATED, CLAMPED_TO_RANGE, CLARIFICATION_RESPONSE |
+| `ValueSource` | Categorical reliability tier: USER_EXPLICIT, USER_INFERRED, RAG_RETRIEVAL (primary food-properties query), RAG_RETRIEVAL_FALLBACK (per-field Tier 2 fallback query), RAG_RETRIEVAL_CATEGORY_BRIDGE (Tier 3 FoodEx2 bridge), RAG_PATHOGEN_CATEGORY_FALLBACK (organism inferred from food category via IFT-2003-T1, ranked by CDC annual deaths), CONSERVATIVE_DEFAULT, COMPOSITE_FOOD_DEFAULT (retrieval deliberately skipped — food identified as composite dish), LONG_WINDOW_DEFAULT (single-step duration unspecified; 7-day window assumed), FUZZY_MATCH, CALCULATED, CLAMPED_TO_RANGE, CLARIFICATION_RESPONSE, MISSING (field required but neither user nor grounding supplied a value; surfaces in `field_audit` with `final_value=null` on validation failure) |
 
 ---
 

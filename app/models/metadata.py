@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 
 from app.models.enums import (
     ClarificationReason,
+    OrganismGroundingFailureStage,
     SessionStatus,
 )
 
@@ -93,6 +94,34 @@ class PathogenCategoryFallbackInfo(BaseModel):
     full_citations: dict[str, str] = Field(
         default_factory=dict,
         description="Formatted bibliographic citations keyed by source_id; covers ift_source_id and every candidate's source_id",
+    )
+
+
+class OrganismGroundingFailure(BaseModel):
+    """Structured record of where organism grounding failed closed.
+
+    Twin of PathogenCategoryFallbackInfo for the failure side: that model
+    records a successful category-fallback resolution; this one records why
+    GroundingService._category_pathogen_fallback() returned without setting
+    organism, so a caller doesn't have to re-derive the reason from the flat
+    mark_ungrounded() warning string (which fires regardless and is unchanged).
+
+    Attached to GroundedValues.organism_failure. None when organism grounding
+    succeeds via any path (user-explicit, RAG retrieval, or category fallback).
+    """
+    stage: OrganismGroundingFailureStage = Field(
+        description="Which of the six early-return points in _category_pathogen_fallback() fired"
+    )
+    detail: str = Field(
+        description="Human-readable detail; for INTERNAL_NO_MAPPABLE_CANDIDATE, names the specific branch (empty candidate union, all candidates excluded from ranking, or all ranked candidates unmappable)"
+    )
+    resolved_category: str | None = Field(
+        default=None,
+        description="ptm_category the taxonomy bridge resolved to; populated only for CATEGORY_HAS_NO_HAZARD_DATA"
+    )
+    match_score: float | None = Field(
+        default=None,
+        description="Taxonomy bridge match_score (0-100) for the resolved category; populated only for CATEGORY_HAS_NO_HAZARD_DATA"
     )
 
 

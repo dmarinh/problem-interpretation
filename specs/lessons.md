@@ -728,3 +728,23 @@ Three test helpers in `test_api_translation.py` created `RetrievalResult` object
 **Design rule (codified):** Any new Pydantic class that carries a field named `source_id` (or items with `source_id`) must also carry `full_citations: dict[str, str] = Field(default_factory=dict)`. This applies at both the internal-model layer and the API schema layer, consistent with how `RetrievalResult` and `RetrievalTopMatchInfo` pair `source_ids` with `full_citations`. The check is mechanical: after writing a new provenance block class, grep for `source_id` in its fields; if present, verify `full_citations` also exists before closing the PR.
 
 **What to do differently:** When a plan's own codified rule would be violated by the plan's proposed placement decision, flag the violation in the plan itself rather than choosing the smaller diff. "Smaller diff" is not a valid reason to exempt a new model from the same contract that existing models follow.
+
+---
+
+### 2026-07-15 — Documented conventions are not code: the Salmonella default that never existed
+
+**Assumption that proved wrong:** CLAUDE.md's documented conventions were treated as a description of the code. The "Organism → Salmonella" conservative default was documented in two files and asserted by no test; it has never existed in `app/`. Design work proceeded on the assumption that the pipeline could not fail on organism, when in fact organism-ungrounded is a live, reachable failure path.
+
+**Prevention heuristic:** A safety-critical default is only real if a test asserts it. Before designing against any documented default, grep for its concrete constant in `app/` and confirm a test covers it. Documented conventions are intent; only tests are contracts.
+
+**Recurring pattern to name — scaffolded-but-unwired:** `ClarificationRecord`, `add_clarification()`, `ExtractedClarificationResponse`, `extract_clarification_response()`, `SessionStatus.AWAITING_CLARIFICATION`, `ValueSource.CLARIFICATION_RESPONSE`, and `extract_scenario(conversation_context=)` are all defined, some unit-tested in isolation, none reachable from `orchestrator.translate()`. Types and tests existing is not evidence a feature exists. Check for a call path from the orchestrator before assuming a subsystem is live.
+
+---
+
+### 2026-07-15 — Structured failure records: collapse dead branches, don't enumerate them; specs go stale when upstream data changes
+
+**What went well:** `_category_pathogen_fallback()`'s six early returns were audited for real-data reachability before designing the enum — two are live (bridge miss, no IFT row), one is config-gated (bridge disabled), three are defensive-only given the current CSVs (empty candidate union, all candidates absent from characteristics, all ranked candidates unmapped). The three dead branches were merged into one `INTERNAL_NO_MAPPABLE_CANDIDATE` stage rather than given one enum member each. Design rule: an enum member should correspond to something a consumer can act on differently; three branches that are unreachable with current data and indistinguishable to any user are dead weight as separate members. `detail` (a plain string) carries the distinction for debugging without inflating the public enum surface.
+
+**What surfaced repeatedly:** the same "documented behavior drifted from the data it describes" pattern as the Salmonella-default lesson above, one layer down. `SPEC_category_pathogen_fallback.md`'s T3 case ("maple syrup" → `sweetener` → `sugars and syrups`) was never wrong when written, but `category_alignment_v4.csv` dropped the FoodEx2 mapping that produced `ptm_category="sweetener"` on 2026-05-07 and nobody updated the spec's T3 row or `ift_category_alignment.csv`. No integration test existed for T3 — only T1/T2/N1/N2 — so the drift was silent until traced by hand against the current CSVs.
+
+**Prevention heuristic:** when a spec names a specific category/value/food as a worked example, and the underlying CSV or taxonomy that produces it can change independently, either (a) write a live test for the example, or (b) accept that the example has a shelf life and will need re-verification, not just re-reading. A worked example with no test is a claim with no contract — same lesson as the Salmonella default, applied to spec content instead of code defaults.
