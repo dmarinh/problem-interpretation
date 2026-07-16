@@ -1369,11 +1369,10 @@ class TestShigellaExecutability:
         ))
 
         # Explicit model_type=GROWTH: Shigella's only executable row is
-        # (ModelID=1/GROWTH, Factor4=nitrite). Without this override,
-        # _determine_model_type()'s "preservative detected" heuristic routes a
-        # nitrite-bearing scenario to NON_THERMAL_SURVIVAL, for which Shigella
-        # has no row at all -- a real, separate fail-closed case, not the one
-        # this test is checking.
+        # (ModelID=1/GROWTH, Factor4=nitrite). _determine_model_type() would
+        # reach GROWTH by default here anyway (no preservative-routing branch
+        # exists as of 2026-07-16), but pinning it explicitly keeps this test's
+        # intent -- "sf+nitrite executes" -- independent of that default branch.
         result = await orchestrator.translate(
             "Shigella on cured meat with 100ppm nitrite left out for 3 hours",
             model_type=ModelType.GROWTH,
@@ -1381,3 +1380,42 @@ class TestShigellaExecutability:
 
         assert result.success is True, f"Failed with error: {result.error}"
         assert result.execution_result is not None
+
+
+class TestPreservativeRoutingRemoved:
+    """2026-07-16: _determine_model_type() no longer routes preservative presence to
+    NON_THERMAL_SURVIVAL. ComBase has zero Factor4 rows for ModelID 2/3 -- every
+    organism was non-executable at NON_THERMAL_SURVIVAL with any preservative
+    factor4, so the removed branch could only ever produce a refusal, converting
+    answerable growth questions into "no model exists". See specs/lessons.md."""
+
+    @pytest.mark.asyncio
+    async def test_nitrite_with_no_implied_model_type_falls_through_to_growth(
+        self, orchestrator, mock_semantic_parser
+    ):
+        """No LLM-inferred model type, no cooking/non-thermal scenario flag, no
+        low pH/aw -- only nitrite_ppm set. Must fall through to the GROWTH default
+        and produce a real prediction, not a refusal. Salmonella + nitrite + GROWTH
+        is executable (3 organisms are, per the executable-organism matrix)."""
+        mock_semantic_parser.extract_scenario = AsyncMock(return_value=create_scenario(
+            food_description="cured meat",
+            pathogen_mentioned="Salmonella",
+            temperature=ExtractedTemperature(value_celsius=25.0),
+            duration=ExtractedDuration(value_minutes=180.0),
+            environmental_conditions=ExtractedEnvironmentalConditions(nitrite_ppm=100.0),
+            is_storage_scenario=True,
+            implied_model_type=None,
+        ))
+
+        result = await orchestrator.translate(
+            "Salmonella on cured meat with 100ppm nitrite left out for 3 hours"
+        )
+
+        assert result.success is True, f"Failed with error: {result.error}"
+        assert result.execution_result is not None
+        assert result.metadata is not None
+        assert result.metadata.combase_model is not None
+        assert result.metadata.combase_model.model_type == "growth"
+        assert result.metadata.combase_model.selection_reason == (
+            "default (no thermal/non-thermal signals detected)"
+        )

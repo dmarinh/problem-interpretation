@@ -237,9 +237,21 @@ class Orchestrator:
         1. Explicit parameter (if provided)
         2. LLM-extracted inference (implied_model_type)
         3. Temperature heuristic (>50°C → thermal inactivation)
-        4. Scenario flags (is_cooking_scenario, is_non_thermal_treatment)
-        5. Environmental conditions (low pH / low aw / preservatives)
-        6. Default to Growth
+        4. Scenario flag: is_cooking_scenario
+        5. Scenario flag: is_non_thermal_treatment
+        6. Environmental condition: pH < 4.5
+        7. Environmental condition: aw < 0.90
+        8. Default to Growth
+
+        There is deliberately no "preservative present → NON_THERMAL_SURVIVAL" branch.
+        ComBase has zero Factor4 rows for ModelID 2 (thermal_inactivation) or ModelID 3
+        (non_thermal_survival) — every organism is non-executable at NON_THERMAL_SURVIVAL
+        with any preservative factor4, so that branch could only ever route to a
+        guaranteed StandardizationService refusal (removed 2026-07-16; see
+        specs/lessons.md). A preservative alone is evidence the food was cured, not
+        evidence the user is asking about survival rather than growth — nitrite/lactic/
+        acetic presence still reaches StandardizationService via _get_factor4()
+        regardless of model_type; it is not discarded.
 
         Model types:
         - GROWTH: Bacterial multiplication during storage/holding
@@ -276,8 +288,6 @@ class Orchestrator:
                 ModelType.NON_THERMAL_SURVIVAL,
                 f"environmental condition: aw {env.water_activity} < 0.90",
             )
-        if env.nitrite_ppm is not None or env.lactic_acid_ppm is not None or env.acetic_acid_ppm is not None:
-            return ModelType.NON_THERMAL_SURVIVAL, "environmental condition: preservative detected"
 
         return ModelType.GROWTH, "default (no thermal/non-thermal signals detected)"
 
