@@ -96,13 +96,14 @@ class TaxonomyResolution:
     passes it through _apply_state_default() before calling
     lookup_category_level_row().
     """
+
     ptm_category: str
     taxonomy_code: str
     taxonomy_label: str
     taxonomy_source_id: str
-    matched_food_name: str      # the food_name column value that won the match
-    match_score: float          # token_set_ratio score 0–100
-    matched_state: str = ""     # raw 'state' column value of the winning row
+    matched_food_name: str  # the food_name column value that won the match
+    match_score: float  # token_set_ratio score 0–100
+    matched_state: str = ""  # raw 'state' column value of the winning row
     property_rows: list[dict] = field(default_factory=list)
 
 
@@ -144,7 +145,9 @@ class TaxonomyBridge:
         self._taxonomy_rows = self._load_csv(taxonomy_csv)
         self._aliases = self._load_aliases(aliases_csv)
         self._properties_by_category = self._index_properties(food_properties_csv)
-        self._category_level_index = self._index_category_level_rows(category_level_rows_csv)
+        self._category_level_index = self._index_category_level_rows(
+            category_level_rows_csv
+        )
 
     # -------------------------------------------------------------------------
     # Public interface
@@ -174,7 +177,9 @@ class TaxonomyBridge:
         """Lowercase, strip punctuation (except hyphen), collapse whitespace."""
         text = text.lower()
         # Remove punctuation except hyphen (stir-fry stays as one token group)
-        text = text.translate(str.maketrans("", "", string.punctuation.replace("-", "")))
+        text = text.translate(
+            str.maketrans("", "", string.punctuation.replace("-", ""))
+        )
         text = re.sub(r"\s+", " ", text).strip()
         return text
 
@@ -188,7 +193,9 @@ class TaxonomyBridge:
         for user_term, foodex2_term in self._aliases.items():
             # Whole-word match on token boundaries
             if re.search(rf"\b{re.escape(user_term)}\b", normalised):
-                return re.sub(rf"\b{re.escape(user_term)}\b", foodex2_term, normalised, count=1)
+                return re.sub(
+                    rf"\b{re.escape(user_term)}\b", foodex2_term, normalised, count=1
+                )
         return normalised
 
     def _fuzzy_match_food_name(self, text: str) -> TaxonomyResolution | None:

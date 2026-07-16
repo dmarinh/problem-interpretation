@@ -2,15 +2,14 @@
 Unit tests for translation API endpoint.
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from datetime import datetime
 
+import pytest
 from fastapi.testclient import TestClient
 
-from app.main import app
-from app.models.enums import SessionStatus, ModelType, ComBaseOrganism, EngineType
 from app.core.state import SessionState
+from app.main import app
+from app.models.enums import ComBaseOrganism, EngineType, ModelType, SessionStatus
 from app.models.metadata import InterpretationMetadata
 
 
@@ -23,9 +22,9 @@ def client():
 @pytest.fixture
 def mock_translation_result():
     """Create mock orchestrator with successful result."""
-    from app.models.execution.combase import ComBaseExecutionResult, ComBaseModelResult
     from app.core.orchestrator import TranslationResult
-    
+    from app.models.execution.combase import ComBaseExecutionResult, ComBaseModelResult
+
     # Create mock state
     state = SessionState(user_input="test query")
     state.status = SessionStatus.COMPLETED
@@ -34,7 +33,7 @@ def mock_translation_result():
         original_input=state.user_input,
         status=state.status,
     )
-    
+
     # Create mock execution result
     model_result = ComBaseModelResult(
         mu_max=0.42,
@@ -48,10 +47,14 @@ def mock_translation_result():
         aw_used=0.99,
         engine_type=EngineType.COMBASE_LOCAL,
     )
-    
-    from app.models.execution.base import TimeTemperatureStep, TimeTemperatureProfile
-    from app.models.execution.combase import ComBaseExecutionPayload, ComBaseModelSelection, ComBaseParameters
-    
+
+    from app.models.execution.base import TimeTemperatureProfile, TimeTemperatureStep
+    from app.models.execution.combase import (
+        ComBaseExecutionPayload,
+        ComBaseModelSelection,
+        ComBaseParameters,
+    )
+
     state.execution_payload = ComBaseExecutionPayload(
         model_selection=ComBaseModelSelection(
             organism=ComBaseOrganism.SALMONELLA,
@@ -65,15 +68,17 @@ def mock_translation_result():
         ),
         time_temperature_profile=TimeTemperatureProfile(
             is_multi_step=False,
-            steps=[TimeTemperatureStep(
-                temperature_celsius=25.0,
-                duration_minutes=180.0,
-                step_order=1,
-            )],
+            steps=[
+                TimeTemperatureStep(
+                    temperature_celsius=25.0,
+                    duration_minutes=180.0,
+                    step_order=1,
+                )
+            ],
             total_duration_minutes=180.0,
         ),
     )
-    
+
     state.execution_result = ComBaseExecutionResult(
         model_result=model_result,
         step_predictions=[],
@@ -83,7 +88,7 @@ def mock_translation_result():
         engine_type=EngineType.COMBASE_LOCAL,
         warnings=[],
     )
-    
+
     # Create mock result
     mock_result = MagicMock(spec=TranslationResult)
     mock_result.success = True
@@ -91,83 +96,83 @@ def mock_translation_result():
     mock_result.state = state
     mock_result.execution_result = state.execution_result
     mock_result.metadata = state.metadata
-    
+
     return mock_result
 
 
 class TestTranslationEndpoint:
     """Tests for /api/v1/translate endpoint."""
-    
+
     def test_successful_translation(self, client, mock_translation_result):
         """Should return successful translation."""
         with patch("app.api.routes.translation.get_orchestrator") as mock_get:
             mock_orch = MagicMock()
             mock_orch.translate = AsyncMock(return_value=mock_translation_result)
             mock_get.return_value = mock_orch
-            
+
             response = client.post(
                 "/api/v1/translate",
                 json={"query": "Raw chicken left out for 3 hours"},
             )
-        
+
         assert response.status_code == 200
         data = response.json()
         assert data["success"] is True
         assert data["prediction"] is not None
         assert data["prediction"]["organism"] == "SALMONELLA"
-    
+
     def test_returns_prediction_details(self, client, mock_translation_result):
         """Should return detailed prediction info."""
         with patch("app.api.routes.translation.get_orchestrator") as mock_get:
             mock_orch = MagicMock()
             mock_orch.translate = AsyncMock(return_value=mock_translation_result)
             mock_get.return_value = mock_orch
-            
+
             response = client.post(
                 "/api/v1/translate",
                 json={"query": "Raw chicken left out for 3 hours"},
             )
-        
+
         data = response.json()
         prediction = data["prediction"]
-        
+
         assert prediction["temperature_celsius"] == 25.0
         assert prediction["duration_minutes"] == 180.0
         assert prediction["mu_max"] == 0.42
         assert "growth_description" in prediction
-    
+
     def test_returns_session_id(self, client, mock_translation_result):
         """Should return session ID for tracking."""
         with patch("app.api.routes.translation.get_orchestrator") as mock_get:
             mock_orch = MagicMock()
             mock_orch.translate = AsyncMock(return_value=mock_translation_result)
             mock_get.return_value = mock_orch
-            
+
             response = client.post(
                 "/api/v1/translate",
                 json={"query": "Test query"},
             )
-        
+
         data = response.json()
         assert "session_id" in data
         assert len(data["session_id"]) > 0
-    
+
     def test_empty_query_rejected(self, client):
         """Should reject empty queries."""
         response = client.post(
             "/api/v1/translate",
             json={"query": ""},
         )
-        
+
         assert response.status_code == 422
-    
+
     def test_custom_model_type(self, client, mock_translation_result):
         """Should accept custom model type."""
         with patch("app.api.routes.translation.get_orchestrator") as mock_get:
             mock_orch = MagicMock()
             mock_orch.translate = AsyncMock(return_value=mock_translation_result)
             mock_get.return_value = mock_orch
-            
+
             response = client.post(
                 "/api/v1/translate",
                 json={
@@ -175,33 +180,33 @@ class TestTranslationEndpoint:
                     "model_type": "thermal_inactivation",
                 },
             )
-        
+
         assert response.status_code == 200
-    
+
     def test_failed_translation_returns_error(self, client):
         """Should return error for failed translation."""
         from app.core.orchestrator import TranslationResult
-        
+
         state = SessionState(user_input="bad query")
         state.status = SessionStatus.FAILED
         state.error = "Could not translate query"
-        
+
         mock_result = MagicMock(spec=TranslationResult)
         mock_result.success = False
         mock_result.error = "Could not translate query"
         mock_result.state = state
         mock_result.metadata = None
-        
+
         with patch("app.api.routes.translation.get_orchestrator") as mock_get:
             mock_orch = MagicMock()
             mock_orch.translate = AsyncMock(return_value=mock_result)
             mock_get.return_value = mock_orch
-            
+
             response = client.post(
                 "/api/v1/translate",
                 json={"query": "Something incomprehensible"},
             )
-        
+
         data = response.json()
         assert data["success"] is False
         assert data["error"] is not None
@@ -215,27 +220,35 @@ class TestVerboseAudit:
         Build a mock TranslationResult with enough metadata to exercise
         every block of _build_audit_detail.
         """
-        from app.models.execution.combase import ComBaseExecutionResult, ComBaseModelResult
-        from app.models.execution.base import TimeTemperatureStep, TimeTemperatureProfile
+        from app.core.orchestrator import TranslationResult
+        from app.models.execution.base import (
+            TimeTemperatureProfile,
+            TimeTemperatureStep,
+        )
         from app.models.execution.combase import (
             ComBaseExecutionPayload,
+            ComBaseExecutionResult,
+            ComBaseModelResult,
             ComBaseModelSelection,
             ComBaseParameters,
         )
-        from app.core.orchestrator import TranslationResult
         from app.models.metadata import (
-            ValueProvenance,
-            ValueSource,
+            ComBaseModelAudit,
+            DefaultImputed,
             RetrievalResult,
             RunnerUpResult,
-            DefaultImputed,
-            ComBaseModelAudit,
             SystemAudit,
+            ValueProvenance,
+            ValueSource,
         )
 
         state = SessionState(user_input="slice of white bread left out")
         state.status = SessionStatus.COMPLETED
-        state.grounded_values = {"ph": 5.5, "water_activity": 0.97, "organism": "SALMONELLA"}
+        state.grounded_values = {
+            "ph": 5.5,
+            "water_activity": 0.97,
+            "organism": "SALMONELLA",
+        }
 
         meta = InterpretationMetadata(
             session_id=state.session_id,
@@ -286,7 +299,9 @@ class TestVerboseAudit:
                 embedding_score=0.71,
                 rerank_score=0.86,
                 source_ids=["FDA-PH-2007"],
-                full_citations={"FDA-PH-2007": "FDA/CFSAN (2007). Approximate pH of Foods."},
+                full_citations={
+                    "FDA-PH-2007": "FDA/CFSAN (2007). Approximate pH of Foods."
+                },
                 runners_up=[
                     RunnerUpResult(
                         doc_id="food_properties:bread_cracked_wheat",
@@ -351,7 +366,11 @@ class TestVerboseAudit:
             ),
             time_temperature_profile=TimeTemperatureProfile(
                 is_multi_step=False,
-                steps=[TimeTemperatureStep(temperature_celsius=25.0, duration_minutes=60.0, step_order=1)],
+                steps=[
+                    TimeTemperatureStep(
+                        temperature_celsius=25.0, duration_minutes=60.0, step_order=1
+                    )
+                ],
                 total_duration_minutes=60.0,
             ),
         )
@@ -511,7 +530,6 @@ class TestVerboseAudit:
         assert sys_block["rag_store_hash"] == "abc123"
         assert sys_block["ptm_version"] == "a1b2c3d"
 
-
     def _make_fallback_result(self):
         """
         Mock result where pH comes from the primary RAG query (RAG_RETRIEVAL)
@@ -521,15 +539,25 @@ class TestVerboseAudit:
         This mirrors Capture A from the two-tier fallback design: the primary
         doc had pH but a blank aw field, so the fallback fired for aw.
         """
-        from app.models.execution.combase import (
-            ComBaseExecutionResult, ComBaseModelResult,
-            ComBaseExecutionPayload, ComBaseModelSelection, ComBaseParameters,
-        )
-        from app.models.execution.base import TimeTemperatureStep, TimeTemperatureProfile
         from app.core.orchestrator import TranslationResult
+        from app.models.execution.base import (
+            TimeTemperatureProfile,
+            TimeTemperatureStep,
+        )
+        from app.models.execution.combase import (
+            ComBaseExecutionPayload,
+            ComBaseExecutionResult,
+            ComBaseModelResult,
+            ComBaseModelSelection,
+            ComBaseParameters,
+        )
         from app.models.metadata import (
-            ValueProvenance, ValueSource, RetrievalResult,
-            DefaultImputed, ComBaseModelAudit, SystemAudit,
+            ComBaseModelAudit,
+            DefaultImputed,
+            RetrievalResult,
+            SystemAudit,
+            ValueProvenance,
+            ValueSource,
         )
 
         state = SessionState(user_input="raw chicken at 25C for 4 hours")
@@ -576,7 +604,9 @@ class TestVerboseAudit:
                 retrieved_text="Raw chicken: pH 5.9–6.5 [FDA-PH-2007]",
                 embedding_score=0.78,
                 source_ids=["FDA-PH-2007"],
-                full_citations={"FDA-PH-2007": "FDA/CFSAN (2007). Approximate pH of Foods."},
+                full_citations={
+                    "FDA-PH-2007": "FDA/CFSAN (2007). Approximate pH of Foods."
+                },
             )
         )
         # Fallback retrieval for water_activity (tagged)
@@ -588,7 +618,9 @@ class TestVerboseAudit:
                 retrieved_text="Poultry (fresh): water activity 0.97–0.99 [IFT-2003]",
                 embedding_score=0.66,
                 source_ids=["IFT-2003"],
-                full_citations={"IFT-2003": "IFT (2003). Kinetics of Microbial Inactivation."},
+                full_citations={
+                    "IFT-2003": "IFT (2003). Kinetics of Microbial Inactivation."
+                },
                 attributed_field="water_activity",
             )
         )
@@ -643,7 +675,11 @@ class TestVerboseAudit:
             ),
             time_temperature_profile=TimeTemperatureProfile(
                 is_multi_step=False,
-                steps=[TimeTemperatureStep(temperature_celsius=25.0, duration_minutes=240.0, step_order=1)],
+                steps=[
+                    TimeTemperatureStep(
+                        temperature_celsius=25.0, duration_minutes=240.0, step_order=1
+                    )
+                ],
                 total_duration_minutes=240.0,
             ),
         )
@@ -715,15 +751,26 @@ class TestVerboseAudit:
         doc_26 failed the embedding threshold; doc_24 (next in reranked list) passed
         and supplied pH 6.4.  This mirrors the Q04 chicken observation.
         """
-        from app.models.execution.combase import (
-            ComBaseExecutionResult, ComBaseModelResult,
-            ComBaseExecutionPayload, ComBaseModelSelection, ComBaseParameters,
-        )
-        from app.models.execution.base import TimeTemperatureStep, TimeTemperatureProfile
         from app.core.orchestrator import TranslationResult
+        from app.models.execution.base import (
+            TimeTemperatureProfile,
+            TimeTemperatureStep,
+        )
+        from app.models.execution.combase import (
+            ComBaseExecutionPayload,
+            ComBaseExecutionResult,
+            ComBaseModelResult,
+            ComBaseModelSelection,
+            ComBaseParameters,
+        )
         from app.models.metadata import (
-            ValueProvenance, ValueSource, RetrievalResult, SkippedDocInfo,
-            DefaultImputed, ComBaseModelAudit, SystemAudit,
+            ComBaseModelAudit,
+            DefaultImputed,
+            RetrievalResult,
+            SkippedDocInfo,
+            SystemAudit,
+            ValueProvenance,
+            ValueSource,
         )
 
         state = SessionState(user_input="raw chicken at room temperature")
@@ -755,7 +802,9 @@ class TestVerboseAudit:
                 embedding_score=0.75,
                 rerank_score=0.80,
                 source_ids=["FDA-PH-2007"],
-                full_citations={"FDA-PH-2007": "FDA/CFSAN (2007). Approximate pH of Foods."},
+                full_citations={
+                    "FDA-PH-2007": "FDA/CFSAN (2007). Approximate pH of Foods."
+                },
                 reranker_top=SkippedDocInfo(
                     doc_id="food_properties_26",
                     content_preview="Chicken anatomy document (no pH data)",
@@ -773,39 +822,63 @@ class TestVerboseAudit:
             )
         )
         meta.combase_model = ComBaseModelAudit(
-            organism="SALMONELLA", model_type="growth", model_id=1,
+            organism="SALMONELLA",
+            model_type="growth",
+            model_id=1,
             coefficients_str="0.1;0.2;0.3",
             valid_ranges={"temperature_celsius": (5.0, 45.0)},
             selection_reason="default",
         )
         meta.system = SystemAudit(
-            rag_store_hash="abc123", rag_ingested_at="2026-05-01T00:00:00+00:00",
+            rag_store_hash="abc123",
+            rag_ingested_at="2026-05-01T00:00:00+00:00",
             source_csv_audit_date="2026-04-17T00:00:00+00:00",
-            ptm_version="a1b2c3d", combase_model_table_hash="deadbeef",
+            ptm_version="a1b2c3d",
+            combase_model_table_hash="deadbeef",
         )
         state.metadata = meta
 
         model_result = ComBaseModelResult(
-            mu_max=0.926, doubling_time_hours=0.75, y_max=10.0, h0=0.1,
-            model_type=ModelType.GROWTH, organism=ComBaseOrganism.SALMONELLA,
-            temperature_used=25.0, ph_used=6.4, aw_used=0.98,
+            mu_max=0.926,
+            doubling_time_hours=0.75,
+            y_max=10.0,
+            h0=0.1,
+            model_type=ModelType.GROWTH,
+            organism=ComBaseOrganism.SALMONELLA,
+            temperature_used=25.0,
+            ph_used=6.4,
+            aw_used=0.98,
             engine_type=EngineType.COMBASE_LOCAL,
         )
         state.execution_payload = ComBaseExecutionPayload(
             model_selection=ComBaseModelSelection(
-                organism=ComBaseOrganism.SALMONELLA, model_type=ModelType.GROWTH,
+                organism=ComBaseOrganism.SALMONELLA,
+                model_type=ModelType.GROWTH,
             ),
-            parameters=ComBaseParameters(temperature_celsius=25.0, ph=6.4, water_activity=0.98, initial_inoculum_log_cfu=3.0),
+            parameters=ComBaseParameters(
+                temperature_celsius=25.0,
+                ph=6.4,
+                water_activity=0.98,
+                initial_inoculum_log_cfu=3.0,
+            ),
             time_temperature_profile=TimeTemperatureProfile(
                 is_multi_step=False,
-                steps=[TimeTemperatureStep(temperature_celsius=25.0, duration_minutes=180.0, step_order=1)],
+                steps=[
+                    TimeTemperatureStep(
+                        temperature_celsius=25.0, duration_minutes=180.0, step_order=1
+                    )
+                ],
                 total_duration_minutes=180.0,
             ),
         )
         state.execution_result = ComBaseExecutionResult(
-            model_result=model_result, step_predictions=[],
-            total_log_increase=1.2, initial_log_cfu=3.0, final_log_cfu=4.2,
-            engine_type=EngineType.COMBASE_LOCAL, warnings=[],
+            model_result=model_result,
+            step_predictions=[],
+            total_log_increase=1.2,
+            initial_log_cfu=3.0,
+            final_log_cfu=4.2,
+            engine_type=EngineType.COMBASE_LOCAL,
+            warnings=[],
         )
         mock_result = MagicMock(spec=TranslationResult)
         mock_result.success = True
@@ -823,15 +896,26 @@ class TestVerboseAudit:
         what the system almost used.  This exercises the attempted_top → JSON
         mapping path in translation.py.
         """
-        from app.models.execution.combase import (
-            ComBaseExecutionResult, ComBaseModelResult,
-            ComBaseExecutionPayload, ComBaseModelSelection, ComBaseParameters,
-        )
-        from app.models.execution.base import TimeTemperatureStep, TimeTemperatureProfile
         from app.core.orchestrator import TranslationResult
+        from app.models.execution.base import (
+            TimeTemperatureProfile,
+            TimeTemperatureStep,
+        )
+        from app.models.execution.combase import (
+            ComBaseExecutionPayload,
+            ComBaseExecutionResult,
+            ComBaseModelResult,
+            ComBaseModelSelection,
+            ComBaseParameters,
+        )
         from app.models.metadata import (
-            ValueProvenance, ValueSource, RetrievalResult, SkippedDocInfo,
-            DefaultImputed, ComBaseModelAudit, SystemAudit,
+            ComBaseModelAudit,
+            DefaultImputed,
+            RetrievalResult,
+            SkippedDocInfo,
+            SystemAudit,
+            ValueProvenance,
+            ValueSource,
         )
 
         state = SessionState(user_input="exotic fermented food")
@@ -876,42 +960,70 @@ class TestVerboseAudit:
             )
         )
         meta.add_default_imputed(
-            DefaultImputed(field_name="temperature_celsius", imputed_value=25.0, reason="No temperature."),
+            DefaultImputed(
+                field_name="temperature_celsius",
+                imputed_value=25.0,
+                reason="No temperature.",
+            ),
         )
         meta.combase_model = ComBaseModelAudit(
-            organism="SALMONELLA", model_type="growth", model_id=1,
+            organism="SALMONELLA",
+            model_type="growth",
+            model_id=1,
             coefficients_str="0.1;0.2;0.3",
             valid_ranges={"temperature_celsius": (5.0, 45.0)},
             selection_reason="default",
         )
         meta.system = SystemAudit(
-            rag_store_hash="abc123", rag_ingested_at="2026-05-01T00:00:00+00:00",
+            rag_store_hash="abc123",
+            rag_ingested_at="2026-05-01T00:00:00+00:00",
             source_csv_audit_date="2026-04-17T00:00:00+00:00",
-            ptm_version="a1b2c3d", combase_model_table_hash="deadbeef",
+            ptm_version="a1b2c3d",
+            combase_model_table_hash="deadbeef",
         )
         state.metadata = meta
 
         model_result = ComBaseModelResult(
-            mu_max=0.5, doubling_time_hours=1.4, y_max=10.0, h0=0.1,
-            model_type=ModelType.GROWTH, organism=ComBaseOrganism.SALMONELLA,
-            temperature_used=25.0, ph_used=7.0, aw_used=0.99,
+            mu_max=0.5,
+            doubling_time_hours=1.4,
+            y_max=10.0,
+            h0=0.1,
+            model_type=ModelType.GROWTH,
+            organism=ComBaseOrganism.SALMONELLA,
+            temperature_used=25.0,
+            ph_used=7.0,
+            aw_used=0.99,
             engine_type=EngineType.COMBASE_LOCAL,
         )
         state.execution_payload = ComBaseExecutionPayload(
             model_selection=ComBaseModelSelection(
-                organism=ComBaseOrganism.SALMONELLA, model_type=ModelType.GROWTH,
+                organism=ComBaseOrganism.SALMONELLA,
+                model_type=ModelType.GROWTH,
             ),
-            parameters=ComBaseParameters(temperature_celsius=25.0, ph=7.0, water_activity=0.99, initial_inoculum_log_cfu=3.0),
+            parameters=ComBaseParameters(
+                temperature_celsius=25.0,
+                ph=7.0,
+                water_activity=0.99,
+                initial_inoculum_log_cfu=3.0,
+            ),
             time_temperature_profile=TimeTemperatureProfile(
                 is_multi_step=False,
-                steps=[TimeTemperatureStep(temperature_celsius=25.0, duration_minutes=60.0, step_order=1)],
+                steps=[
+                    TimeTemperatureStep(
+                        temperature_celsius=25.0, duration_minutes=60.0, step_order=1
+                    )
+                ],
                 total_duration_minutes=60.0,
             ),
         )
         state.execution_result = ComBaseExecutionResult(
-            model_result=model_result, step_predictions=[],
-            total_log_increase=0.5, initial_log_cfu=3.0, final_log_cfu=3.5,
-            engine_type=EngineType.COMBASE_LOCAL, warnings=[],
+            model_result=model_result,
+            step_predictions=[],
+            total_log_increase=0.5,
+            initial_log_cfu=3.0,
+            final_log_cfu=3.5,
+            engine_type=EngineType.COMBASE_LOCAL,
+            warnings=[],
         )
         mock_result = MagicMock(spec=TranslationResult)
         mock_result.success = True
@@ -929,7 +1041,9 @@ class TestVerboseAudit:
         """
         with patch("app.api.routes.translation.get_orchestrator") as mock_get:
             mock_orch = MagicMock()
-            mock_orch.translate = AsyncMock(return_value=self._make_result_with_reranker_top())
+            mock_orch.translate = AsyncMock(
+                return_value=self._make_result_with_reranker_top()
+            )
             mock_get.return_value = mock_orch
 
             response = client.post(
@@ -944,7 +1058,10 @@ class TestVerboseAudit:
         assert retrieval["top_match"]["doc_id"] == "food_properties_24"
         assert retrieval["reranker_top"] is not None
         assert retrieval["reranker_top"]["doc_id"] == "food_properties_26"
-        assert retrieval["reranker_top"]["skip_reason"] == "failed_embedding_threshold:0.70"
+        assert (
+            retrieval["reranker_top"]["skip_reason"]
+            == "failed_embedding_threshold:0.70"
+        )
         assert retrieval["reranker_top"]["embedding_score"] == 0.58
         assert retrieval["attempted_top"] is None
 
@@ -957,7 +1074,9 @@ class TestVerboseAudit:
         """
         with patch("app.api.routes.translation.get_orchestrator") as mock_get:
             mock_orch = MagicMock()
-            mock_orch.translate = AsyncMock(return_value=self._make_result_with_attempted_top())
+            mock_orch.translate = AsyncMock(
+                return_value=self._make_result_with_attempted_top()
+            )
             mock_get.return_value = mock_orch
 
             response = client.post(
@@ -973,7 +1092,10 @@ class TestVerboseAudit:
         assert retrieval["reranker_top"] is None
         assert retrieval["attempted_top"] is not None
         assert retrieval["attempted_top"]["doc_id"] == "food_properties_99"
-        assert retrieval["attempted_top"]["skip_reason"] == "failed_embedding_threshold:0.70"
+        assert (
+            retrieval["attempted_top"]["skip_reason"]
+            == "failed_embedding_threshold:0.70"
+        )
         assert retrieval["attempted_top"]["embedding_score"] == 0.52
 
     def test_no_reranker_divergence_reranker_top_absent(self, client):
@@ -1011,15 +1133,24 @@ class TestAuditPostStandardization:
         Bread-style: ph grounded as range [5.0, 6.2] with standardization
         selecting the upper bound (6.2) for a growth model.
         """
-        from app.models.execution.combase import (
-            ComBaseExecutionResult, ComBaseModelResult,
-            ComBaseExecutionPayload, ComBaseModelSelection, ComBaseParameters,
-        )
-        from app.models.execution.base import TimeTemperatureStep, TimeTemperatureProfile
         from app.core.orchestrator import TranslationResult
+        from app.models.execution.base import (
+            TimeTemperatureProfile,
+            TimeTemperatureStep,
+        )
+        from app.models.execution.combase import (
+            ComBaseExecutionPayload,
+            ComBaseExecutionResult,
+            ComBaseModelResult,
+            ComBaseModelSelection,
+            ComBaseParameters,
+        )
         from app.models.metadata import (
-            ValueProvenance, ValueSource, RangeBoundSelection,
-            DefaultImputed, ComBaseModelAudit, SystemAudit,
+            ComBaseModelAudit,
+            RangeBoundSelection,
+            SystemAudit,
+            ValueProvenance,
+            ValueSource,
         )
 
         state = SessionState(user_input="white bread query")
@@ -1081,27 +1212,44 @@ class TestAuditPostStandardization:
 
         state.execution_payload = ComBaseExecutionPayload(
             model_selection=ComBaseModelSelection(
-                organism=ComBaseOrganism.SALMONELLA, model_type=ModelType.GROWTH,
+                organism=ComBaseOrganism.SALMONELLA,
+                model_type=ModelType.GROWTH,
             ),
             parameters=ComBaseParameters(
-                temperature_celsius=25.0, ph=6.2, water_activity=0.97, initial_inoculum_log_cfu=3.0,
+                temperature_celsius=25.0,
+                ph=6.2,
+                water_activity=0.97,
+                initial_inoculum_log_cfu=3.0,
             ),
             time_temperature_profile=TimeTemperatureProfile(
                 is_multi_step=False,
-                steps=[TimeTemperatureStep(temperature_celsius=25.0, duration_minutes=60.0, step_order=1)],
+                steps=[
+                    TimeTemperatureStep(
+                        temperature_celsius=25.0, duration_minutes=60.0, step_order=1
+                    )
+                ],
                 total_duration_minutes=60.0,
             ),
         )
         state.execution_result = ComBaseExecutionResult(
             model_result=ComBaseModelResult(
-                mu_max=0.42, doubling_time_hours=1.65, y_max=10.0, h0=0.1,
+                mu_max=0.42,
+                doubling_time_hours=1.65,
+                y_max=10.0,
+                h0=0.1,
                 model_type=ModelType.GROWTH,
-                organism=ComBaseOrganism.SALMONELLA, temperature_used=25.0,
-                ph_used=6.2, aw_used=0.97, engine_type=EngineType.COMBASE_LOCAL,
+                organism=ComBaseOrganism.SALMONELLA,
+                temperature_used=25.0,
+                ph_used=6.2,
+                aw_used=0.97,
+                engine_type=EngineType.COMBASE_LOCAL,
             ),
-            step_predictions=[], total_log_increase=0.21,
-            initial_log_cfu=3.0, final_log_cfu=3.21,
-            engine_type=EngineType.COMBASE_LOCAL, warnings=[],
+            step_predictions=[],
+            total_log_increase=0.21,
+            initial_log_cfu=3.0,
+            final_log_cfu=3.21,
+            engine_type=EngineType.COMBASE_LOCAL,
+            warnings=[],
         )
 
         mock_result = MagicMock(spec=TranslationResult)
@@ -1117,14 +1265,24 @@ class TestAuditPostStandardization:
         Rice-style: water_activity not grounded, defaulted to 0.99.
         Temperature inferred via rule ("sitting out" → 25°C).
         """
-        from app.models.execution.combase import (
-            ComBaseExecutionResult, ComBaseModelResult,
-            ComBaseExecutionPayload, ComBaseModelSelection, ComBaseParameters,
-        )
-        from app.models.execution.base import TimeTemperatureStep, TimeTemperatureProfile
         from app.core.orchestrator import TranslationResult
+        from app.models.execution.base import (
+            TimeTemperatureProfile,
+            TimeTemperatureStep,
+        )
+        from app.models.execution.combase import (
+            ComBaseExecutionPayload,
+            ComBaseExecutionResult,
+            ComBaseModelResult,
+            ComBaseModelSelection,
+            ComBaseParameters,
+        )
         from app.models.metadata import (
-            ValueProvenance, ValueSource, DefaultImputed, ComBaseModelAudit, SystemAudit,
+            ComBaseModelAudit,
+            DefaultImputed,
+            SystemAudit,
+            ValueProvenance,
+            ValueSource,
         )
 
         state = SessionState(user_input="cooked rice query")
@@ -1150,11 +1308,13 @@ class TestAuditPostStandardization:
         meta.add_provenance("temperature_celsius", temp_prov)
 
         # water_activity: never grounded — defaulted to 0.99 by standardization
-        meta.add_default_imputed(DefaultImputed(
-            field_name="water_activity",
-            imputed_value=0.99,
-            reason="No water activity specified. Using conservative high default (0.99).",
-        ))
+        meta.add_default_imputed(
+            DefaultImputed(
+                field_name="water_activity",
+                imputed_value=0.99,
+                reason="No water activity specified. Using conservative high default (0.99).",
+            )
+        )
 
         meta.combase_model = ComBaseModelAudit(
             organism="BACILLUS_CEREUS",
@@ -1169,27 +1329,44 @@ class TestAuditPostStandardization:
 
         state.execution_payload = ComBaseExecutionPayload(
             model_selection=ComBaseModelSelection(
-                organism=ComBaseOrganism.SALMONELLA, model_type=ModelType.GROWTH,
+                organism=ComBaseOrganism.SALMONELLA,
+                model_type=ModelType.GROWTH,
             ),
             parameters=ComBaseParameters(
-                temperature_celsius=25.0, ph=7.0, water_activity=0.99, initial_inoculum_log_cfu=3.0,
+                temperature_celsius=25.0,
+                ph=7.0,
+                water_activity=0.99,
+                initial_inoculum_log_cfu=3.0,
             ),
             time_temperature_profile=TimeTemperatureProfile(
                 is_multi_step=False,
-                steps=[TimeTemperatureStep(temperature_celsius=25.0, duration_minutes=60.0, step_order=1)],
+                steps=[
+                    TimeTemperatureStep(
+                        temperature_celsius=25.0, duration_minutes=60.0, step_order=1
+                    )
+                ],
                 total_duration_minutes=60.0,
             ),
         )
         state.execution_result = ComBaseExecutionResult(
             model_result=ComBaseModelResult(
-                mu_max=0.38, doubling_time_hours=1.8, y_max=10.0, h0=0.1,
+                mu_max=0.38,
+                doubling_time_hours=1.8,
+                y_max=10.0,
+                h0=0.1,
                 model_type=ModelType.GROWTH,
-                organism=ComBaseOrganism.SALMONELLA, temperature_used=25.0,
-                ph_used=7.0, aw_used=0.99, engine_type=EngineType.COMBASE_LOCAL,
+                organism=ComBaseOrganism.SALMONELLA,
+                temperature_used=25.0,
+                ph_used=7.0,
+                aw_used=0.99,
+                engine_type=EngineType.COMBASE_LOCAL,
             ),
-            step_predictions=[], total_log_increase=0.15,
-            initial_log_cfu=3.0, final_log_cfu=3.15,
-            engine_type=EngineType.COMBASE_LOCAL, warnings=[],
+            step_predictions=[],
+            total_log_increase=0.15,
+            initial_log_cfu=3.0,
+            final_log_cfu=3.15,
+            engine_type=EngineType.COMBASE_LOCAL,
+            warnings=[],
         )
 
         mock_result = MagicMock(spec=TranslationResult)
@@ -1332,15 +1509,24 @@ class TestDefaultedWithRetrieval:
         (attributed_field tagged), both fail threshold, both default.
         The retrieval records carry attempted_top with the best-rejected doc.
         """
-        from app.models.execution.combase import (
-            ComBaseExecutionResult, ComBaseModelResult,
-            ComBaseExecutionPayload, ComBaseModelSelection, ComBaseParameters,
-        )
-        from app.models.execution.base import TimeTemperatureStep, TimeTemperatureProfile
         from app.core.orchestrator import TranslationResult
+        from app.models.execution.base import (
+            TimeTemperatureProfile,
+            TimeTemperatureStep,
+        )
+        from app.models.execution.combase import (
+            ComBaseExecutionPayload,
+            ComBaseExecutionResult,
+            ComBaseModelResult,
+            ComBaseModelSelection,
+            ComBaseParameters,
+        )
         from app.models.metadata import (
-            ValueProvenance, ValueSource, RetrievalResult, SkippedDocInfo,
-            DefaultImputed, ComBaseModelAudit, SystemAudit,
+            ComBaseModelAudit,
+            DefaultImputed,
+            RetrievalResult,
+            SkippedDocInfo,
+            SystemAudit,
         )
 
         state = SessionState(user_input="zarblax burger at 25C for 4 hours")
@@ -1354,76 +1540,86 @@ class TestDefaultedWithRetrieval:
         )
 
         # pH and water_activity: never grounded — defaulted to conservative values.
-        meta.add_default_imputed(DefaultImputed(
-            field_name="ph",
-            imputed_value=7.0,
-            reason="No pH data found for 'zarblax burger'. Using conservative neutral default.",
-        ))
-        meta.add_default_imputed(DefaultImputed(
-            field_name="water_activity",
-            imputed_value=0.99,
-            reason="No water activity data found for 'zarblax burger'. Using conservative high default.",
-        ))
+        meta.add_default_imputed(
+            DefaultImputed(
+                field_name="ph",
+                imputed_value=7.0,
+                reason="No pH data found for 'zarblax burger'. Using conservative neutral default.",
+            )
+        )
+        meta.add_default_imputed(
+            DefaultImputed(
+                field_name="water_activity",
+                imputed_value=0.99,
+                reason="No water activity data found for 'zarblax burger'. Using conservative high default.",
+            )
+        )
 
         # Primary Tier 1 retrieval (untagged) — failed threshold.
-        meta.add_retrieval(RetrievalResult(
-            query="zarblax burger pH water activity food properties",
-            source_document=None,
-            chunk_id=None,
-            retrieved_text=None,
-            embedding_score=None,
-            rerank_score=None,
-            source_ids=[],
-            full_citations={},
-            fallback_used=True,
-            attempted_top=SkippedDocInfo(
-                doc_id="food_properties_42",
-                content_preview="Hamburger patty: pH 5.5–6.0, water activity 0.97",
-                embedding_score=0.41,
-                rerank_score=0.55,
-                skip_reason="failed_embedding_threshold:0.70",
-            ),
-        ))
+        meta.add_retrieval(
+            RetrievalResult(
+                query="zarblax burger pH water activity food properties",
+                source_document=None,
+                chunk_id=None,
+                retrieved_text=None,
+                embedding_score=None,
+                rerank_score=None,
+                source_ids=[],
+                full_citations={},
+                fallback_used=True,
+                attempted_top=SkippedDocInfo(
+                    doc_id="food_properties_42",
+                    content_preview="Hamburger patty: pH 5.5–6.0, water activity 0.97",
+                    embedding_score=0.41,
+                    rerank_score=0.55,
+                    skip_reason="failed_embedding_threshold:0.70",
+                ),
+            )
+        )
         # Tier 2 fallback for pH (tagged) — failed threshold.
-        meta.add_retrieval(RetrievalResult(
-            query="zarblax burger pH acidity",
-            source_document=None,
-            chunk_id=None,
-            retrieved_text=None,
-            embedding_score=None,
-            rerank_score=None,
-            source_ids=[],
-            full_citations={},
-            fallback_used=True,
-            attributed_field="ph",
-            attempted_top=SkippedDocInfo(
-                doc_id="food_properties_07",
-                content_preview="Generic burger: pH 5.4–6.1",
-                embedding_score=0.38,
-                rerank_score=0.50,
-                skip_reason="failed_embedding_threshold:0.62",
-            ),
-        ))
+        meta.add_retrieval(
+            RetrievalResult(
+                query="zarblax burger pH acidity",
+                source_document=None,
+                chunk_id=None,
+                retrieved_text=None,
+                embedding_score=None,
+                rerank_score=None,
+                source_ids=[],
+                full_citations={},
+                fallback_used=True,
+                attributed_field="ph",
+                attempted_top=SkippedDocInfo(
+                    doc_id="food_properties_07",
+                    content_preview="Generic burger: pH 5.4–6.1",
+                    embedding_score=0.38,
+                    rerank_score=0.50,
+                    skip_reason="failed_embedding_threshold:0.62",
+                ),
+            )
+        )
         # Tier 2 fallback for water_activity (tagged) — failed threshold.
-        meta.add_retrieval(RetrievalResult(
-            query="zarblax burger water activity moisture",
-            source_document=None,
-            chunk_id=None,
-            retrieved_text=None,
-            embedding_score=None,
-            rerank_score=None,
-            source_ids=[],
-            full_citations={},
-            fallback_used=True,
-            attributed_field="water_activity",
-            attempted_top=SkippedDocInfo(
-                doc_id="food_properties_11",
-                content_preview="Ground beef patty: water activity 0.96–0.98",
-                embedding_score=0.35,
-                rerank_score=0.47,
-                skip_reason="failed_embedding_threshold:0.62",
-            ),
-        ))
+        meta.add_retrieval(
+            RetrievalResult(
+                query="zarblax burger water activity moisture",
+                source_document=None,
+                chunk_id=None,
+                retrieved_text=None,
+                embedding_score=None,
+                rerank_score=None,
+                source_ids=[],
+                full_citations={},
+                fallback_used=True,
+                attributed_field="water_activity",
+                attempted_top=SkippedDocInfo(
+                    doc_id="food_properties_11",
+                    content_preview="Ground beef patty: water activity 0.96–0.98",
+                    embedding_score=0.35,
+                    rerank_score=0.47,
+                    skip_reason="failed_embedding_threshold:0.62",
+                ),
+            )
+        )
 
         meta.combase_model = ComBaseModelAudit(
             organism="BACILLUS_CEREUS",
@@ -1459,10 +1655,19 @@ class TestDefaultedWithRetrieval:
                 organism=ComBaseOrganism.SALMONELLA,
                 model_type=ModelType.GROWTH,
             ),
-            parameters=ComBaseParameters(temperature_celsius=25.0, ph=7.0, water_activity=0.99, initial_inoculum_log_cfu=3.0),
+            parameters=ComBaseParameters(
+                temperature_celsius=25.0,
+                ph=7.0,
+                water_activity=0.99,
+                initial_inoculum_log_cfu=3.0,
+            ),
             time_temperature_profile=TimeTemperatureProfile(
                 is_multi_step=False,
-                steps=[TimeTemperatureStep(temperature_celsius=25.0, duration_minutes=240.0, step_order=1)],
+                steps=[
+                    TimeTemperatureStep(
+                        temperature_celsius=25.0, duration_minutes=240.0, step_order=1
+                    )
+                ],
                 total_duration_minutes=240.0,
             ),
         )
@@ -1541,7 +1746,7 @@ class TestDefaultedWithRetrieval:
     def test_defaulted_without_rag_attempt_still_has_null_retrieval(self, client):
         """Regression: a defaulted field with no attributed retrieval must keep retrieval=null."""
         from app.core.orchestrator import TranslationResult
-        from app.models.metadata import DefaultImputed, ComBaseModelAudit, SystemAudit
+        from app.models.metadata import ComBaseModelAudit, DefaultImputed, SystemAudit
 
         state = SessionState(user_input="something")
         state.status = SessionStatus.COMPLETED
@@ -1551,45 +1756,76 @@ class TestDefaultedWithRetrieval:
             original_input=state.user_input,
             status=state.status,
         )
-        meta.add_default_imputed(DefaultImputed(
-            field_name="temperature_celsius",
-            imputed_value=25.0,
-            reason="No temperature specified.",
-        ))
+        meta.add_default_imputed(
+            DefaultImputed(
+                field_name="temperature_celsius",
+                imputed_value=25.0,
+                reason="No temperature specified.",
+            )
+        )
         meta.combase_model = ComBaseModelAudit(
-            organism="SALMONELLA", model_type="growth", model_id=1,
-            coefficients_str="0.1", valid_ranges=None, selection_reason="default",
+            organism="SALMONELLA",
+            model_type="growth",
+            model_id=1,
+            coefficients_str="0.1",
+            valid_ranges=None,
+            selection_reason="default",
         )
         meta.system = SystemAudit(ptm_version="test")
         state.metadata = meta
 
-        from app.models.execution.combase import (
-            ComBaseExecutionResult, ComBaseModelResult,
-            ComBaseExecutionPayload, ComBaseModelSelection, ComBaseParameters,
+        from app.models.execution.base import (
+            TimeTemperatureProfile,
+            TimeTemperatureStep,
         )
-        from app.models.execution.base import TimeTemperatureStep, TimeTemperatureProfile
+        from app.models.execution.combase import (
+            ComBaseExecutionPayload,
+            ComBaseExecutionResult,
+            ComBaseModelResult,
+            ComBaseModelSelection,
+            ComBaseParameters,
+        )
 
         state.execution_payload = ComBaseExecutionPayload(
             model_selection=ComBaseModelSelection(
-                organism=ComBaseOrganism.SALMONELLA, model_type=ModelType.GROWTH,
+                organism=ComBaseOrganism.SALMONELLA,
+                model_type=ModelType.GROWTH,
             ),
-            parameters=ComBaseParameters(temperature_celsius=25.0, ph=7.0, water_activity=0.99, initial_inoculum_log_cfu=3.0),
+            parameters=ComBaseParameters(
+                temperature_celsius=25.0,
+                ph=7.0,
+                water_activity=0.99,
+                initial_inoculum_log_cfu=3.0,
+            ),
             time_temperature_profile=TimeTemperatureProfile(
                 is_multi_step=False,
-                steps=[TimeTemperatureStep(temperature_celsius=25.0, duration_minutes=60.0, step_order=1)],
+                steps=[
+                    TimeTemperatureStep(
+                        temperature_celsius=25.0, duration_minutes=60.0, step_order=1
+                    )
+                ],
                 total_duration_minutes=60.0,
             ),
         )
         state.execution_result = ComBaseExecutionResult(
             model_result=ComBaseModelResult(
-                mu_max=0.5, doubling_time_hours=1.4, y_max=10.0, h0=0.1,
+                mu_max=0.5,
+                doubling_time_hours=1.4,
+                y_max=10.0,
+                h0=0.1,
                 model_type=ModelType.GROWTH,
-                organism=ComBaseOrganism.SALMONELLA, temperature_used=25.0,
-                ph_used=7.0, aw_used=0.99, engine_type=EngineType.COMBASE_LOCAL,
+                organism=ComBaseOrganism.SALMONELLA,
+                temperature_used=25.0,
+                ph_used=7.0,
+                aw_used=0.99,
+                engine_type=EngineType.COMBASE_LOCAL,
             ),
-            step_predictions=[], total_log_increase=0.5,
-            initial_log_cfu=3.0, final_log_cfu=3.5,
-            engine_type=EngineType.COMBASE_LOCAL, warnings=[],
+            step_predictions=[],
+            total_log_increase=0.5,
+            initial_log_cfu=3.0,
+            final_log_cfu=3.5,
+            engine_type=EngineType.COMBASE_LOCAL,
+            warnings=[],
         )
         mock_result = MagicMock(spec=TranslationResult)
         mock_result.success = True
@@ -1604,28 +1840,28 @@ class TestDefaultedWithRetrieval:
 
 class TestGrowthDescription:
     """Tests for growth description formatting."""
-    
+
     def test_minimal_growth(self):
         """Should describe minimal growth correctly."""
         from app.api.routes.translation import _format_growth_description
-        
+
         desc = _format_growth_description(0.1)
         assert "minimal" in desc.lower()
-    
+
     def test_moderate_growth(self):
         """Should describe moderate growth correctly."""
         from app.api.routes.translation import _format_growth_description
-        
+
         desc = _format_growth_description(0.5)
         assert "moderate" in desc.lower()
-    
+
     def test_significant_growth(self):
         """Should describe significant growth correctly."""
         from app.api.routes.translation import _format_growth_description
-        
+
         desc = _format_growth_description(2.0)
         assert "significant" in desc.lower()
-    
+
     def test_reduction(self):
         """Should describe log reduction correctly."""
         from app.api.routes.translation import _format_growth_description
@@ -1646,31 +1882,43 @@ class TestLLMProviderErrors:
             mock_orch = MagicMock()
             mock_orch.translate = AsyncMock(side_effect=exc)
             mock_get.return_value = mock_orch
-            return client.post("/api/v1/translate", json={"query": "chicken left out 3 hours"})
+            return client.post(
+                "/api/v1/translate", json={"query": "chicken left out 3 hours"}
+            )
 
     def test_rate_limit_returns_429(self, client):
         from app.services.llm.exceptions import LLMRateLimitError
+
         resp = self._post(client, LLMRateLimitError("LLM rate limit reached"))
         assert resp.status_code == 429
 
     def test_credit_exhausted_returns_402(self, client):
         from app.services.llm.exceptions import LLMCreditExhaustedError
-        resp = self._post(client, LLMCreditExhaustedError("LLM account credit exhausted"))
+
+        resp = self._post(
+            client, LLMCreditExhaustedError("LLM account credit exhausted")
+        )
         assert resp.status_code == 402
 
     def test_auth_error_returns_401(self, client):
         from app.services.llm.exceptions import LLMAuthenticationError
+
         resp = self._post(client, LLMAuthenticationError("LLM authentication failed"))
         assert resp.status_code == 401
 
     def test_service_unavailable_returns_503(self, client):
         from app.services.llm.exceptions import LLMServiceUnavailableError
+
         resp = self._post(client, LLMServiceUnavailableError("LLM service unavailable"))
         assert resp.status_code == 503
 
     def test_provider_error_detail_is_user_message(self, client):
         from app.services.llm.exceptions import LLMCreditExhaustedError
-        resp = self._post(client, LLMCreditExhaustedError("LLM account credit exhausted: quota exceeded"))
+
+        resp = self._post(
+            client,
+            LLMCreditExhaustedError("LLM account credit exhausted: quota exceeded"),
+        )
         assert resp.json()["detail"] == "LLM account credit exhausted: quota exceeded"
 
     def test_generic_exception_still_returns_200(self, client):
@@ -1680,7 +1928,10 @@ class TestLLMProviderErrors:
 
     def test_not_found_returns_503(self, client):
         from app.services.llm.exceptions import LLMServiceUnavailableError
-        resp = self._post(client, LLMServiceUnavailableError("LLM model or endpoint not found"))
+
+        resp = self._post(
+            client, LLMServiceUnavailableError("LLM model or endpoint not found")
+        )
         assert resp.status_code == 503
 
 
@@ -1689,6 +1940,7 @@ class TestRaiseAsProviderError:
 
     def _call(self, exc: Exception):
         from app.services.llm.client import _raise_as_provider_error
+
         try:
             _raise_as_provider_error(exc)
         except Exception as raised:
@@ -1697,7 +1949,7 @@ class TestRaiseAsProviderError:
 
     def _make_litellm(self, cls):
         """Construct a LiteLLM exception without triggering real HTTP calls."""
-        import litellm
+
         try:
             return cls(message="test", llm_provider="openai", model="gpt-4o")
         except Exception:
@@ -1708,21 +1960,27 @@ class TestRaiseAsProviderError:
 
     def test_direct_rate_limit(self):
         import litellm
+
         from app.services.llm.exceptions import LLMRateLimitError
+
         exc = self._make_litellm(litellm.RateLimitError)
         raised = self._call(exc)
         assert isinstance(raised, LLMRateLimitError)
 
     def test_direct_auth_error(self):
         import litellm
+
         from app.services.llm.exceptions import LLMAuthenticationError
+
         exc = self._make_litellm(litellm.AuthenticationError)
         raised = self._call(exc)
         assert isinstance(raised, LLMAuthenticationError)
 
     def test_direct_not_found(self):
         import litellm
+
         from app.services.llm.exceptions import LLMServiceUnavailableError
+
         exc = self._make_litellm(litellm.NotFoundError)
         raised = self._call(exc)
         assert isinstance(raised, LLMServiceUnavailableError)
@@ -1730,7 +1988,9 @@ class TestRaiseAsProviderError:
     def test_wrapped_rate_limit_detected_through_chain(self):
         """Instructor wraps LiteLLM exceptions; the chain walker must find them."""
         import litellm
+
         from app.services.llm.exceptions import LLMRateLimitError
+
         litellm_exc = self._make_litellm(litellm.RateLimitError)
         # Simulate Instructor wrapping: outer exception with __cause__ pointing to LiteLLM exc
         outer = RuntimeError("instructor retry wrapper")
@@ -1740,7 +2000,9 @@ class TestRaiseAsProviderError:
 
     def test_wrapped_not_found_detected_through_chain(self):
         import litellm
+
         from app.services.llm.exceptions import LLMServiceUnavailableError
+
         litellm_exc = self._make_litellm(litellm.NotFoundError)
         outer = RuntimeError("instructor retry wrapper")
         outer.__cause__ = litellm_exc
@@ -1753,7 +2015,9 @@ class TestRaiseAsProviderError:
 
     def test_quota_keyword_maps_to_credit_exhausted(self):
         import litellm
+
         from app.services.llm.exceptions import LLMCreditExhaustedError
+
         try:
             exc = litellm.RateLimitError(
                 message="You exceeded your current quota",

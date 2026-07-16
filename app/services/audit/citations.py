@@ -12,7 +12,9 @@ _cache: dict[str, str] | None = None
 
 _CSV_PATH = (
     Path(__file__).parent.parent.parent.parent
-    / "data" / "sources" / "source_references.csv"
+    / "data"
+    / "sources"
+    / "source_references.csv"
 )
 
 

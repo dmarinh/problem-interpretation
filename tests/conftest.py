@@ -7,35 +7,35 @@ This file is automatically loaded by pytest and provides:
 - Common test data
 """
 
-import pytest
-from typing import AsyncGenerator, Generator
+from collections.abc import AsyncGenerator, Generator
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
 from fastapi.testclient import TestClient
-from httpx import AsyncClient, ASGITransport
+from httpx import ASGITransport, AsyncClient
 
-from app.main import app
 from app.config import settings
-
+from app.main import app
 
 # =============================================================================
 # PYTEST-ASYNCIO CONFIGURATION
 # =============================================================================
 
-pytest_plugins = ('pytest_asyncio',)
+pytest_plugins = ("pytest_asyncio",)
 
 
 # =============================================================================
 # FIXTURES: FastAPI Test Clients
 # =============================================================================
 
+
 @pytest.fixture
 def client() -> Generator[TestClient, None, None]:
     """
     Synchronous test client for FastAPI.
-    
+
     Use for simple endpoint tests that don't require async.
-    
+
     Usage:
         def test_health(client):
             response = client.get("/health/live")
@@ -49,9 +49,9 @@ def client() -> Generator[TestClient, None, None]:
 async def async_client() -> AsyncGenerator[AsyncClient, None]:
     """
     Asynchronous test client for FastAPI.
-    
+
     Use for tests that need async/await.
-    
+
     Usage:
         async def test_health(async_client):
             response = await async_client.get("/health/live")
@@ -65,6 +65,7 @@ async def async_client() -> AsyncGenerator[AsyncClient, None]:
 # =============================================================================
 # FIXTURES: LLM Client Mocking
 # =============================================================================
+
 
 @pytest.fixture
 def mock_llm_response() -> dict:
@@ -80,23 +81,21 @@ def mock_llm_response() -> dict:
 def mock_llm_client(mock_llm_response: dict) -> MagicMock:
     """
     Mock LLM client for testing without API calls.
-    
+
     Usage:
         def test_something(mock_llm_client, monkeypatch):
             monkeypatch.setattr(
-                "app.services.llm.client._client", 
+                "app.services.llm.client._client",
                 mock_llm_client
             )
     """
     from app.services.llm.client import LLMResponse
-    
+
     mock_client = MagicMock()
-    
+
     # Mock complete method
-    mock_client.complete = AsyncMock(
-        return_value=LLMResponse(**mock_llm_response)
-    )
-    
+    mock_client.complete = AsyncMock(return_value=LLMResponse(**mock_llm_response))
+
     # Mock health_check method
     mock_client.health_check = AsyncMock(
         return_value={
@@ -105,10 +104,10 @@ def mock_llm_client(mock_llm_response: dict) -> MagicMock:
             "model": "mock-model",
         }
     )
-    
+
     # Mock extract method (returns a MagicMock that can be configured per test)
     mock_client.extract = AsyncMock()
-    
+
     return mock_client
 
 
@@ -116,13 +115,14 @@ def mock_llm_client(mock_llm_response: dict) -> MagicMock:
 def patch_llm_client(mock_llm_client: MagicMock, monkeypatch: pytest.MonkeyPatch):
     """
     Patch the global LLM client with the mock.
-    
+
     Usage:
         def test_something(patch_llm_client):
             # LLM client is now mocked
             pass
     """
     import app.services.llm.client as llm_module
+
     monkeypatch.setattr(llm_module, "_client", mock_llm_client)
     return mock_llm_client
 
@@ -130,6 +130,7 @@ def patch_llm_client(mock_llm_client: MagicMock, monkeypatch: pytest.MonkeyPatch
 # =============================================================================
 # FIXTURES: Test Data
 # =============================================================================
+
 
 @pytest.fixture
 def sample_food_scenario() -> str:
@@ -151,6 +152,7 @@ def sample_extraction_result() -> dict:
 # =============================================================================
 # FIXTURES: Settings Override
 # =============================================================================
+
 
 @pytest.fixture
 def debug_settings(monkeypatch: pytest.MonkeyPatch):

@@ -21,12 +21,13 @@ not only the bridge.
 """
 
 import pytest
-from app.services.grounding.taxonomy_bridge import TaxonomyBridge, TaxonomyResolution
 
+from app.services.grounding.taxonomy_bridge import TaxonomyBridge, TaxonomyResolution
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def bridge() -> TaxonomyBridge:
@@ -38,6 +39,7 @@ def bridge() -> TaxonomyBridge:
 # Exact and near-exact matching
 # ---------------------------------------------------------------------------
 
+
 class TestExactAndNearMatches:
 
     def test_exact_match_turkey(self, bridge: TaxonomyBridge) -> None:
@@ -48,7 +50,9 @@ class TestExactAndNearMatches:
         assert result.match_score == pytest.approx(100.0)
         assert result.matched_food_name == "turkey"
 
-    def test_exact_match_includes_taxonomy_metadata(self, bridge: TaxonomyBridge) -> None:
+    def test_exact_match_includes_taxonomy_metadata(
+        self, bridge: TaxonomyBridge
+    ) -> None:
         """Resolution records the FoodEx2 code, label, and source for the winning row."""
         result = bridge.resolve("turkey")
         assert result is not None
@@ -94,6 +98,7 @@ class TestExactAndNearMatches:
 # Below-threshold: no false positives
 # ---------------------------------------------------------------------------
 
+
 class TestBelowThreshold:
 
     def test_unknown_food_returns_none(self, bridge: TaxonomyBridge) -> None:
@@ -116,9 +121,12 @@ class TestBelowThreshold:
 # Alias resolution
 # ---------------------------------------------------------------------------
 
+
 class TestAliasResolution:
 
-    def test_beef_resolves_via_bovine_alias_to_meat(self, bridge: TaxonomyBridge) -> None:
+    def test_beef_resolves_via_bovine_alias_to_meat(
+        self, bridge: TaxonomyBridge
+    ) -> None:
         """'beef' is rewritten to 'bovine' before matching; resolves to meat category."""
         result = bridge.resolve("beef")
         assert result is not None
@@ -175,6 +183,7 @@ class TestAliasResolution:
 # TaxonomyResolution property rows
 # ---------------------------------------------------------------------------
 
+
 class TestPropertyRows:
 
     def test_resolved_category_has_property_rows(self, bridge: TaxonomyBridge) -> None:
@@ -221,13 +230,13 @@ THRESHOLD_POSITIVE_CASES = [
     "turkey",
     "turkey portions",
     "turkeys",
-    "tukey",          # typo
+    "tukey",  # typo
     "raw chicken",
-    "lettuce",        # singular vs. 'lettuces' in taxonomy
+    "lettuce",  # singular vs. 'lettuces' in taxonomy
 ]
 
 THRESHOLD_NEGATIVE_CASES = [
-    "tornado",        # max score ~57, safely below 70
+    "tornado",  # max score ~57, safely below 70
     "xyzqwerty",
 ]
 
@@ -269,6 +278,7 @@ def test_threshold_calibration_negative(threshold: int, query: str) -> None:
 # ---------------------------------------------------------------------------
 # matched_state field on TaxonomyResolution
 # ---------------------------------------------------------------------------
+
 
 class TestMatchedStateOnResolution:
     """TaxonomyResolution now carries matched_state: str from the FoodEx2

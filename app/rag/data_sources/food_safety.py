@@ -17,16 +17,20 @@ Sources:
 """
 
 import csv
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from dataclasses import dataclass
-from typing import Optional
 
-from app.rag.vector_store import VectorStore
 from app.rag.ingestion import IngestionPipeline
+from app.rag.vector_store import VectorStore
 
 # Path to the authoritative source ID registry, relative to this file.
-_SOURCE_REF_CSV = Path(__file__).parent.parent.parent.parent / "data" / "sources" / "source_references.csv"
+_SOURCE_REF_CSV = (
+    Path(__file__).parent.parent.parent.parent
+    / "data"
+    / "sources"
+    / "source_references.csv"
+)
 
 
 @lru_cache(maxsize=1)
@@ -39,15 +43,15 @@ def _valid_source_ids() -> frozenset:
         return frozenset(row["source_id"] for row in reader if row.get("source_id"))
 
 
-
 @dataclass
 class LoadResult:
     """Result of a data loading operation."""
+
     source_name: str
     chunks_loaded: int
     records_processed: int
     success: bool
-    error: Optional[str] = None
+    error: str | None = None
 
 
 # Expected row count in the production food_properties.csv (253 after 2026-05-06 addition).
@@ -58,29 +62,31 @@ EXPECTED_FOOD_PROPERTIES_COUNT = 253
 
 def load_food_properties(pipeline: IngestionPipeline, data_dir: Path) -> LoadResult:
     """Load food pH and water activity values.
-    
+
     Source: FDA pH List (FDA-PH-2007), IFT/FDA Tables 3-1, 3-3
     """
     file_path = data_dir / "food_properties.csv"
-    
+
     if not file_path.exists():
-        return LoadResult("food_properties", 0, 0, False, f"File not found: {file_path}")
-    
+        return LoadResult(
+            "food_properties", 0, 0, False, f"File not found: {file_path}"
+        )
+
     chunks = 0
     records = 0
     valid_ids = _valid_source_ids()
 
-    with open(file_path, "r", encoding="utf-8") as f:
+    with open(file_path, encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
             if not row.get("food_name") or row["food_name"].startswith("#"):
                 continue
 
             records += 1
-            
+
             # Build semantic document
             parts = [f"{row['food_name']} ({row['food_category']})"]
-            
+
             if row.get("ph_min") and row.get("ph_max"):
                 if row["ph_min"] == row["ph_max"]:
                     parts.append(f"pH {row['ph_min']}")
@@ -88,7 +94,7 @@ def load_food_properties(pipeline: IngestionPipeline, data_dir: Path) -> LoadRes
                     parts.append(f"pH range {row['ph_min']} to {row['ph_max']}")
             elif row.get("ph_min"):
                 parts.append(f"pH {row['ph_min']}")
-            
+
             if row.get("aw_min") and row.get("aw_max"):
                 if row["aw_min"] == row["aw_max"]:
                     parts.append(f"water activity {row['aw_min']}")
@@ -96,12 +102,16 @@ def load_food_properties(pipeline: IngestionPipeline, data_dir: Path) -> LoadRes
                     parts.append(f"water activity {row['aw_min']} to {row['aw_max']}")
             elif row.get("aw_min"):
                 parts.append(f"water activity {row['aw_min']}")
-            
+
             if row.get("notes"):
                 parts.append(row["notes"])
-            
-            doc = ": ".join(parts[:2]) + ". " + ". ".join(parts[2:]) if len(parts) > 2 else ": ".join(parts)
-            
+
+            doc = (
+                ": ".join(parts[:2]) + ". " + ". ".join(parts[2:])
+                if len(parts) > 2
+                else ": ".join(parts)
+            )
+
             # Per-field source attribution from dedicated CSV columns.
             # pH source is listed first; aw source follows if different from pH source.
             # This ordering is deliberate: pH is the primary field in the combined
@@ -116,8 +126,12 @@ def load_food_properties(pipeline: IngestionPipeline, data_dir: Path) -> LoadRes
             row_idx = records - 1
 
             # Validation: a populated range must declare its source.
-            has_ph = bool(row.get("ph_min", "").strip() or row.get("ph_max", "").strip())
-            has_aw = bool(row.get("aw_min", "").strip() or row.get("aw_max", "").strip())
+            has_ph = bool(
+                row.get("ph_min", "").strip() or row.get("ph_max", "").strip()
+            )
+            has_aw = bool(
+                row.get("aw_min", "").strip() or row.get("aw_max", "").strip()
+            )
             if has_ph and not ph_source:
                 raise ValueError(
                     f"Row {row_idx} ({row['food_name']!r}): ph_min/ph_max populated "
@@ -159,7 +173,7 @@ def load_food_properties(pipeline: IngestionPipeline, data_dir: Path) -> LoadRes
                 },
                 source=f"food_properties:{row['food_name']}",
             )
-            
+
             if result["success"]:
                 chunks += result["chunks"]
 
@@ -177,28 +191,30 @@ def load_food_properties(pipeline: IngestionPipeline, data_dir: Path) -> LoadRes
 
 def load_pathogen_aw_limits(pipeline: IngestionPipeline, data_dir: Path) -> LoadResult:
     """Load pathogen water activity growth limits.
-    
+
     Source: IFT/FDA Table 3-2 (IFT-2003-T32)
     """
     file_path = data_dir / "pathogen_aw_limits.csv"
-    
+
     if not file_path.exists():
-        return LoadResult("pathogen_aw_limits", 0, 0, False, f"File not found: {file_path}")
-    
+        return LoadResult(
+            "pathogen_aw_limits", 0, 0, False, f"File not found: {file_path}"
+        )
+
     chunks = 0
     records = 0
-    
-    with open(file_path, "r", encoding="utf-8") as f:
+
+    with open(file_path, encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
             if not row.get("pathogen") or row["pathogen"].startswith("#"):
                 continue
-            
+
             records += 1
-            
+
             # Build semantic document
             parts = [f"{row['pathogen']} growth parameters"]
-            
+
             if row.get("aw_min"):
                 parts.append(f"minimum water activity for growth is {row['aw_min']}")
             if row.get("aw_opt"):
@@ -207,14 +223,14 @@ def load_pathogen_aw_limits(pipeline: IngestionPipeline, data_dir: Path) -> Load
                 parts.append(f"maximum water activity {row['aw_max']}")
             if row.get("notes"):
                 parts.append(row["notes"])
-            
+
             doc = ": ".join(parts[:2]) + ". " + ". ".join(parts[2:])
-            
+
             # Append source tag
             source_id = row.get("source_id", "")
             if source_id:
                 doc += f" [{source_id}]"
-            
+
             result = pipeline.ingest_text(
                 text=doc,
                 doc_type=VectorStore.TYPE_PATHOGEN_HAZARDS,
@@ -226,33 +242,37 @@ def load_pathogen_aw_limits(pipeline: IngestionPipeline, data_dir: Path) -> Load
                 },
                 source=f"pathogen_aw:{row['pathogen']}",
             )
-            
+
             if result["success"]:
                 chunks += result["chunks"]
-    
+
     return LoadResult("pathogen_aw_limits", chunks, records, True)
 
 
-def load_pathogen_characteristics(pipeline: IngestionPipeline, data_dir: Path) -> LoadResult:
+def load_pathogen_characteristics(
+    pipeline: IngestionPipeline, data_dir: Path
+) -> LoadResult:
     """Load pathogen epidemiology data from CDC sources.
 
     Source: CDC Scallan et al. 2011, Tables 2-3 (CDC-2011-T3)
             CDC Tack et al. 2019, updated death estimates (CDC-2019)
     """
     file_path = data_dir / "pathogen_characteristics.csv"
-    
+
     if not file_path.exists():
-        return LoadResult("pathogen_characteristics", 0, 0, False, f"File not found: {file_path}")
-    
+        return LoadResult(
+            "pathogen_characteristics", 0, 0, False, f"File not found: {file_path}"
+        )
+
     chunks = 0
     records = 0
-    
-    with open(file_path, "r", encoding="utf-8") as f:
+
+    with open(file_path, encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
             if not row.get("pathogen"):
                 continue
-            
+
             records += 1
             source_id = row.get("source_id", "")
             data_year = row.get("data_year", "")
@@ -262,17 +282,25 @@ def load_pathogen_characteristics(pipeline: IngestionPipeline, data_dir: Path) -
             parts = [f"{row['pathogen']} epidemiology"]
 
             if row.get("annual_illnesses"):
-                cri = row.get('illnesses_90pct_cri', 'unknown')
-                parts.append(f"{row['annual_illnesses']} annual US illnesses (90% CrI: {cri}){year_label}")
+                cri = row.get("illnesses_90pct_cri", "unknown")
+                parts.append(
+                    f"{row['annual_illnesses']} annual US illnesses (90% CrI: {cri}){year_label}"
+                )
 
             if row.get("annual_hospitalizations"):
-                parts.append(f"{row['annual_hospitalizations']} annual hospitalizations{year_label}")
+                parts.append(
+                    f"{row['annual_hospitalizations']} annual hospitalizations{year_label}"
+                )
                 if row.get("hospitalization_rate_pct"):
-                    parts.append(f"hospitalization rate {row['hospitalization_rate_pct']}%")
+                    parts.append(
+                        f"hospitalization rate {row['hospitalization_rate_pct']}%"
+                    )
 
             if row.get("annual_deaths"):
-                cri = row.get('deaths_90pct_cri', 'unknown')
-                parts.append(f"{row['annual_deaths']} annual deaths (90% CrI: {cri}){year_label}")
+                cri = row.get("deaths_90pct_cri", "unknown")
+                parts.append(
+                    f"{row['annual_deaths']} annual deaths (90% CrI: {cri}){year_label}"
+                )
                 if row.get("death_rate_pct"):
                     parts.append(f"case fatality rate {row['death_rate_pct']}%")
 
@@ -304,35 +332,39 @@ def load_pathogen_characteristics(pipeline: IngestionPipeline, data_dir: Path) -
                 },
                 source=f"pathogen_cdc:{row['pathogen']}",
             )
-            
+
             if result["success"]:
                 chunks += result["chunks"]
-    
+
     return LoadResult("pathogen_characteristics", chunks, records, True)
 
 
-def load_pathogen_transmission(pipeline: IngestionPipeline, data_dir: Path) -> LoadResult:
+def load_pathogen_transmission(
+    pipeline: IngestionPipeline, data_dir: Path
+) -> LoadResult:
     """Load pathogen transmission route details from CDC appendix.
-    
+
     Source: CDC Scallan et al. 2011, Technical Appendix 1 (CDC-2011-A1)
     """
     file_path = data_dir / "pathogen_transmission_details.csv"
-    
+
     if not file_path.exists():
-        return LoadResult("pathogen_transmission", 0, 0, False, f"File not found: {file_path}")
-    
+        return LoadResult(
+            "pathogen_transmission", 0, 0, False, f"File not found: {file_path}"
+        )
+
     chunks = 0
     records = 0
-    
-    with open(file_path, "r", encoding="utf-8") as f:
+
+    with open(file_path, encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
             if not row.get("pathogen"):
                 continue
-            
+
             records += 1
             source_id = row.get("source_id", "")
-            
+
             doc = (
                 f"{row['pathogen']} transmission: {row['percent_foodborne']}% foodborne "
                 f"(basis: {row['foodborne_basis']}). "
@@ -341,10 +373,10 @@ def load_pathogen_transmission(pipeline: IngestionPipeline, data_dir: Path) -> L
                 doc += f"Non-food routes: {row['non_foodborne_routes']}. "
             if row.get("comments"):
                 doc += row["comments"]
-            
+
             if source_id:
                 doc += f" [{source_id}]"
-            
+
             result = pipeline.ingest_text(
                 text=doc,
                 doc_type=VectorStore.TYPE_PATHOGEN_HAZARDS,
@@ -357,45 +389,49 @@ def load_pathogen_transmission(pipeline: IngestionPipeline, data_dir: Path) -> L
                 },
                 source=f"pathogen_transmission:{row['pathogen']}",
             )
-            
+
             if result["success"]:
                 chunks += result["chunks"]
-    
+
     return LoadResult("pathogen_transmission", chunks, records, True)
 
 
-def load_pathogen_food_associations(pipeline: IngestionPipeline, data_dir: Path) -> LoadResult:
+def load_pathogen_food_associations(
+    pipeline: IngestionPipeline, data_dir: Path
+) -> LoadResult:
     """Load pathogen-food category associations.
-    
+
     Source: IFT/FDA Table 1 (IFT-2003-T1)
     """
     file_path = data_dir / "pathogen_food_associations.csv"
-    
+
     if not file_path.exists():
-        return LoadResult("pathogen_food_associations", 0, 0, False, f"File not found: {file_path}")
-    
+        return LoadResult(
+            "pathogen_food_associations", 0, 0, False, f"File not found: {file_path}"
+        )
+
     chunks = 0
     records = 0
-    
-    with open(file_path, "r", encoding="utf-8") as f:
+
+    with open(file_path, encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
             if not row.get("food_category") or row["food_category"].startswith("#"):
                 continue
-            
+
             records += 1
             source_id = row.get("source_id", "")
-            
+
             doc = (
                 f"{row['pathogen']} is a pathogen of concern for {row['food_category']}. "
                 f"Control methods include: {row['control_methods']}. "
             )
             if row.get("notes"):
                 doc += row["notes"]
-            
+
             if source_id:
                 doc += f" [{source_id}]"
-            
+
             result = pipeline.ingest_text(
                 text=doc,
                 doc_type=VectorStore.TYPE_PATHOGEN_HAZARDS,
@@ -407,36 +443,44 @@ def load_pathogen_food_associations(pipeline: IngestionPipeline, data_dir: Path)
                 },
                 source=f"pathogen_food:{row['pathogen']}:{row['food_category']}",
             )
-            
+
             if result["success"]:
                 chunks += result["chunks"]
-    
+
     return LoadResult("pathogen_food_associations", chunks, records, True)
 
 
-def load_food_pathogen_hazards(pipeline: IngestionPipeline, data_dir: Path) -> LoadResult:
+def load_food_pathogen_hazards(
+    pipeline: IngestionPipeline, data_dir: Path
+) -> LoadResult:
     """Load direct food-to-pathogen hazard mappings with CDC severity metrics.
 
     Source: Derived from CDC Scallan 2011 & CDC Tack 2019 + IFT/FDA Table 1
     """
     file_path = data_dir / "food_pathogen_hazards.csv"
-    
+
     if not file_path.exists():
-        return LoadResult("food_pathogen_hazards", 0, 0, False, f"File not found: {file_path}")
-    
+        return LoadResult(
+            "food_pathogen_hazards", 0, 0, False, f"File not found: {file_path}"
+        )
+
     chunks = 0
     records = 0
-    
-    with open(file_path, "r", encoding="utf-8") as f:
+
+    with open(file_path, encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
             if not row.get("food_name"):
                 continue
-            
+
             records += 1
             source_id = row.get("source_id", "")
-            primary = "primary hazard" if row.get("primary_hazard") == "yes" else "secondary hazard"
-            
+            primary = (
+                "primary hazard"
+                if row.get("primary_hazard") == "yes"
+                else "secondary hazard"
+            )
+
             doc = (
                 f"Hazard for {row['food_name']}: {row['pathogen']} "
                 f"(case fatality rate {row['case_fatality_rate']}, "
@@ -445,10 +489,10 @@ def load_food_pathogen_hazards(pipeline: IngestionPipeline, data_dir: Path) -> L
             )
             if row.get("notes"):
                 doc += row["notes"]
-            
+
             if source_id:
                 doc += f" [{source_id}]"
-            
+
             result = pipeline.ingest_text(
                 text=doc,
                 doc_type=VectorStore.TYPE_PATHOGEN_HAZARDS,
@@ -464,41 +508,43 @@ def load_food_pathogen_hazards(pipeline: IngestionPipeline, data_dir: Path) -> L
                 },
                 source=f"food_hazard:{row['food_name']}:{row['pathogen']}",
             )
-            
+
             if result["success"]:
                 chunks += result["chunks"]
-    
+
     return LoadResult("food_pathogen_hazards", chunks, records, True)
 
 
 def load_tcs_classification(pipeline: IngestionPipeline, data_dir: Path) -> LoadResult:
     """Load TCS (Time/Temperature Control for Safety) classification tables.
-    
+
     Source: IFT/FDA Tables A & B (IFT-2003-TA, IFT-2003-TB)
     """
     file_path = data_dir / "tcs_classification_tables.csv"
-    
+
     if not file_path.exists():
-        return LoadResult("tcs_classification", 0, 0, False, f"File not found: {file_path}")
-    
+        return LoadResult(
+            "tcs_classification", 0, 0, False, f"File not found: {file_path}"
+        )
+
     chunks = 0
     records = 0
-    
-    with open(file_path, "r", encoding="utf-8") as f:
+
+    with open(file_path, encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
             if not row.get("table_type") or row["table_type"].startswith("#"):
                 continue
-            
+
             records += 1
             source_id = row.get("source_id", "")
-            
+
             table_desc = (
-                "heat-treated and protected from recontamination" 
-                if row["table_type"] == "A" 
+                "heat-treated and protected from recontamination"
+                if row["table_type"] == "A"
                 else "not treated or not protected from recontamination"
             )
-            
+
             doc = (
                 f"TCS Classification (Table {row['table_type']} - {table_desc}): "
                 f"For foods with pH {row['ph_min']}-{row['ph_max']} and "
@@ -506,10 +552,10 @@ def load_tcs_classification(pipeline: IngestionPipeline, data_dir: Path) -> Load
                 f"classification is {row['classification']}. "
                 f"{row['notes']}"
             )
-            
+
             if source_id:
                 doc += f" [{source_id}]"
-            
+
             result = pipeline.ingest_text(
                 text=doc,
                 doc_type=VectorStore.TYPE_CONSERVATIVE_VALUES,
@@ -525,20 +571,20 @@ def load_tcs_classification(pipeline: IngestionPipeline, data_dir: Path) -> Load
                 },
                 source=f"tcs:{row['table_type']}:{row['aw_category']}:{row['ph_category']}",
             )
-            
+
             if result["success"]:
                 chunks += result["chunks"]
-    
+
     return LoadResult("tcs_classification", chunks, records, True)
 
 
 def load_all_sources(pipeline: IngestionPipeline, data_dir: Path) -> list[LoadResult]:
     """Load all food safety data sources.
-    
+
     Args:
         pipeline: IngestionPipeline instance
         data_dir: Path to data/rag/ directory
-    
+
     Returns:
         List of LoadResult for each source
     """
@@ -551,10 +597,10 @@ def load_all_sources(pipeline: IngestionPipeline, data_dir: Path) -> list[LoadRe
         ("Food-pathogen hazards", load_food_pathogen_hazards),
         ("TCS classification", load_tcs_classification),
     ]
-    
+
     results = []
     for name, loader_func in loaders:
         result = loader_func(pipeline, data_dir)
         results.append(result)
-    
+
     return results

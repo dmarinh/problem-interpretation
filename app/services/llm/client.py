@@ -12,17 +12,17 @@ Supported providers (via LiteLLM):
 Usage:
     from app.services.llm.client import get_llm_client
     from pydantic import BaseModel
-    
+
     class MyOutput(BaseModel):
         name: str
         value: int
-    
+
     client = get_llm_client()
-    
+
     # Simple completion
     response = await client.complete("Hello, world!")
     print(response.content)
-    
+
     # Structured extraction
     result = await client.extract(
         response_model=MyOutput,
@@ -31,7 +31,7 @@ Usage:
     print(result.name, result.value)
 """
 
-from typing import TypeVar, Type, Any
+from typing import Any, TypeVar
 
 from pydantic import BaseModel
 
@@ -83,15 +83,24 @@ def _raise_as_provider_error(exc: Exception) -> None:
     provider_msg = raw.split(": ", 1)[1] if raw.startswith("litellm.") else raw
 
     if isinstance(litellm_exc, litellm.AuthenticationError):
-        raise LLMAuthenticationError(f"LLM authentication failed: {provider_msg}", litellm_exc)
+        raise LLMAuthenticationError(
+            f"LLM authentication failed: {provider_msg}", litellm_exc
+        )
     if isinstance(litellm_exc, litellm.BudgetExceededError):
-        raise LLMCreditExhaustedError(f"LLM account budget exceeded: {provider_msg}", litellm_exc)
+        raise LLMCreditExhaustedError(
+            f"LLM account budget exceeded: {provider_msg}", litellm_exc
+        )
     if isinstance(litellm_exc, litellm.RateLimitError):
         # OpenAI returns HTTP 429 for both rate limiting and credit exhaustion;
         # distinguish by message content.
         lowered = provider_msg.lower()
-        if any(k in lowered for k in ("insufficient_quota", "quota", "billing", "exceeded your current")):
-            raise LLMCreditExhaustedError(f"LLM account credit exhausted: {provider_msg}", litellm_exc)
+        if any(
+            k in lowered
+            for k in ("insufficient_quota", "quota", "billing", "exceeded your current")
+        ):
+            raise LLMCreditExhaustedError(
+                f"LLM account credit exhausted: {provider_msg}", litellm_exc
+            )
         raise LLMRateLimitError(f"LLM rate limit reached: {provider_msg}", litellm_exc)
     if isinstance(litellm_exc, litellm.NotFoundError):
         raise LLMServiceUnavailableError(
@@ -99,8 +108,17 @@ def _raise_as_provider_error(exc: Exception) -> None:
             f"Provider detail: {provider_msg}",
             litellm_exc,
         )
-    if isinstance(litellm_exc, (litellm.ServiceUnavailableError, litellm.APIConnectionError, litellm.InternalServerError)):
-        raise LLMServiceUnavailableError(f"LLM service unavailable: {provider_msg}", litellm_exc)
+    if isinstance(
+        litellm_exc,
+        (
+            litellm.ServiceUnavailableError,
+            litellm.APIConnectionError,
+            litellm.InternalServerError,
+        ),
+    ):
+        raise LLMServiceUnavailableError(
+            f"LLM service unavailable: {provider_msg}", litellm_exc
+        )
 
 
 # Type variable for generic structured extraction
@@ -109,6 +127,7 @@ T = TypeVar("T", bound=BaseModel)
 
 class LLMResponse(BaseModel):
     """Standardized LLM response wrapper."""
+
     content: str
     model: str
     usage: dict[str, int] | None = None
@@ -117,11 +136,11 @@ class LLMResponse(BaseModel):
 class LLMClient:
     """
     LLM client using LiteLLM + Instructor.
-    
+
     Supports multiple providers through LiteLLM's unified interface.
     Uses Instructor for structured extraction with Pydantic models.
     """
-    
+
     def __init__(
         self,
         model: str | None = None,
@@ -163,12 +182,14 @@ class LLMClient:
         self.model = model or settings.llm_model
         self.api_key = api_key or settings.llm_api_key
         self.api_base = api_base or settings.llm_api_base
-        self.temperature = temperature if temperature is not None else settings.llm_temperature
+        self.temperature = (
+            temperature if temperature is not None else settings.llm_temperature
+        )
         self.max_tokens = max_tokens or settings.llm_max_tokens
         self.instructor_mode = instructor_mode or settings.llm_instructor_mode
         self.extra_params: dict = extra_params or {}
         self.drop_params: bool = drop_params
-    
+
     async def complete(
         self,
         prompt: str,
@@ -178,23 +199,23 @@ class LLMClient:
     ) -> LLMResponse:
         """
         Generate a completion for the given prompt.
-        
+
         Args:
             prompt: User message
             system_prompt: Optional system message
             temperature: Override default temperature
             max_tokens: Override default max tokens
-            
+
         Returns:
             LLMResponse with generated content
         """
         from litellm import acompletion
-        
+
         messages = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": prompt})
-        
+
         call_kwargs: dict = dict(
             model=self.model,
             messages=messages,
@@ -204,7 +225,9 @@ class LLMClient:
             **self.extra_params,
         )
         if not self.drop_params:
-            call_kwargs["temperature"] = temperature if temperature is not None else self.temperature
+            call_kwargs["temperature"] = (
+                temperature if temperature is not None else self.temperature
+            )
         try:
             response = await acompletion(**call_kwargs)
         except Exception as exc:
@@ -214,15 +237,19 @@ class LLMClient:
         return LLMResponse(
             content=response.choices[0].message.content,
             model=response.model,
-            usage={
-                "prompt_tokens": response.usage.prompt_tokens,
-                "completion_tokens": response.usage.completion_tokens,
-            } if response.usage else None,
+            usage=(
+                {
+                    "prompt_tokens": response.usage.prompt_tokens,
+                    "completion_tokens": response.usage.completion_tokens,
+                }
+                if response.usage
+                else None
+            ),
         )
-    
+
     async def extract(
         self,
-        response_model: Type[T],
+        response_model: type[T],
         messages: list[dict[str, str]],
         system_prompt: str | None = None,
         temperature: float | None = None,
@@ -230,37 +257,37 @@ class LLMClient:
     ) -> T:
         """
         Extract structured data from messages using Instructor.
-        
+
         The extraction mode is determined by self.instructor_mode (set in __init__):
-        
+
         - TOOLS mode (default): The LLM uses its native function-calling API.
           Instructor sends the Pydantic schema as a tool definition and the
           LLM responds with a tool call whose arguments match the schema.
           This is the most reliable mode for frontier models (OpenAI, Anthropic)
           because they were specifically fine-tuned for tool use.
-        
+
         - JSON mode: Instructor embeds the Pydantic schema in the system prompt
           and instructs the LLM to respond with JSON matching that schema.
           No tool calls involved — just constrained text generation.
           This works with local models (e.g., Ollama) that don't support
           tool calls, at the cost of slightly lower extraction reliability.
-        
+
         Both modes validate the output against the Pydantic schema and retry
         on validation errors (up to Instructor's default max_retries).
-        
+
         Args:
             response_model: Pydantic model class to extract
             messages: List of message dicts with 'role' and 'content'
             system_prompt: Optional system message
             temperature: Override default temperature
             max_tokens: Override default max tokens
-            
+
         Returns:
             Instance of response_model populated with extracted data
         """
         import instructor
         from litellm import acompletion
-        
+
         # Select Instructor mode based on client configuration.
         # - None or "TOOLS": use function/tool calling (default, best for API providers)
         # - "JSON": use JSON-in-prompt (required for most local/Ollama models)
@@ -268,14 +295,14 @@ class LLMClient:
             mode = instructor.Mode.JSON
         else:
             mode = instructor.Mode.TOOLS
-        
+
         client = instructor.from_litellm(acompletion, mode=mode)
-        
+
         full_messages = []
         if system_prompt:
             full_messages.append({"role": "system", "content": system_prompt})
         full_messages.extend(messages)
-        
+
         call_kwargs: dict = dict(
             model=self.model,
             response_model=response_model,
@@ -286,17 +313,19 @@ class LLMClient:
             **self.extra_params,
         )
         if not self.drop_params:
-            call_kwargs["temperature"] = temperature if temperature is not None else self.temperature
+            call_kwargs["temperature"] = (
+                temperature if temperature is not None else self.temperature
+            )
         try:
             return await client.chat.completions.create(**call_kwargs)
         except Exception as exc:
             _raise_as_provider_error(exc)
             raise
-    
+
     async def health_check(self) -> dict[str, Any]:
         """
         Check if the LLM API is reachable.
-        
+
         Returns:
             Dict with 'healthy' bool and 'message'
         """
@@ -306,7 +335,7 @@ class LLMClient:
                 "message": "No API key configured",
                 "model": self.model,
             }
-        
+
         try:
             await self.complete(
                 prompt="Respond with only: ok",
@@ -335,7 +364,7 @@ _client: LLMClient | None = None
 def get_llm_client() -> LLMClient:
     """
     Get the LLM client singleton instance.
-    
+
     Returns:
         LLMClient instance configured from settings
     """

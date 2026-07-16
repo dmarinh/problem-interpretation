@@ -8,51 +8,67 @@ Optionally applies reranking for improved relevance.
 from pydantic import BaseModel, Field
 
 from app.config import settings
-from app.rag.vector_store import VectorStore, get_vector_store
-from app.rag.reranker import BaseReranker, create_reranker
 from app.models.enums import RetrievalConfidenceLevel
+from app.rag.reranker import BaseReranker, create_reranker
+from app.rag.vector_store import VectorStore, get_vector_store
 
 
 class RetrievalResult(BaseModel):
     """Single retrieval result with confidence."""
+
     content: str = Field(description="Retrieved text content")
     confidence: float = Field(ge=0.0, le=1.0, description="Confidence score (0-1)")
-    confidence_level: RetrievalConfidenceLevel = Field(description="Confidence classification")
+    confidence_level: RetrievalConfidenceLevel = Field(
+        description="Confidence classification"
+    )
     source: str | None = Field(default=None, description="Source document")
     metadata: dict = Field(default_factory=dict, description="Additional metadata")
     doc_id: str | None = Field(default=None, description="Document ID")
-    
+
     # Raw scores for debugging/analysis
     distance: float | None = Field(default=None, description="Raw vector distance")
-    rerank_score: float | None = Field(default=None, description="Reranker score if applied")
+    rerank_score: float | None = Field(
+        default=None, description="Reranker score if applied"
+    )
 
 
 class RetrievalResponse(BaseModel):
     """Response from a retrieval query."""
+
     query: str = Field(description="Original query")
-    results: list[RetrievalResult] = Field(default_factory=list, description="Retrieved results")
-    top_result: RetrievalResult | None = Field(default=None, description="Best result if above threshold")
-    has_confident_result: bool = Field(default=False, description="Whether any result meets threshold")
-    reranker_used: str | None = Field(default=None, description="Reranker model if used")
-    threshold: float = Field(default=0.0, description="Embedding confidence threshold used for this query")
+    results: list[RetrievalResult] = Field(
+        default_factory=list, description="Retrieved results"
+    )
+    top_result: RetrievalResult | None = Field(
+        default=None, description="Best result if above threshold"
+    )
+    has_confident_result: bool = Field(
+        default=False, description="Whether any result meets threshold"
+    )
+    reranker_used: str | None = Field(
+        default=None, description="Reranker model if used"
+    )
+    threshold: float = Field(
+        default=0.0, description="Embedding confidence threshold used for this query"
+    )
 
 
 class RetrievalService:
     """
     Service for retrieving grounded information from the vector store.
-    
+
     Features:
     - Cosine similarity with normalized embeddings
     - Configurable confidence thresholds
     - Optional reranking with cross-encoders
-    
+
     Usage:
         service = RetrievalService()
         response = service.query("raw chicken pH")
         if response.has_confident_result:
             print(response.top_result.content)
     """
-    
+
     def __init__(
         self,
         vector_store: VectorStore | None = None,
@@ -61,7 +77,7 @@ class RetrievalService:
     ):
         """
         Initialize retrieval service.
-        
+
         Args:
             vector_store: VectorStore instance (uses global if not provided)
             reranker: Optional reranker (None = no reranking)
@@ -70,14 +86,14 @@ class RetrievalService:
         self._store = vector_store or get_vector_store()
         self._reranker = reranker
         self._global_threshold = global_threshold or settings.global_min_confidence
-    
+
     def _cosine_distance_to_confidence(self, distance: float) -> float:
         """
         Convert cosine distance to confidence score.
-        
+
         ChromaDB cosine distance = 1 - cosine_similarity
         So: confidence = cosine_similarity = 1 - distance
-        
+
         For normalized vectors:
         - distance 0 = identical (confidence 1.0)
         - distance 1 = orthogonal (confidence 0.0)
@@ -85,7 +101,7 @@ class RetrievalService:
         """
         confidence = 1.0 - distance
         return max(0.0, min(1.0, confidence))
-    
+
     def _classify_confidence(
         self,
         confidence: float,
@@ -93,7 +109,7 @@ class RetrievalService:
     ) -> RetrievalConfidenceLevel:
         """Classify confidence into levels."""
         threshold = threshold or self._global_threshold
-        
+
         if confidence >= 0.85:
             return RetrievalConfidenceLevel.HIGH
         elif confidence >= threshold:
@@ -102,7 +118,7 @@ class RetrievalService:
             return RetrievalConfidenceLevel.LOW
         else:
             return RetrievalConfidenceLevel.FAILED
-    
+
     def query(
         self,
         query_text: str,
@@ -114,7 +130,7 @@ class RetrievalService:
     ) -> RetrievalResponse:
         """
         Query the vector store.
-        
+
         Args:
             query_text: Query string
             doc_type: Optional document type filter
@@ -122,15 +138,15 @@ class RetrievalService:
             threshold: Confidence threshold (uses global if not provided)
             where: Additional metadata filter
             use_reranker: Whether to apply reranker (if configured)
-            
+
         Returns:
             RetrievalResponse with results and confidence info
         """
         threshold = threshold or self._global_threshold
-        
+
         # Fetch more results if reranking (reranker will filter)
         fetch_n = n_results * 3 if (self._reranker and use_reranker) else n_results
-        
+
         # Query vector store
         raw_results = self._store.query(
             query_text=query_text,
@@ -138,37 +154,41 @@ class RetrievalService:
             doc_type=doc_type,
             where=where,
         )
-        
+
         # Apply reranker if configured
         reranker_used = None
         if self._reranker and use_reranker and raw_results:
             reranker_used = self._reranker.model_name
             raw_results = self._apply_reranker(query_text, raw_results, n_results)
-        
+
         # Convert to RetrievalResults
         results = []
         for raw in raw_results[:n_results]:
             distance = raw.get("distance", 1.0)
             confidence = self._cosine_distance_to_confidence(distance)
-            
-            results.append(RetrievalResult(
-                content=raw["document"],
-                confidence=confidence,
-                confidence_level=self._classify_confidence(confidence, threshold),
-                source=raw.get("metadata", {}).get("source"),
-                metadata=raw.get("metadata", {}),
-                doc_id=raw.get("id"),
-                distance=distance,
-                rerank_score=raw.get("rerank_score"),
-            ))
-        
+
+            results.append(
+                RetrievalResult(
+                    content=raw["document"],
+                    confidence=confidence,
+                    confidence_level=self._classify_confidence(confidence, threshold),
+                    source=raw.get("metadata", {}).get("source"),
+                    metadata=raw.get("metadata", {}),
+                    doc_id=raw.get("id"),
+                    distance=distance,
+                    rerank_score=raw.get("rerank_score"),
+                )
+            )
+
         # Sort by rerank score when available (reranker ordering is authoritative),
         # fall back to embedding confidence for unranked results.
         results.sort(
-            key=lambda r: r.rerank_score if r.rerank_score is not None else r.confidence,
+            key=lambda r: (
+                r.rerank_score if r.rerank_score is not None else r.confidence
+            ),
             reverse=True,
         )
-        
+
         # Find the best reranked result that also clears the embedding threshold.
         # Reranker ordering is authoritative for ranking; embedding confidence is
         # the quality gate. This handles the case where the reranker promotes a
@@ -179,7 +199,7 @@ class RetrievalService:
             None,
         )
         has_confident_result = top_result is not None
-        
+
         return RetrievalResponse(
             query=query_text,
             results=results,
@@ -188,7 +208,7 @@ class RetrievalService:
             reranker_used=reranker_used,
             threshold=threshold,
         )
-    
+
     def _apply_reranker(
         self,
         query: str,
@@ -198,16 +218,16 @@ class RetrievalService:
         """Apply reranker to raw results."""
         documents = [r["document"] for r in raw_results]
         reranked = self._reranker.rerank(query, documents, top_k=top_k)
-        
+
         # Reorder raw_results based on reranker output
         reordered = []
         for rr in reranked:
             result = raw_results[rr.index].copy()
             result["rerank_score"] = rr.score
             reordered.append(result)
-        
+
         return reordered
-    
+
     def query_food_properties(
         self,
         food_description: str,
@@ -266,7 +286,7 @@ class RetrievalService:
             n_results=n_results,
             threshold=settings.food_properties_fallback_confidence,
         )
-    
+
     def query_pathogen_hazards(
         self,
         food_description: str,
@@ -274,7 +294,7 @@ class RetrievalService:
     ) -> RetrievalResponse:
         """
         Query for pathogen hazards associated with a food.
-        
+
         Uses the pathogen_hazards confidence threshold.
         """
         # "food hazard" matches the ingestion template ("Hazard for {food}: {pathogen}...")
@@ -294,7 +314,7 @@ class RetrievalService:
             n_results=n_results,
             threshold=settings.pathogen_hazards_confidence,
         )
-    
+
     def get_hazards_for_food(self, food_name: str) -> list[dict]:
         """
         Fetch all pathogen hazard documents for an exact food_name metadata key,
@@ -327,7 +347,7 @@ class RetrievalService:
         query = f"conservative default {parameter}"
         if context:
             query += f" {context}"
-        
+
         return self.query(
             query_text=query,
             doc_type=VectorStore.TYPE_CONSERVATIVE_VALUES,

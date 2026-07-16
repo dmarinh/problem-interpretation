@@ -24,15 +24,15 @@ Three test sets:
 import pytest
 from pydantic import ValidationError
 
-from app.models.extraction import ExtractedDuration
-from app.services.extraction.semantic_parser import SemanticParser
 from app.core.orchestrator import Orchestrator
 from app.core.state import SessionManager
-
+from app.models.extraction import ExtractedDuration
+from app.services.extraction.semantic_parser import SemanticParser
 
 # =============================================================================
 # Set A — Pydantic constraint validation (no live LLM)
 # =============================================================================
+
 
 class TestValueMinutesConstraint:
     """
@@ -40,24 +40,30 @@ class TestValueMinutesConstraint:
     No LLM involved — pure schema validation.
     """
 
-    @pytest.mark.parametrize("value", [
-        0.5,      # sub-minute (thermal inactivation use case)
-        1.0,      # 1 minute
-        1440.0,   # 1 day
-        50400.0,  # 35 days
-        131400.0, # 90 days — ceiling, should pass
-    ])
+    @pytest.mark.parametrize(
+        "value",
+        [
+            0.5,  # sub-minute (thermal inactivation use case)
+            1.0,  # 1 minute
+            1440.0,  # 1 day
+            50400.0,  # 35 days
+            131400.0,  # 90 days — ceiling, should pass
+        ],
+    )
     def test_valid_values_accepted(self, value: float) -> None:
         dur = ExtractedDuration(value_minutes=value)
         assert dur.value_minutes == value
 
-    @pytest.mark.parametrize("value", [
-        0.0,       # zero — rejected by gt=0
-        -1.0,      # negative
-        -60.0,
-        131400.1,  # just above 90-day ceiling
-        200000.0,  # far above ceiling
-    ])
+    @pytest.mark.parametrize(
+        "value",
+        [
+            0.0,  # zero — rejected by gt=0
+            -1.0,  # negative
+            -60.0,
+            131400.1,  # just above 90-day ceiling
+            200000.0,  # far above ceiling
+        ],
+    )
     def test_invalid_values_rejected(self, value: float) -> None:
         with pytest.raises(ValidationError):
             ExtractedDuration(value_minutes=value)
@@ -83,7 +89,9 @@ class TestValueMinutesConstraint:
 # =============================================================================
 
 # Stem held constant across all Set B queries so only the duration phrasing varies.
-_STEM = "We need to model Listeria monocytogenes growth in vacuum-packed turkey deli meat."
+_STEM = (
+    "We need to model Listeria monocytogenes growth in vacuum-packed turkey deli meat."
+)
 
 
 @pytest.fixture
@@ -98,24 +106,27 @@ class TestSetB_ExtractionSuccess:
     Each query uses the constant stem so only the duration phrasing is tested.
     """
 
-    @pytest.mark.parametrize("suffix, expected_minutes", [
-        ("Store for 35 days at 4°C.",                         50400),
-        ("The product has a 35-day shelf life at 4°C.",       50400),
-        ("Store for 5 days at 4°C.",                          7200),
-        ("Store for 1 day at 4°C.",                           1440),
-        ("Store for 2 weeks at 4°C.",                         20160),
-        ("Store for 24 hours at 4°C.",                        1440),
-        ("Store for 1 week at 4°C.",                          10080),
-        ("Store for 840 hours at 4°C.",                       50400),
-        ("Store for 50400 minutes at 4°C.",                   50400),
-        # Mid-sentence duration — tests prompt generalisation to natural Cat A register
-        (
-            "We need to assess growth during retail refrigeration "
-            "for the duration of its 35-day shelf life. "
-            "What growth can we expect by sell-by date?",
-            50400,
-        ),
-    ])
+    @pytest.mark.parametrize(
+        "suffix, expected_minutes",
+        [
+            ("Store for 35 days at 4°C.", 50400),
+            ("The product has a 35-day shelf life at 4°C.", 50400),
+            ("Store for 5 days at 4°C.", 7200),
+            ("Store for 1 day at 4°C.", 1440),
+            ("Store for 2 weeks at 4°C.", 20160),
+            ("Store for 24 hours at 4°C.", 1440),
+            ("Store for 1 week at 4°C.", 10080),
+            ("Store for 840 hours at 4°C.", 50400),
+            ("Store for 50400 minutes at 4°C.", 50400),
+            # Mid-sentence duration — tests prompt generalisation to natural Cat A register
+            (
+                "We need to assess growth during retail refrigeration "
+                "for the duration of its 35-day shelf life. "
+                "What growth can we expect by sell-by date?",
+                50400,
+            ),
+        ],
+    )
     async def test_success_case(
         self,
         parser: SemanticParser,
@@ -131,12 +142,15 @@ class TestSetB_ExtractionSuccess:
             f"(description={scenario.single_step_duration.description!r})"
         )
 
-    @pytest.mark.parametrize("suffix", [
-        "Store overnight at 4°C.",
-        "Held during retail display at 4°C.",
-        "Stored for a few days at 4°C.",
-        "Throughout cold-chain transport at 4°C.",
-    ])
+    @pytest.mark.parametrize(
+        "suffix",
+        [
+            "Store overnight at 4°C.",
+            "Held during retail display at 4°C.",
+            "Stored for a few days at 4°C.",
+            "Throughout cold-chain transport at 4°C.",
+        ],
+    )
     async def test_decline_case(
         self,
         parser: SemanticParser,
@@ -150,9 +164,9 @@ class TestSetB_ExtractionSuccess:
             f"Query: {query!r}\n"
             f"Expected value_minutes=None for vague phrase, got {dur.value_minutes!r}"
         )
-        assert dur.description, (
-            f"Query: {query!r}\nExpected description to be populated for downstream resolution"
-        )
+        assert (
+            dur.description
+        ), f"Query: {query!r}\nExpected description to be populated for downstream resolution"
 
 
 # =============================================================================
@@ -162,16 +176,16 @@ class TestSetB_ExtractionSuccess:
 
 # (query_suffix, expected_minutes)
 _SET_C_CASES = [
-    ("for 35 days at 4°C",                             50400),
-    ("for 5 days at 4°C",                              7200),
-    ("for 1 day at 4°C",                               1440),
-    ("for 2 weeks at 4°C",                             20160),
-    ("for 24 hours at 4°C",                            1440),
-    ("for 1 week at 4°C",                              10080),
-    ("over its 35-day shelf life at 4°C",              50400),
-    ("for 35 days at 4°C, refrigerated",               50400),
-    ("for 50400 minutes at 4°C",                       50400),
-    ("for 840 hours at 4°C",                           50400),
+    ("for 35 days at 4°C", 50400),
+    ("for 5 days at 4°C", 7200),
+    ("for 1 day at 4°C", 1440),
+    ("for 2 weeks at 4°C", 20160),
+    ("for 24 hours at 4°C", 1440),
+    ("for 1 week at 4°C", 10080),
+    ("over its 35-day shelf life at 4°C", 50400),
+    ("for 35 days at 4°C, refrigerated", 50400),
+    ("for 50400 minutes at 4°C", 50400),
+    ("for 840 hours at 4°C", 50400),
 ]
 
 

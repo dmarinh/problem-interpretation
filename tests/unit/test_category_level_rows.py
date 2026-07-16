@@ -29,9 +29,15 @@ _REPO_ROOT = Path(__file__).parent.parent.parent
 _CATEGORY_LEVEL_ROWS_CSV = _REPO_ROOT / "data" / "rag" / "category_level_rows.csv"
 
 REQUIRED_COLUMNS = {
-    "food_name", "ptm_category", "state",
-    "ph_min", "ph_max", "ph_source_id",
-    "aw_min", "aw_max", "aw_source_id",
+    "food_name",
+    "ptm_category",
+    "state",
+    "ph_min",
+    "ph_max",
+    "ph_source_id",
+    "aw_min",
+    "aw_max",
+    "aw_source_id",
 }
 
 
@@ -39,12 +45,13 @@ REQUIRED_COLUMNS = {
 # CSV schema
 # ---------------------------------------------------------------------------
 
+
 class TestCategoryLevelRowsCsvSchema:
 
     def test_csv_file_exists(self) -> None:
-        assert _CATEGORY_LEVEL_ROWS_CSV.exists(), (
-            f"category_level_rows.csv not found at {_CATEGORY_LEVEL_ROWS_CSV}"
-        )
+        assert (
+            _CATEGORY_LEVEL_ROWS_CSV.exists()
+        ), f"category_level_rows.csv not found at {_CATEGORY_LEVEL_ROWS_CSV}"
 
     def test_csv_has_required_columns(self) -> None:
         with _CATEGORY_LEVEL_ROWS_CSV.open(encoding="utf-8") as fh:
@@ -61,13 +68,16 @@ class TestCategoryLevelRowsCsvSchema:
             "Add rows only after updating the design spec."
         )
 
-    @pytest.mark.parametrize("category, state, field_col, expected_food_name, expected_source", [
-        ("poultry", "fresh", "aw_min",  "fresh poultry",   "IFT-2003-T31"),
-        ("meat",    "fresh", "aw_min",  "fresh meat",      "IFT-2003-T31"),
-        ("meat",    "cured", "aw_min",  "cured meat",      "IFT-2003-T31"),
-        ("fish",    "fresh", "ph_min",  "fish fresh most", "IFT-2003-T33"),
-        ("eggs",    "fresh", "aw_min",  "eggs",            "IFT-2003-T31"),
-    ])
+    @pytest.mark.parametrize(
+        "category, state, field_col, expected_food_name, expected_source",
+        [
+            ("poultry", "fresh", "aw_min", "fresh poultry", "IFT-2003-T31"),
+            ("meat", "fresh", "aw_min", "fresh meat", "IFT-2003-T31"),
+            ("meat", "cured", "aw_min", "cured meat", "IFT-2003-T31"),
+            ("fish", "fresh", "ph_min", "fish fresh most", "IFT-2003-T33"),
+            ("eggs", "fresh", "aw_min", "eggs", "IFT-2003-T31"),
+        ],
+    )
     def test_curated_row_present_and_named(
         self,
         category: str,
@@ -79,7 +89,8 @@ class TestCategoryLevelRowsCsvSchema:
         with _CATEGORY_LEVEL_ROWS_CSV.open(encoding="utf-8") as fh:
             rows = list(csv.DictReader(fh))
         matches = [
-            r for r in rows
+            r
+            for r in rows
             if r["ptm_category"] == category
             and r["state"] == state
             and r.get(field_col, "").strip()
@@ -90,14 +101,15 @@ class TestCategoryLevelRowsCsvSchema:
             f"found: {[r['food_name'] for r in matches]}"
         )
         source_col = "ph_source_id" if "ph" in field_col else "aw_source_id"
-        assert any(expected_source in r.get(source_col, "") for r in matches), (
-            f"Expected source {expected_source!r} in ({category}, {state}) {source_col}"
-        )
+        assert any(
+            expected_source in r.get(source_col, "") for r in matches
+        ), f"Expected source {expected_source!r} in ({category}, {state}) {source_col}"
 
 
 # ---------------------------------------------------------------------------
 # TaxonomyBridge.lookup_category_level_row
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def bridge() -> TaxonomyBridge:
@@ -107,13 +119,16 @@ def bridge() -> TaxonomyBridge:
 
 class TestLookupCategoryLevelRowHits:
 
-    @pytest.mark.parametrize("category, state, field", [
-        ("poultry", "fresh", "aw"),
-        ("meat",    "fresh", "aw"),
-        ("meat",    "cured", "aw"),
-        ("fish",    "fresh", "ph"),
-        ("eggs",    "fresh", "aw"),
-    ])
+    @pytest.mark.parametrize(
+        "category, state, field",
+        [
+            ("poultry", "fresh", "aw"),
+            ("meat", "fresh", "aw"),
+            ("meat", "cured", "aw"),
+            ("fish", "fresh", "ph"),
+            ("eggs", "fresh", "aw"),
+        ],
+    )
     def test_curated_row_found(
         self, bridge: TaxonomyBridge, category: str, state: str, field: str
     ) -> None:
@@ -159,22 +174,32 @@ class TestLookupCategoryLevelRowHits:
     def test_returned_dict_has_all_required_keys(self, bridge: TaxonomyBridge) -> None:
         result = bridge.lookup_category_level_row("poultry", "fresh", "aw")
         assert result is not None
-        for key in ("food_name", "ptm_category", "state", "aw_min", "aw_max", "aw_source_id"):
+        for key in (
+            "food_name",
+            "ptm_category",
+            "state",
+            "aw_min",
+            "aw_max",
+            "aw_source_id",
+        ):
             assert key in result, f"Key {key!r} missing from returned dict"
 
 
 class TestLookupCategoryLevelRowMisses:
 
-    @pytest.mark.parametrize("category, state, field, reason", [
-        ("poultry", "fresh",  "ph",  "no curated pH row for poultry"),
-        ("vegetable","fresh", "ph",  "vegetable not in curated rows"),
-        ("vegetable","fresh", "aw",  "vegetable not in curated rows"),
-        ("poultry", "cured",  "aw",  "no curated cured-poultry aw row"),
-        ("meat",    "dried",  "aw",  "no curated dried-meat aw row"),
-        ("fish",    "fresh",  "aw",  "no curated fish aw row"),
-        ("eggs",    "fresh",  "ph",  "no curated eggs pH row"),
-        ("unknown", "fresh",  "aw",  "category does not exist in curated rows"),
-    ])
+    @pytest.mark.parametrize(
+        "category, state, field, reason",
+        [
+            ("poultry", "fresh", "ph", "no curated pH row for poultry"),
+            ("vegetable", "fresh", "ph", "vegetable not in curated rows"),
+            ("vegetable", "fresh", "aw", "vegetable not in curated rows"),
+            ("poultry", "cured", "aw", "no curated cured-poultry aw row"),
+            ("meat", "dried", "aw", "no curated dried-meat aw row"),
+            ("fish", "fresh", "aw", "no curated fish aw row"),
+            ("eggs", "fresh", "ph", "no curated eggs pH row"),
+            ("unknown", "fresh", "aw", "category does not exist in curated rows"),
+        ],
+    )
     def test_no_row_returns_none(
         self, bridge: TaxonomyBridge, category: str, state: str, field: str, reason: str
     ) -> None:

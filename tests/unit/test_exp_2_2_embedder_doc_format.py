@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 Unit tests for Experiment 2.2 (Embedder x Doc Text Format).
 
@@ -26,26 +25,26 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from benchmarks.experiments.exp_2_2_embedder_doc_format import (
-    _score_query_result,
-    _compute_cell_summary,
-    _threshold_sweep,
-    _recompute_query_at_threshold,
-    compute_recommendation,
     _CATEGORY_LEVEL_FOOD_NAMES,
     FPR_CEILING,
     MRR_EASY_FLOOR,
+    _compute_cell_summary,
+    _recompute_query_at_threshold,
+    _score_query_result,
+    _threshold_sweep,
+    compute_recommendation,
 )
-
 
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
 
+
 def _hit(food_name: str, score: float, doc_id: str | None = None) -> dict:
     return {
         "food_name": food_name,
-        "doc_id":    doc_id or f"fp_{food_name.replace(' ', '_')}",
-        "score":     score,
+        "doc_id": doc_id or f"fp_{food_name.replace(' ', '_')}",
+        "score": score,
     }
 
 
@@ -56,11 +55,11 @@ def _pos_entry(
     production_tier: str = "tier_1",
 ) -> dict:
     return {
-        "id":                   f"{tier}_test",
-        "food_description":     acceptable[0] if acceptable else "unknown",
-        "field":                field,
-        "production_tier":      production_tier,
-        "tier":                 tier,
+        "id": f"{tier}_test",
+        "food_description": acceptable[0] if acceptable else "unknown",
+        "field": field,
+        "production_tier": production_tier,
+        "tier": tier,
         "acceptable_food_names": acceptable,
     }
 
@@ -71,11 +70,11 @@ def _neg_entry(
     production_tier: str = "tier_2",
 ) -> dict:
     return {
-        "id":                   f"{tier}_negative",
-        "food_description":     "generic food",
-        "field":                field,
-        "production_tier":      production_tier,
-        "tier":                 tier,
+        "id": f"{tier}_negative",
+        "food_description": "generic food",
+        "field": field,
+        "production_tier": production_tier,
+        "tier": tier,
         "acceptable_food_names": [],
     }
 
@@ -84,43 +83,50 @@ def _make_query_record(
     tier: str,
     production_tier: str,
     is_negative: bool,
-    reciprocal_rank,        # float or None (gate-filtered)
+    reciprocal_rank,  # float or None (gate-filtered)
     correct_at_1: bool,
     top1_food_name: str | None = None,
     expected_score: float | None = None,
     gate_passed: bool | None = None,
     field: str = "ph_aw_combined",
-    expected_rank: int | None = None,  # None → use default (1 for positive, None for negative)
+    expected_rank: (
+        int | None
+    ) = None,  # None → use default (1 for positive, None for negative)
 ) -> dict:
-    exp_rank = expected_rank if expected_rank is not None else (1 if not is_negative else None)
-    pure_rr  = (round(1.0 / exp_rank, 6) if exp_rank else 0.0) if not is_negative else None
+    exp_rank = (
+        expected_rank if expected_rank is not None else (1 if not is_negative else None)
+    )
+    pure_rr = (
+        (round(1.0 / exp_rank, 6) if exp_rank else 0.0) if not is_negative else None
+    )
     return {
-        "query_id":            f"Q_{tier}",
-        "field":               field,
-        "production_tier":     production_tier,
-        "tier":                tier,
-        "threshold_used":      0.70,
-        "latency_ms":          10.0,
-        "error":               None,
-        "top1_doc_id":         "some_doc",
-        "top1_food_name":      top1_food_name,
-        "top1_score":          0.75 if not is_negative else 0.50,
-        "top3_food_names":     [],
+        "query_id": f"Q_{tier}",
+        "field": field,
+        "production_tier": production_tier,
+        "tier": tier,
+        "threshold_used": 0.70,
+        "latency_ms": 10.0,
+        "error": None,
+        "top1_doc_id": "some_doc",
+        "top1_food_name": top1_food_name,
+        "top1_score": 0.75 if not is_negative else 0.50,
+        "top3_food_names": [],
         "canonical_food_name": None,
         "acceptable_food_names": [],
-        "is_negative":         is_negative,
-        "expected_rank":       exp_rank,
-        "expected_score":      expected_score,
+        "is_negative": is_negative,
+        "expected_rank": exp_rank,
+        "expected_score": expected_score,
         "pure_reciprocal_rank": pure_rr,
-        "reciprocal_rank":     reciprocal_rank,
-        "correct_at_1":        correct_at_1,
-        "gate_passed":         gate_passed if gate_passed is not None else correct_at_1,
+        "reciprocal_rank": reciprocal_rank,
+        "correct_at_1": correct_at_1,
+        "gate_passed": gate_passed if gate_passed is not None else correct_at_1,
     }
 
 
 # ---------------------------------------------------------------------------
 # _score_query_result — reciprocal_rank (new in 2.2)
 # ---------------------------------------------------------------------------
+
 
 class TestScoreQueryResultReciprocalRank:
 
@@ -157,7 +163,11 @@ class TestScoreQueryResultReciprocalRank:
 
     def test_multiple_acceptable_names(self):
         # Any of the acceptable names at rank 2 should give rr=0.5
-        top_k = [_hit("turkey breast", 0.92), _hit("fresh poultry", 0.80), _hit("chicken", 0.75)]
+        top_k = [
+            _hit("turkey breast", 0.92),
+            _hit("fresh poultry", 0.80),
+            _hit("chicken", 0.75),
+        ]
         entry = _pos_entry(["fresh poultry", "chicken"])
         r = _score_query_result(top_k, entry, threshold=0.70)
         assert r["reciprocal_rank"] == pytest.approx(0.5)
@@ -171,6 +181,7 @@ class TestScoreQueryResultReciprocalRank:
 # ---------------------------------------------------------------------------
 # _score_query_result — negative controls
 # ---------------------------------------------------------------------------
+
 
 class TestScoreQueryResultNegativeControl:
 
@@ -207,6 +218,7 @@ class TestScoreQueryResultNegativeControl:
 # _compute_cell_summary — MRR, per-stratum, negative exclusion
 # ---------------------------------------------------------------------------
 
+
 class TestComputeCellSummaryMRR:
 
     def _build_results(self) -> list[dict]:
@@ -215,14 +227,16 @@ class TestComputeCellSummaryMRR:
         1 pathogen positive (RR 1.0), 2 hard negative (both pass = no FP).
         """
         return [
-            _make_query_record("easy",    "tier_1",           False, 1.0,  True,  "chicken",    0.85),
-            _make_query_record("easy",    "tier_1",           False, 0.5,  False, "wrong",      0.85),
-            _make_query_record("easy",    "tier_1",           False, 0.0,  False, "wrong",      0.65),
-            _make_query_record("medium",  "tier_2",           False, 1.0,  True,  "chicken",    0.80),
-            _make_query_record("medium",  "tier_2",           False, 0.5,  False, "wrong",      0.80),
-            _make_query_record("pathogen","pathogen_stage_1", False, 1.0,  True,  "chicken",    0.90),
-            _make_query_record("hard",    "tier_2",           True,  None, True,  None,         None),
-            _make_query_record("hard",    "tier_2",           True,  None, True,  None,         None),
+            _make_query_record("easy", "tier_1", False, 1.0, True, "chicken", 0.85),
+            _make_query_record("easy", "tier_1", False, 0.5, False, "wrong", 0.85),
+            _make_query_record("easy", "tier_1", False, 0.0, False, "wrong", 0.65),
+            _make_query_record("medium", "tier_2", False, 1.0, True, "chicken", 0.80),
+            _make_query_record("medium", "tier_2", False, 0.5, False, "wrong", 0.80),
+            _make_query_record(
+                "pathogen", "pathogen_stage_1", False, 1.0, True, "chicken", 0.90
+            ),
+            _make_query_record("hard", "tier_2", True, None, True, None, None),
+            _make_query_record("hard", "tier_2", True, None, True, None, None),
         ]
 
     def test_pure_mrr_uses_expected_rank_not_threshold(self):
@@ -295,26 +309,56 @@ class TestComputeCellSummaryMixedFieldStrata:
 
     def test_medium_stratum_mixes_ph_and_aw_queries(self):
         results = [
-            _make_query_record("medium", "tier_2", False, 1.0,  True,  "chicken", 0.80, field="ph"),
-            _make_query_record("medium", "tier_2", False, 0.5,  False, "wrong",   0.80, field="water_activity"),
-            _make_query_record("medium", "tier_2", False, 0.0,  False, "wrong",   0.65, field="ph_aw_combined"),
+            _make_query_record(
+                "medium", "tier_2", False, 1.0, True, "chicken", 0.80, field="ph"
+            ),
+            _make_query_record(
+                "medium",
+                "tier_2",
+                False,
+                0.5,
+                False,
+                "wrong",
+                0.80,
+                field="water_activity",
+            ),
+            _make_query_record(
+                "medium",
+                "tier_2",
+                False,
+                0.0,
+                False,
+                "wrong",
+                0.65,
+                field="ph_aw_combined",
+            ),
         ]
         s = _compute_cell_summary(results)
         # Gate-filtered RRs: 1.0, 0.5, 0.0 → mean = 0.5
-        assert s["mrr_gate_filtered_by_stratum"]["medium"] == pytest.approx(round((1.0 + 0.5 + 0.0) / 3, 4))
+        assert s["mrr_gate_filtered_by_stratum"]["medium"] == pytest.approx(
+            round((1.0 + 0.5 + 0.0) / 3, 4)
+        )
 
     def test_easy_stratum_mixes_fields(self):
         results = [
-            _make_query_record("easy", "tier_1", False, 1.0, True,  "chicken", 0.85, field="ph"),
-            _make_query_record("easy", "tier_1", False, 1.0, True,  "beef",    0.85, field="water_activity"),
+            _make_query_record(
+                "easy", "tier_1", False, 1.0, True, "chicken", 0.85, field="ph"
+            ),
+            _make_query_record(
+                "easy", "tier_1", False, 1.0, True, "beef", 0.85, field="water_activity"
+            ),
         ]
         s = _compute_cell_summary(results)
         assert s["mrr_gate_filtered_by_stratum"]["easy"] == pytest.approx(1.0)
 
     def test_stratum_with_only_rr_zero_gives_gate_filtered_mrr_zero(self):
         results = [
-            _make_query_record("medium", "tier_2", False, 0.0, False, "wrong", 0.65, field="ph"),
-            _make_query_record("medium", "tier_2", False, 0.0, False, "wrong", 0.60, field="ph"),
+            _make_query_record(
+                "medium", "tier_2", False, 0.0, False, "wrong", 0.65, field="ph"
+            ),
+            _make_query_record(
+                "medium", "tier_2", False, 0.0, False, "wrong", 0.60, field="ph"
+            ),
         ]
         s = _compute_cell_summary(results)
         assert s["mrr_gate_filtered_by_stratum"]["medium"] == pytest.approx(0.0)
@@ -323,6 +367,7 @@ class TestComputeCellSummaryMixedFieldStrata:
 # ---------------------------------------------------------------------------
 # _compute_cell_summary — hard FPR Type-1 / Type-2 taxonomy
 # ---------------------------------------------------------------------------
+
 
 class TestHardFPRTaxonomy:
     """
@@ -340,13 +385,19 @@ class TestHardFPRTaxonomy:
     ) -> list[dict]:
         records = []
         for _ in range(n_pass):
-            records.append(_make_query_record("hard", "tier_2", True, None, True, None, None))
-        for food in (type1_fp_food_names or []):
+            records.append(
+                _make_query_record("hard", "tier_2", True, None, True, None, None)
+            )
+        for food in type1_fp_food_names or []:
             # FP: correct_at_1=False, top1_food_name is a specific-row value
-            records.append(_make_query_record("hard", "tier_2", True, None, False, food, None))
-        for food in (type2_fp_food_names or []):
+            records.append(
+                _make_query_record("hard", "tier_2", True, None, False, food, None)
+            )
+        for food in type2_fp_food_names or []:
             # FP: correct_at_1=False, top1_food_name is a category-level value
-            records.append(_make_query_record("hard", "tier_2", True, None, False, food, None))
+            records.append(
+                _make_query_record("hard", "tier_2", True, None, False, food, None)
+            )
         return records
 
     def test_type1_fp_counted_correctly(self):
@@ -391,17 +442,18 @@ class TestHardFPRTaxonomy:
 
     def test_category_level_food_names_set_contains_expected_entries(self):
         assert "fresh poultry" in _CATEGORY_LEVEL_FOOD_NAMES
-        assert "fresh meat"    in _CATEGORY_LEVEL_FOOD_NAMES
-        assert "cured meat"    in _CATEGORY_LEVEL_FOOD_NAMES
+        assert "fresh meat" in _CATEGORY_LEVEL_FOOD_NAMES
+        assert "cured meat" in _CATEGORY_LEVEL_FOOD_NAMES
         assert "fish fresh most" in _CATEGORY_LEVEL_FOOD_NAMES
-        assert "eggs"          in _CATEGORY_LEVEL_FOOD_NAMES
-        assert "beef ground"   not in _CATEGORY_LEVEL_FOOD_NAMES
-        assert "chicken"       not in _CATEGORY_LEVEL_FOOD_NAMES
+        assert "eggs" in _CATEGORY_LEVEL_FOOD_NAMES
+        assert "beef ground" not in _CATEGORY_LEVEL_FOOD_NAMES
+        assert "chicken" not in _CATEGORY_LEVEL_FOOD_NAMES
 
 
 # ---------------------------------------------------------------------------
 # _compute_cell_summary — edge cases
 # ---------------------------------------------------------------------------
+
 
 class TestComputeCellSummaryEdgeCases:
 
@@ -410,7 +462,10 @@ class TestComputeCellSummaryEdgeCases:
 
     def test_all_errored_returns_empty_dict(self):
         records = [
-            {**_make_query_record("easy", "tier_1", False, None, None), "error": "ChromaDB timeout"},
+            {
+                **_make_query_record("easy", "tier_1", False, None, None),
+                "error": "ChromaDB timeout",
+            },
         ]
         assert _compute_cell_summary(records) == {}
 
@@ -436,6 +491,7 @@ class TestComputeCellSummaryEdgeCases:
 # compute_recommendation — viability-based decision rule
 # ---------------------------------------------------------------------------
 
+
 def _make_cell(
     embedder_id: str,
     format_id: str,
@@ -450,25 +506,25 @@ def _make_cell(
     # Convert bool to tri-state string so tests don't need to know the internal representation.
     vat = "true" if viable else "false"
     return {
-        "cell_id":              f"{embedder_id}_{format_id}",
-        "embedder_id":          embedder_id,
-        "embedder_name":        embedder_id,
-        "embedder_hf_model":    f"sentence-transformers/{embedder_id}",
-        "embedder_dim":         384,
-        "embedder_params_m":    params_m,
+        "cell_id": f"{embedder_id}_{format_id}",
+        "embedder_id": embedder_id,
+        "embedder_name": embedder_id,
+        "embedder_hf_model": f"sentence-transformers/{embedder_id}",
+        "embedder_dim": 384,
+        "embedder_params_m": params_m,
         "embedder_is_baseline": is_baseline,
         "embedder_training_objective": "general",
-        "format_id":            format_id,
-        "load_time_s":          1.0,
-        "embed_time_s":         0.5,
-        "queries":              [],
+        "format_id": format_id,
+        "load_time_s": 1.0,
+        "embed_time_s": 0.5,
+        "queries": [],
         "summary": {
-            "mrr":                            mrr,
-            "mrr_by_stratum":                 {"easy": mrr_easy},
+            "mrr": mrr,
+            "mrr_by_stratum": {"easy": mrr_easy},
             "viable_at_calibrated_threshold": vat,
-            "n_errored_queries":              n_errored,
-            "mean_query_latency_ms":          latency_ms,
-            "hard_fpr":                       0.0 if viable else 0.083,
+            "n_errored_queries": n_errored,
+            "mean_query_latency_ms": latency_ms,
+            "hard_fpr": 0.0 if viable else 0.083,
         },
     }
 
@@ -476,22 +532,42 @@ def _make_cell(
 class TestComputeRecommendation:
 
     BASELINE_EMBEDDER = "minilm-l6-v2"
-    BASELINE_FORMAT   = "current"
+    BASELINE_FORMAT = "current"
 
-    def _baseline(self, mrr: float, viable: bool = True, mrr_easy: float = 0.95) -> dict:
+    def _baseline(
+        self, mrr: float, viable: bool = True, mrr_easy: float = 0.95
+    ) -> dict:
         return _make_cell(
-            self.BASELINE_EMBEDDER, self.BASELINE_FORMAT,
-            mrr, viable=viable, mrr_easy=mrr_easy, is_baseline=True,
+            self.BASELINE_EMBEDDER,
+            self.BASELINE_FORMAT,
+            mrr,
+            viable=viable,
+            mrr_easy=mrr_easy,
+            is_baseline=True,
         )
 
-    def _viable(self, embedder_id: str, format_id: str, mrr: float,
-                mrr_easy: float = 0.95, params_m: int = 22, latency_ms: float = 20.0) -> dict:
-        return _make_cell(embedder_id, format_id, mrr,
-                          viable=True, mrr_easy=mrr_easy,
-                          params_m=params_m, latency_ms=latency_ms)
+    def _viable(
+        self,
+        embedder_id: str,
+        format_id: str,
+        mrr: float,
+        mrr_easy: float = 0.95,
+        params_m: int = 22,
+        latency_ms: float = 20.0,
+    ) -> dict:
+        return _make_cell(
+            embedder_id,
+            format_id,
+            mrr,
+            viable=True,
+            mrr_easy=mrr_easy,
+            params_m=params_m,
+            latency_ms=latency_ms,
+        )
 
-    def _not_viable(self, embedder_id: str, format_id: str, mrr: float,
-                    mrr_easy: float = 0.0) -> dict:
+    def _not_viable(
+        self, embedder_id: str, format_id: str, mrr: float, mrr_easy: float = 0.0
+    ) -> dict:
         return _make_cell(embedder_id, format_id, mrr, viable=False, mrr_easy=mrr_easy)
 
     # Action: "no_baseline"
@@ -513,7 +589,7 @@ class TestComputeRecommendation:
     def test_no_viable_cells_when_all_candidates_fail_fpr(self):
         cells = [
             self._baseline(0.75),
-            self._not_viable("mpnet", "terse",   0.90, mrr_easy=0.0),
+            self._not_viable("mpnet", "terse", 0.90, mrr_easy=0.0),
             self._not_viable("mpnet", "verbose", 0.85, mrr_easy=0.0),
         ]
         r = compute_recommendation(cells)
@@ -539,7 +615,7 @@ class TestComputeRecommendation:
         cells = [
             self._baseline(0.70),
             self._viable("mpnet", "verbose", 0.85),
-            self._viable("mpnet", "terse",   0.80),
+            self._viable("mpnet", "terse", 0.80),
         ]
         r = compute_recommendation(cells)
         assert r["action"] == "switch"
@@ -551,7 +627,7 @@ class TestComputeRecommendation:
         cells = [
             self._baseline(0.85),
             self._viable("mpnet", "verbose", 0.80),
-            self._viable("mpnet", "terse",   0.70),
+            self._viable("mpnet", "terse", 0.70),
         ]
         r = compute_recommendation(cells)
         assert r["action"] == "keep_baseline"
@@ -561,8 +637,8 @@ class TestComputeRecommendation:
         cells = [
             self._baseline(0.60),
             self._viable("mpnet", "verbose", 0.90),
-            self._viable("mpnet", "terse",   0.85),
-            self._not_viable("mpnet", "current", 0.95),   # highest MRR but not viable
+            self._viable("mpnet", "terse", 0.85),
+            self._not_viable("mpnet", "current", 0.95),  # highest MRR but not viable
         ]
         r = compute_recommendation(cells)
         assert r["action"] == "switch"
@@ -571,8 +647,8 @@ class TestComputeRecommendation:
     def test_not_viable_excluded_even_if_higher_mrr(self):
         cells = [
             self._baseline(0.70),
-            self._not_viable("mpnet", "terse",   0.95),   # not viable
-            self._viable("mpnet", "verbose", 0.75),        # viable but lower MRR
+            self._not_viable("mpnet", "terse", 0.95),  # not viable
+            self._viable("mpnet", "verbose", 0.75),  # viable but lower MRR
         ]
         r = compute_recommendation(cells)
         assert r["action"] == "switch"
@@ -580,7 +656,7 @@ class TestComputeRecommendation:
 
     def test_baseline_mrr_used_as_reference_regardless_of_viability(self):
         cells = [
-            self._baseline(0.70, viable=False),            # baseline itself not viable
+            self._baseline(0.70, viable=False),  # baseline itself not viable
             self._viable("mpnet", "verbose", 0.80),
         ]
         r = compute_recommendation(cells)
@@ -600,7 +676,7 @@ class TestComputeRecommendation:
         cells = [
             self._baseline(0.60),
             self._viable("mpnet", "verbose", 0.85, latency_ms=50.0),
-            self._viable("mpnet", "terse",   0.84, latency_ms=15.0),  # lower latency
+            self._viable("mpnet", "terse", 0.84, latency_ms=15.0),  # lower latency
         ]
         r = compute_recommendation(cells)
         assert r["action"] == "switch"
@@ -610,7 +686,7 @@ class TestComputeRecommendation:
         # Same latency and params — "current" > "verbose" > "terse"
         cells = [
             self._baseline(0.60),
-            self._viable("mpnet", "terse",   0.85),
+            self._viable("mpnet", "terse", 0.85),
             self._viable("mpnet", "verbose", 0.85),
             self._viable("mpnet", "current", 0.85),
         ]
@@ -623,6 +699,7 @@ class TestComputeRecommendation:
 # _threshold_sweep — FPR-constrained objective
 # ---------------------------------------------------------------------------
 
+
 def _make_tier_query(
     top1_score: float,
     is_negative: bool,
@@ -631,12 +708,12 @@ def _make_tier_query(
     production_tier: str = "tier_2",
 ) -> dict:
     return {
-        "production_tier":      production_tier,
-        "top1_score":           top1_score,
-        "top1_food_name":       top1_food_name or ("wrong" if not is_negative else None),
+        "production_tier": production_tier,
+        "top1_score": top1_score,
+        "top1_food_name": top1_food_name or ("wrong" if not is_negative else None),
         "acceptable_food_names": acceptable or ([] if is_negative else ["chicken"]),
-        "is_negative":          is_negative,
-        "error":                None,
+        "is_negative": is_negative,
+        "error": None,
     }
 
 
@@ -651,7 +728,15 @@ class TestThresholdSweepFPRConstrained:
         queries = [_make_tier_query(0.80, False, "chicken", ["chicken"])]
         result = _threshold_sweep(queries, "tier_2")
         for entry in result["sweep"]:
-            assert set(entry.keys()) == {"threshold", "tp", "fp", "fn", "tn", "f1", "fpr"}
+            assert set(entry.keys()) == {
+                "threshold",
+                "tp",
+                "fp",
+                "fn",
+                "tn",
+                "f1",
+                "fpr",
+            }
 
     def test_all_hard_scores_above_90_gives_not_viable(self):
         # All negative controls score very high — no threshold can achieve FPR ≤ 5%
@@ -659,10 +744,11 @@ class TestThresholdSweepFPRConstrained:
         # With 1 positive and 12 hard queries all scoring ≥ 0.90:
         # at any threshold ≤ 0.90, fp=12, tn=0 → FPR = 1.0 > FPR_CEILING.
         # at threshold = 0.91 (above sweep ceiling), no results → out of range.
-        queries = (
-            [_make_tier_query(0.92, False, "chicken", ["chicken"])]  # positive
-            + [_make_tier_query(0.91, True) for _ in range(12)]      # 12 negatives
-        )
+        queries = [
+            _make_tier_query(0.92, False, "chicken", ["chicken"])
+        ] + [  # positive
+            _make_tier_query(0.91, True) for _ in range(12)
+        ]  # 12 negatives
         result = _threshold_sweep(queries, "tier_2")
         assert result["viable"] is False
         assert result["optimal_threshold"] is None
@@ -672,10 +758,9 @@ class TestThresholdSweepFPRConstrained:
     def test_clean_separation_gives_viable_result(self):
         # Positives all score > 0.70, hard controls all score < 0.50.
         # The FPR=0 for all thresholds in [0.50, 0.70), so viable=True.
-        queries = (
-            [_make_tier_query(0.80, False, "chicken", ["chicken"]) for _ in range(5)]
-            + [_make_tier_query(0.40, True) for _ in range(5)]
-        )
+        queries = [
+            _make_tier_query(0.80, False, "chicken", ["chicken"]) for _ in range(5)
+        ] + [_make_tier_query(0.40, True) for _ in range(5)]
         result = _threshold_sweep(queries, "tier_2")
         assert result["viable"] is True
         assert result["optimal_threshold"] is not None
@@ -703,12 +788,14 @@ class TestThresholdSweepFPRConstrained:
 
     def test_production_threshold_metrics_populated(self):
         from app.config import settings
-        queries = (
-            [_make_tier_query(0.80, False, "chicken", ["chicken"])]
-            + [_make_tier_query(0.40, True)]
-        )
+
+        queries = [_make_tier_query(0.80, False, "chicken", ["chicken"])] + [
+            _make_tier_query(0.40, True)
+        ]
         result = _threshold_sweep(queries, "tier_2")
-        assert result["production_threshold"] == pytest.approx(settings.food_properties_fallback_confidence)
+        assert result["production_threshold"] == pytest.approx(
+            settings.food_properties_fallback_confidence
+        )
         assert result["f1_at_production"] is not None
         assert result["fpr_at_production"] is not None
 
@@ -718,10 +805,9 @@ class TestThresholdSweepFPRConstrained:
         # Build scenario: 12 hard queries score 0.65; 1 positive scores 0.75.
         # At threshold 0.66: fp=0, tn=12, tp=1 → FPR=0 → viable.
         # At threshold 0.64: fp=12, tn=0 → FPR=1.0 → not viable.
-        queries = (
-            [_make_tier_query(0.75, False, "chicken", ["chicken"])]
-            + [_make_tier_query(0.65, True) for _ in range(12)]
-        )
+        queries = [_make_tier_query(0.75, False, "chicken", ["chicken"])] + [
+            _make_tier_query(0.65, True) for _ in range(12)
+        ]
         result = _threshold_sweep(queries, "tier_2")
         assert result["viable"] is True
         # The optimal threshold must be in the region where all 12 hard queries are below
@@ -731,6 +817,7 @@ class TestThresholdSweepFPRConstrained:
 # ---------------------------------------------------------------------------
 # _recompute_query_at_threshold
 # ---------------------------------------------------------------------------
+
 
 class TestRecomputeQueryAtThreshold:
 
@@ -744,34 +831,34 @@ class TestRecomputeQueryAtThreshold:
     ) -> dict:
         pure_rr = round(1.0 / exp_rank, 6) if exp_rank else 0.0
         return {
-            "is_negative":          False,
-            "top1_score":           top1_score,
-            "top1_food_name":       top1_food,
+            "is_negative": False,
+            "top1_score": top1_score,
+            "top1_food_name": top1_food,
             "acceptable_food_names": acceptable,
-            "expected_score":       exp_score,
-            "expected_rank":        exp_rank,
+            "expected_score": exp_score,
+            "expected_rank": exp_rank,
             "pure_reciprocal_rank": pure_rr,
-            "error":                None,
-            "threshold_used":       0.62,
-            "correct_at_1":         True,
-            "gate_passed":          True,
-            "reciprocal_rank":      1.0,
+            "error": None,
+            "threshold_used": 0.62,
+            "correct_at_1": True,
+            "gate_passed": True,
+            "reciprocal_rank": 1.0,
         }
 
     def _neg_record(self, top1_score: float) -> dict:
         return {
-            "is_negative":          True,
-            "top1_score":           top1_score,
-            "top1_food_name":       "beef ground",
+            "is_negative": True,
+            "top1_score": top1_score,
+            "top1_food_name": "beef ground",
             "acceptable_food_names": [],
-            "expected_score":       None,
-            "expected_rank":        None,
+            "expected_score": None,
+            "expected_rank": None,
             "pure_reciprocal_rank": None,
-            "error":                None,
-            "threshold_used":       0.62,
-            "correct_at_1":         top1_score < 0.62,
-            "gate_passed":          top1_score < 0.62,
-            "reciprocal_rank":      None,
+            "error": None,
+            "threshold_used": 0.62,
+            "correct_at_1": top1_score < 0.62,
+            "gate_passed": top1_score < 0.62,
+            "reciprocal_rank": None,
         }
 
     def test_positive_top1_match_above_new_threshold(self):
@@ -781,7 +868,7 @@ class TestRecomputeQueryAtThreshold:
         )
         assert r["correct_at_1"] is True
         assert r["reciprocal_rank"] == pytest.approx(1.0)
-        assert r["gate_passed"] is False   # expected_score not set → False
+        assert r["gate_passed"] is False  # expected_score not set → False
 
     def test_positive_top1_match_below_new_threshold_uses_expected(self):
         r = _recompute_query_at_threshold(
@@ -815,7 +902,7 @@ class TestRecomputeQueryAtThreshold:
     def test_errored_record_returned_unchanged(self):
         record = {**self._pos_record(0.80, "chicken", ["chicken"]), "error": "timeout"}
         r = _recompute_query_at_threshold(record, threshold=0.90)
-        assert r is record   # same object returned unmodified
+        assert r is record  # same object returned unmodified
 
     def test_threshold_used_field_updated(self):
         r = _recompute_query_at_threshold(
@@ -826,7 +913,9 @@ class TestRecomputeQueryAtThreshold:
 
     def test_pure_reciprocal_rank_preserved_unchanged(self):
         # pure_reciprocal_rank is rank-based and must not be overwritten at any threshold.
-        record = self._pos_record(0.80, "chicken", ["chicken"], exp_score=0.80, exp_rank=2)
+        record = self._pos_record(
+            0.80, "chicken", ["chicken"], exp_score=0.80, exp_rank=2
+        )
         assert record["pure_reciprocal_rank"] == pytest.approx(0.5)
         r = _recompute_query_at_threshold(record, threshold=0.90)
         assert r["pure_reciprocal_rank"] == pytest.approx(0.5)
@@ -836,33 +925,43 @@ class TestRecomputeQueryAtThreshold:
 # hard_negative_control_pass_rate (Problem 4)
 # ---------------------------------------------------------------------------
 
+
 class TestHardNegativeControlPassRate:
 
     def test_hard_ncpr_reported_separately_from_top1_by_stratum(self):
         results = [
-            _make_query_record("hard", "tier_2", True, None, True,  None, None),
-            _make_query_record("hard", "tier_2", True, None, False, "beef ground", None),
+            _make_query_record("hard", "tier_2", True, None, True, None, None),
+            _make_query_record(
+                "hard", "tier_2", True, None, False, "beef ground", None
+            ),
         ]
         s = _compute_cell_summary(results)
         assert "hard" not in s["top1_by_stratum"]
         assert s["hard_negative_control_pass_rate"] == pytest.approx(0.5)
 
     def test_hard_ncpr_all_pass(self):
-        results = [_make_query_record("hard", "tier_2", True, None, True, None, None) for _ in range(4)]
+        results = [
+            _make_query_record("hard", "tier_2", True, None, True, None, None)
+            for _ in range(4)
+        ]
         s = _compute_cell_summary(results)
         assert s["hard_negative_control_pass_rate"] == pytest.approx(1.0)
 
     def test_hard_ncpr_none_when_no_hard_queries(self):
-        results = [_make_query_record("easy", "tier_1", False, 1.0, True, "chicken", 0.85)]
+        results = [
+            _make_query_record("easy", "tier_1", False, 1.0, True, "chicken", 0.85)
+        ]
         s = _compute_cell_summary(results)
         assert s["hard_negative_control_pass_rate"] is None
 
     def test_top1_by_stratum_contains_only_positive_strata(self):
         results = [
-            _make_query_record("easy",     "tier_1",           False, 1.0, True,  "chicken", 0.85),
-            _make_query_record("medium",   "tier_2",           False, 1.0, True,  "chicken", 0.80),
-            _make_query_record("pathogen", "pathogen_stage_1", False, 1.0, True,  "chicken", 0.90),
-            _make_query_record("hard",     "tier_2",           True,  None, True,  None,      None),
+            _make_query_record("easy", "tier_1", False, 1.0, True, "chicken", 0.85),
+            _make_query_record("medium", "tier_2", False, 1.0, True, "chicken", 0.80),
+            _make_query_record(
+                "pathogen", "pathogen_stage_1", False, 1.0, True, "chicken", 0.90
+            ),
+            _make_query_record("hard", "tier_2", True, None, True, None, None),
         ]
         s = _compute_cell_summary(results)
         assert set(s["top1_by_stratum"].keys()) == {"easy", "medium", "pathogen"}
@@ -873,54 +972,55 @@ class TestHardNegativeControlPassRate:
 # Tri-state viable_at_calibrated_threshold (Problem 2)
 # ---------------------------------------------------------------------------
 
+
 class TestTriStateViability:
 
     def _make_cell_with_vat(self, vat: str, mrr_easy: float = 0.99) -> dict:
         """Build a minimal candidate cell with the given viable_at_calibrated_threshold."""
         return {
-            "cell_id":              f"test_{vat}",
-            "embedder_id":          "mpnet",
-            "embedder_name":        "mpnet",
-            "embedder_hf_model":    "sentence-transformers/mpnet",
-            "embedder_dim":         768,
-            "embedder_params_m":    109,
+            "cell_id": f"test_{vat}",
+            "embedder_id": "mpnet",
+            "embedder_name": "mpnet",
+            "embedder_hf_model": "sentence-transformers/mpnet",
+            "embedder_dim": 768,
+            "embedder_params_m": 109,
             "embedder_is_baseline": False,
             "embedder_training_objective": "general",
-            "format_id":            "verbose",
-            "load_time_s":          1.0,
-            "embed_time_s":         0.5,
-            "queries":              [],
+            "format_id": "verbose",
+            "load_time_s": 1.0,
+            "embed_time_s": 0.5,
+            "queries": [],
             "summary": {
-                "mrr":                            0.85,
-                "mrr_by_stratum":                 {"easy": mrr_easy},
+                "mrr": 0.85,
+                "mrr_by_stratum": {"easy": mrr_easy},
                 "viable_at_calibrated_threshold": vat,
-                "n_errored_queries":              0,
-                "mean_query_latency_ms":          20.0,
-                "hard_fpr":                       0.0,
+                "n_errored_queries": 0,
+                "mean_query_latency_ms": 20.0,
+                "hard_fpr": 0.0,
             },
         }
 
     def _baseline(self) -> dict:
         return {
-            "cell_id":              "minilm-l6-v2_current",
-            "embedder_id":          "minilm-l6-v2",
-            "embedder_name":        "minilm-l6-v2",
-            "embedder_hf_model":    "sentence-transformers/all-MiniLM-L6-v2",
-            "embedder_dim":         384,
-            "embedder_params_m":    22,
+            "cell_id": "minilm-l6-v2_current",
+            "embedder_id": "minilm-l6-v2",
+            "embedder_name": "minilm-l6-v2",
+            "embedder_hf_model": "sentence-transformers/all-MiniLM-L6-v2",
+            "embedder_dim": 384,
+            "embedder_params_m": 22,
             "embedder_is_baseline": True,
             "embedder_training_objective": "general",
-            "format_id":            "current",
-            "load_time_s":          1.0,
-            "embed_time_s":         0.5,
-            "queries":              [],
+            "format_id": "current",
+            "load_time_s": 1.0,
+            "embed_time_s": 0.5,
+            "queries": [],
             "summary": {
-                "mrr":                            0.70,
-                "mrr_by_stratum":                 {"easy": MRR_EASY_FLOOR},
+                "mrr": 0.70,
+                "mrr_by_stratum": {"easy": MRR_EASY_FLOOR},
                 "viable_at_calibrated_threshold": "true",
-                "n_errored_queries":              0,
-                "mean_query_latency_ms":          20.0,
-                "hard_fpr":                       0.0,
+                "n_errored_queries": 0,
+                "mean_query_latency_ms": 20.0,
+                "hard_fpr": 0.0,
             },
         }
 

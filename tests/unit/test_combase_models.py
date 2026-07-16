@@ -2,21 +2,21 @@
 Unit tests for ComBase model data structures.
 """
 
-import pytest
 from pathlib import Path
 
+import pytest
+
 from app.engines.combase.models import (
-    ComBaseModel,
     ComBaseModelConstraints,
     ComBaseModelRegistry,
     _parse_coefficients,
 )
-from app.models.enums import ModelType, ComBaseOrganism, Factor4Type
+from app.models.enums import ComBaseOrganism, Factor4Type, ModelType
 
 
 class TestComBaseModelConstraints:
     """Tests for ComBaseModelConstraints."""
-    
+
     def test_temperature_validation(self):
         """Should validate temperature range."""
         constraints = ComBaseModelConstraints(
@@ -27,11 +27,11 @@ class TestComBaseModelConstraints:
             aw_min=0.9,
             aw_max=1.0,
         )
-        
+
         assert constraints.is_temperature_valid(20.0) is True
         assert constraints.is_temperature_valid(4.0) is False
         assert constraints.is_temperature_valid(41.0) is False
-    
+
     def test_clamping(self):
         """Should clamp values to valid range."""
         constraints = ComBaseModelConstraints(
@@ -42,7 +42,7 @@ class TestComBaseModelConstraints:
             aw_min=0.9,
             aw_max=1.0,
         )
-        
+
         assert constraints.clamp_temperature(50.0) == 40.0
         assert constraints.clamp_temperature(0.0) == 5.0
         assert constraints.clamp_ph(3.0) == 4.0
@@ -50,12 +50,12 @@ class TestComBaseModelConstraints:
 
 class TestParseCoefficients:
     """Tests for coefficient parsing."""
-    
+
     def test_parse_coefficients(self):
         """Should parse coefficient string."""
         coeff_str = '"-26.034;0.2627;6.8356;0;0;0;1.59297;-0.00444;-0.52104;-125.70625;0;0;0;0;0"'
         result = _parse_coefficients(coeff_str)
-        
+
         assert len(result) == 15
         assert result[0] == -26.034
         assert result[1] == 0.2627
@@ -63,7 +63,7 @@ class TestParseCoefficients:
 
 class TestComBaseModelRegistry:
     """Tests for ComBaseModelRegistry."""
-    
+
     @pytest.fixture
     def registry(self) -> ComBaseModelRegistry:
         """Create and load registry."""
@@ -72,44 +72,44 @@ class TestComBaseModelRegistry:
         if csv_path.exists():
             reg.load_from_csv(csv_path)
         return reg
-    
+
     def test_load_models(self, registry):
         """Should load models from CSV."""
         # Skip if CSV not present
         if len(registry) == 0:
             pytest.skip("combase_models.csv not found")
-        
+
         assert len(registry) > 0
-    
+
     def test_get_listeria_growth_model(self, registry):
         """Should find Listeria growth model."""
         if len(registry) == 0:
             pytest.skip("combase_models.csv not found")
-        
+
         model = registry.get_model(
             organism=ComBaseOrganism.LISTERIA_MONOCYTOGENES,
             model_type=ModelType.GROWTH,
             factor4_type=Factor4Type.NONE,
         )
-        
+
         assert model is not None
         assert model.organism_id == "lm"
         assert model.model_type == ModelType.GROWTH
-    
+
     def test_get_model_with_factor4(self, registry):
         """Should find model with factor4."""
         if len(registry) == 0:
             pytest.skip("combase_models.csv not found")
-        
+
         model = registry.get_model(
             organism=ComBaseOrganism.LISTERIA_MONOCYTOGENES,
             model_type=ModelType.GROWTH,
             factor4_type=Factor4Type.CO2,
         )
-        
+
         if model is not None:
             assert model.factor4_type == Factor4Type.CO2
-    
+
     def test_list_organisms(self, registry):
         """Should list available organisms."""
         if len(registry) == 0:
@@ -172,7 +172,9 @@ class TestComBaseOrganismMatchesCSV:
             pytest.skip("combase_models.csv not found")
 
         models = registry.get_models_for_organism(organism)
-        assert models, f"No CSV rows loaded for {organism.name} (OrganismID={organism.value!r})"
+        assert (
+            models
+        ), f"No CSV rows loaded for {organism.name} (OrganismID={organism.value!r})"
 
         expected = self._EXPECTED_NAME_SUBSTRING[organism]
         assert any(expected in m.organism_name.lower() for m in models), (
@@ -183,11 +185,13 @@ class TestComBaseOrganismMatchesCSV:
     @pytest.fixture
     def raw_csv_org_names(self) -> dict:
         """{OrganismID: [Org, ...]} read directly from the CSV -- no ComBaseOrganism,
-        no from_string(), no registry indexing. The ground truth this class checks against."""
+        no from_string(), no registry indexing. The ground truth this class checks against.
+        """
         csv_path = Path("data/combase_models.csv")
         if not csv_path.exists():
             return {}
         import csv as csv_module
+
         by_oid: dict = {}
         with csv_path.open(encoding="utf-8-sig") as f:
             for row in csv_module.DictReader(f, delimiter=";"):
@@ -198,7 +202,9 @@ class TestComBaseOrganismMatchesCSV:
         return by_oid
 
     @pytest.mark.parametrize("organism", list(ComBaseOrganism))
-    def test_organism_value_matches_raw_csv_organism_id(self, raw_csv_org_names, organism):
+    def test_organism_value_matches_raw_csv_organism_id(
+        self, raw_csv_org_names, organism
+    ):
         """Execution-path check: registry.get_model() builds its lookup key from
         organism.value directly (f"{model_id}_{organism.value}_{factor4_type.value}"),
         matched against rows keyed by their own raw OrganismID string. This test
@@ -262,9 +268,12 @@ class TestExecutableOrganisms:
         if len(registry) == 0:
             pytest.skip("combase_models.csv not found")
 
-        assert registry.is_executable(
-            ComBaseOrganism.SHIGELLA_FLEXNERI, ModelType.GROWTH, Factor4Type.NONE
-        ) is False
+        assert (
+            registry.is_executable(
+                ComBaseOrganism.SHIGELLA_FLEXNERI, ModelType.GROWTH, Factor4Type.NONE
+            )
+            is False
+        )
 
     def test_shigella_executable_with_nitrite(self, registry):
         """The nitrite path must keep working -- executability depends on the
@@ -272,9 +281,12 @@ class TestExecutableOrganisms:
         if len(registry) == 0:
             pytest.skip("combase_models.csv not found")
 
-        assert registry.is_executable(
-            ComBaseOrganism.SHIGELLA_FLEXNERI, ModelType.GROWTH, Factor4Type.NITRITE
-        ) is True
+        assert (
+            registry.is_executable(
+                ComBaseOrganism.SHIGELLA_FLEXNERI, ModelType.GROWTH, Factor4Type.NITRITE
+            )
+            is True
+        )
 
     def test_get_executable_organisms_growth_none_excludes_shigella(self, registry):
         """The count must be derived, not hardcoded: cross-checked here against an
@@ -283,13 +295,16 @@ class TestExecutableOrganisms:
         if len(registry) == 0:
             pytest.skip("combase_models.csv not found")
 
-        executable = registry.get_executable_organisms(ModelType.GROWTH, Factor4Type.NONE)
+        executable = registry.get_executable_organisms(
+            ModelType.GROWTH, Factor4Type.NONE
+        )
 
         assert ComBaseOrganism.SHIGELLA_FLEXNERI not in executable
 
         all_loaded = registry.list_organisms()
         independently_derived = [
-            o for o in all_loaded
+            o
+            for o in all_loaded
             if registry.get_model(o, ModelType.GROWTH, Factor4Type.NONE) is not None
         ]
         assert set(executable) == set(independently_derived)

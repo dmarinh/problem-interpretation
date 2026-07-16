@@ -5,8 +5,7 @@ Metrics for evaluating retrieval quality.
 Uses ranx for standard IR metrics.
 """
 
-from dataclasses import dataclass, field
-from typing import Callable
+from dataclasses import dataclass
 
 from pydantic import BaseModel, Field
 from ranx import Qrels, Run, evaluate
@@ -15,6 +14,7 @@ from ranx import Qrels, Run, evaluate
 @dataclass
 class RelevanceJudgment:
     """A single relevance judgment for evaluation."""
+
     query_id: str
     doc_id: str
     relevance: int  # 0 = not relevant, 1 = relevant, 2+ = highly relevant
@@ -23,6 +23,7 @@ class RelevanceJudgment:
 @dataclass
 class RetrievalPrediction:
     """A single retrieval prediction."""
+
     query_id: str
     doc_id: str
     score: float
@@ -30,6 +31,7 @@ class RetrievalPrediction:
 
 class EvaluationResult(BaseModel):
     """Result of an evaluation run."""
+
     mrr: float = Field(description="Mean Reciprocal Rank")
     ndcg_at_5: float = Field(description="nDCG@5")
     ndcg_at_10: float = Field(description="nDCG@10")
@@ -37,7 +39,7 @@ class EvaluationResult(BaseModel):
     recall_at_10: float = Field(description="Recall@10")
     precision_at_5: float = Field(description="Precision@5")
     precision_at_10: float = Field(description="Precision@10")
-    
+
     # Metadata
     num_queries: int = Field(description="Number of queries evaluated")
     config: dict = Field(default_factory=dict, description="Experiment configuration")
@@ -46,29 +48,29 @@ class EvaluationResult(BaseModel):
 class RAGEvaluator:
     """
     Evaluator for RAG retrieval quality.
-    
+
     Usage:
         evaluator = RAGEvaluator()
         evaluator.add_ground_truth("q1", "doc1", relevance=1)
         evaluator.add_prediction("q1", "doc1", score=0.95)
         result = evaluator.evaluate()
     """
-    
+
     # Supported metrics
     METRICS = [
         "mrr",
         "ndcg@5",
-        "ndcg@10", 
+        "ndcg@10",
         "recall@5",
         "recall@10",
         "precision@5",
         "precision@10",
     ]
-    
+
     def __init__(self):
         self._judgments: list[RelevanceJudgment] = []
         self._predictions: list[RetrievalPrediction] = []
-    
+
     def add_ground_truth(
         self,
         query_id: str,
@@ -76,12 +78,14 @@ class RAGEvaluator:
         relevance: int = 1,
     ) -> None:
         """Add a ground truth relevance judgment."""
-        self._judgments.append(RelevanceJudgment(
-            query_id=query_id,
-            doc_id=doc_id,
-            relevance=relevance,
-        ))
-    
+        self._judgments.append(
+            RelevanceJudgment(
+                query_id=query_id,
+                doc_id=doc_id,
+                relevance=relevance,
+            )
+        )
+
     def add_prediction(
         self,
         query_id: str,
@@ -89,50 +93,52 @@ class RAGEvaluator:
         score: float,
     ) -> None:
         """Add a retrieval prediction."""
-        self._predictions.append(RetrievalPrediction(
-            query_id=query_id,
-            doc_id=doc_id,
-            score=score,
-        ))
-    
+        self._predictions.append(
+            RetrievalPrediction(
+                query_id=query_id,
+                doc_id=doc_id,
+                score=score,
+            )
+        )
+
     def clear(self) -> None:
         """Clear all judgments and predictions."""
         self._judgments = []
         self._predictions = []
-    
+
     def evaluate(self, config: dict | None = None) -> EvaluationResult:
         """
         Compute evaluation metrics.
-        
+
         Args:
             config: Optional experiment configuration to include in result
-            
+
         Returns:
             EvaluationResult with all metrics
         """
         if not self._judgments or not self._predictions:
             raise ValueError("Need both ground truth and predictions to evaluate")
-        
+
         # Build qrels (ground truth)
         qrels_dict = {}
         for j in self._judgments:
             if j.query_id not in qrels_dict:
                 qrels_dict[j.query_id] = {}
             qrels_dict[j.query_id][j.doc_id] = j.relevance
-        
+
         # Build run (predictions)
         run_dict = {}
         for p in self._predictions:
             if p.query_id not in run_dict:
                 run_dict[p.query_id] = {}
             run_dict[p.query_id][p.doc_id] = p.score
-        
+
         qrels = Qrels(qrels_dict)
         run = Run(run_dict)
-        
+
         # Evaluate
         results = evaluate(run, qrels, self.METRICS)
-        
+
         return EvaluationResult(
             mrr=results.get("mrr", 0.0),
             ndcg_at_5=results.get("ndcg@5", 0.0),
@@ -150,13 +156,14 @@ class RAGEvaluator:
 # SYNTHETIC EVALUATION DATASET
 # =============================================================================
 
+
 def get_synthetic_evaluation_dataset() -> tuple[list[dict], list[dict]]:
     """
     Get synthetic evaluation dataset for testing.
-    
+
     Returns:
         Tuple of (documents, queries_with_relevance)
-        
+
     Documents have 'id', 'content', 'type', 'metadata'
     Queries have 'id', 'text', 'relevant_docs' (list of doc_ids)
     """
@@ -169,7 +176,7 @@ def get_synthetic_evaluation_dataset() -> tuple[list[dict], list[dict]]:
             "metadata": {"food": "chicken", "state": "raw"},
         },
         {
-            "id": "food_002", 
+            "id": "food_002",
             "content": "Cooked chicken has pH around 6.0-6.3. Water activity remains high at 0.98-0.99.",
             "type": "food_properties",
             "metadata": {"food": "chicken", "state": "cooked"},
@@ -260,7 +267,7 @@ def get_synthetic_evaluation_dataset() -> tuple[list[dict], list[dict]]:
             "metadata": {"pathogen": "staphylococcus"},
         },
     ]
-    
+
     queries = [
         {
             "id": "q01",
@@ -323,5 +330,5 @@ def get_synthetic_evaluation_dataset() -> tuple[list[dict], list[dict]]:
             "relevant_docs": ["path_007"],
         },
     ]
-    
+
     return documents, queries

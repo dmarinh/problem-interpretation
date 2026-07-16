@@ -10,29 +10,29 @@ Covers:
 - StandardizationService.standardize multi-step path (bias, defaults, missing duration)
 """
 
-import pytest
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import MagicMock
 
-from app.models.enums import ModelType, ComBaseOrganism
+import pytest
+
+from app.models.enums import ComBaseOrganism, ModelType
 from app.models.extraction import (
+    ExtractedDuration,
+    ExtractedEnvironmentalConditions,
     ExtractedScenario,
     ExtractedTemperature,
-    ExtractedDuration,
     ExtractedTimeTemperatureStep,
-    ExtractedEnvironmentalConditions,
 )
 from app.models.metadata import ValueSource
 from app.services.grounding.grounding_service import (
     GroundedValues,
-    GroundedStep,
     GroundingService,
 )
 from app.services.standardization.standardization_service import StandardizationService
 
-
 # =============================================================================
 # HELPERS
 # =============================================================================
+
 
 def make_grounding_service() -> GroundingService:
     mock_retrieval = MagicMock()
@@ -85,6 +85,7 @@ def make_multistep_scenario(*steps: ExtractedTimeTemperatureStep) -> ExtractedSc
 # GroundedValues
 # =============================================================================
 
+
 class TestGroundedValuesSteps:
 
     def test_has_steps_false_initially(self):
@@ -109,10 +110,15 @@ class TestGroundedValuesSteps:
 
     def test_add_step_stores_provenance(self):
         from app.models.metadata import ValueProvenance
+
         g = GroundedValues()
         prov = ValueProvenance(source=ValueSource.USER_EXPLICIT)
-        g.add_step(step_order=1, temperature_celsius=25.0, duration_minutes=60.0,
-                   temp_provenance=prov)
+        g.add_step(
+            step_order=1,
+            temperature_celsius=25.0,
+            duration_minutes=60.0,
+            temp_provenance=prov,
+        )
         assert g.steps[0].temp_provenance is prov
 
     def test_add_step_allows_none_values(self):
@@ -125,6 +131,7 @@ class TestGroundedValuesSteps:
 # =============================================================================
 # GroundingService — resolution helpers
 # =============================================================================
+
 
 class TestResolveTemperatureValue:
 
@@ -139,7 +146,9 @@ class TestResolveTemperatureValue:
 
     def test_range_stores_lower_bound_with_range_pending(self):
         """Grounding always stores the lower bound; StandardizationService picks the bound."""
-        temp = ExtractedTemperature(is_range=True, range_min_celsius=20.0, range_max_celsius=28.0)
+        temp = ExtractedTemperature(
+            is_range=True, range_min_celsius=20.0, range_max_celsius=28.0
+        )
         val, prov = self.svc._resolve_temperature_value(temp)
         assert val == 20.0  # lower bound placeholder
         assert prov.source == ValueSource.USER_EXPLICIT
@@ -197,6 +206,7 @@ class TestResolveDurationValue:
 # GroundingService — multi-step profile grounding
 # =============================================================================
 
+
 class TestGroundMultiStepProfile:
 
     def setup_method(self):
@@ -206,7 +216,7 @@ class TestGroundMultiStepProfile:
         scenario = make_multistep_scenario(
             make_step(1, temp_celsius=28.0, dur_minutes=45.0),
             make_step(2, temp_celsius=22.0, dur_minutes=60.0),
-            make_step(3, temp_celsius=4.0,  dur_minutes=120.0),
+            make_step(3, temp_celsius=4.0, dur_minutes=120.0),
         )
         grounded = GroundedValues()
         self.svc._ground_multi_step_profile(scenario, grounded)
@@ -222,7 +232,7 @@ class TestGroundMultiStepProfile:
     def test_steps_sorted_by_sequence_order(self):
         # Deliver steps out of order
         scenario = make_multistep_scenario(
-            make_step(3, temp_celsius=4.0,  dur_minutes=120.0),
+            make_step(3, temp_celsius=4.0, dur_minutes=120.0),
             make_step(1, temp_celsius=28.0, dur_minutes=45.0),
             make_step(2, temp_celsius=22.0, dur_minutes=60.0),
         )
@@ -289,6 +299,7 @@ class TestGroundMultiStepProfile:
 # GroundingService — ground_scenario routing
 # =============================================================================
 
+
 class TestGroundScenarioRouting:
 
     def setup_method(self):
@@ -311,7 +322,7 @@ class TestGroundScenarioRouting:
     async def test_multi_step_populates_steps_not_flat_keys(self):
         scenario = make_multistep_scenario(
             make_step(1, temp_celsius=28.0, dur_minutes=45.0),
-            make_step(2, temp_celsius=4.0,  dur_minutes=120.0),
+            make_step(2, temp_celsius=4.0, dur_minutes=120.0),
         )
         grounded = await self.svc.ground_scenario(scenario)
 
@@ -340,6 +351,7 @@ class TestGroundScenarioRouting:
 # =============================================================================
 # StandardizationService — multi-step standardization
 # =============================================================================
+
 
 class TestStandardizeMultiStep:
 
@@ -372,12 +384,15 @@ class TestStandardizeMultiStep:
         g = self._make_grounded((28.0, 45.0), (22.0, 60.0), (4.0, 120.0))
         result = self.svc.standardize(g, ModelType.GROWTH)
 
-        temps = [s.temperature_celsius for s in result.payload.time_temperature_profile.steps]
+        temps = [
+            s.temperature_celsius for s in result.payload.time_temperature_profile.steps
+        ]
         assert temps == [28.0, 22.0, 4.0]
 
     def test_step_durations_preserved_for_explicit_provenance(self):
         """Explicit provenance durations must not receive the inferred margin."""
         from app.models.metadata import ValueProvenance
+
         g = GroundedValues()
         g.set("organism", ComBaseOrganism.SALMONELLA, ValueSource.USER_EXPLICIT)
         prov_explicit = ValueProvenance(source=ValueSource.USER_EXPLICIT)
@@ -386,12 +401,15 @@ class TestStandardizeMultiStep:
 
         result = self.svc.standardize(g, ModelType.GROWTH)
 
-        durs = [s.duration_minutes for s in result.payload.time_temperature_profile.steps]
+        durs = [
+            s.duration_minutes for s in result.payload.time_temperature_profile.steps
+        ]
         assert durs == [60.0, 120.0]
 
     def test_inferred_duration_passes_through_growth(self):
         """USER_INFERRED durations pass through unchanged for growth models."""
         from app.models.metadata import ValueProvenance
+
         g = GroundedValues()
         g.set("organism", ComBaseOrganism.SALMONELLA, ValueSource.USER_EXPLICIT)
         prov_inferred = ValueProvenance(source=ValueSource.USER_INFERRED)
@@ -405,6 +423,7 @@ class TestStandardizeMultiStep:
     def test_inferred_duration_passes_through_inactivation(self):
         """USER_INFERRED durations pass through unchanged for thermal inactivation models."""
         from app.models.metadata import ValueProvenance
+
         g = GroundedValues()
         g.set("organism", ComBaseOrganism.SALMONELLA, ValueSource.USER_EXPLICIT)
         prov_inferred = ValueProvenance(source=ValueSource.USER_INFERRED)
@@ -423,7 +442,10 @@ class TestStandardizeMultiStep:
         assert result.missing_required == []
         step = result.payload.time_temperature_profile.steps[0]
         assert step.temperature_celsius == 25.0  # default_temperature_abuse_c
-        assert any(d.field_name.startswith("temperature_celsius") for d in result.defaults_imputed)
+        assert any(
+            d.field_name.startswith("temperature_celsius")
+            for d in result.defaults_imputed
+        )
 
     def test_missing_duration_fails_with_missing_required(self):
         """A step with None duration must populate missing_required and return no payload."""
@@ -445,7 +467,10 @@ class TestStandardizeMultiStep:
         g = self._make_grounded((28.0, 45.0), (22.0, 60.0), (4.0, 120.0))
         result = self.svc.standardize(g, ModelType.GROWTH)
 
-        assert result.payload.time_temperature_profile.total_duration_minutes == pytest.approx(225.0)
+        assert (
+            result.payload.time_temperature_profile.total_duration_minutes
+            == pytest.approx(225.0)
+        )
 
     def test_representative_temp_is_first_step(self):
         """ComBaseParameters.temperature_celsius should equal the first step's temperature."""
@@ -472,7 +497,9 @@ class TestStandardizeMultiStep:
         # Simulate gapped LLM output: step_orders 1, 2, 4 instead of 1, 2, 3
         g.add_step(1, 28.0, 45.0)
         g.add_step(2, 22.0, 60.0)
-        g.add_step(4, 4.0, 120.0)  # gap — would fail TimeTemperatureProfile validator if not renumbered
+        g.add_step(
+            4, 4.0, 120.0
+        )  # gap — would fail TimeTemperatureProfile validator if not renumbered
 
         result = self.svc.standardize(g, ModelType.GROWTH)
 
@@ -481,7 +508,9 @@ class TestStandardizeMultiStep:
         assert profile.is_multi_step is True
         assert [s.step_order for s in profile.steps] == [1, 2, 3]
         # Physical order (temperature sequence) is preserved after renumbering
-        assert [s.temperature_celsius for s in profile.steps] == pytest.approx([28.0, 22.0, 4.0])
+        assert [s.temperature_celsius for s in profile.steps] == pytest.approx(
+            [28.0, 22.0, 4.0]
+        )
 
     def test_single_step_scenario_unaffected(self):
         """Existing single-step path must still work when has_steps is False."""

@@ -5,21 +5,21 @@ Tests _PATHOGEN_NAME_NORMALIZATION dict integrity and _category_pathogen_fallbac
 edge cases using synthetic injected dicts (no filesystem reads).
 """
 
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
-from app.services.grounding.grounding_service import (
-    GroundingService,
-    GroundedValues,
-    _PATHOGEN_NAME_NORMALIZATION,
-)
 from app.models.enums import ComBaseOrganism, OrganismGroundingFailureStage
 from app.models.metadata import ValueSource
 from app.services.audit.citations import get_full_citations
-
+from app.services.grounding.grounding_service import (
+    _PATHOGEN_NAME_NORMALIZATION,
+    GroundedValues,
+    GroundingService,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def make_service(
     *,
@@ -30,14 +30,43 @@ def make_service(
 ) -> GroundingService:
     """Build a GroundingService with injected lookup tables (no CSV reads)."""
     mock_retrieval = MagicMock()
-    mock_retrieval.query_food_properties.return_value = MagicMock(has_confident_result=False, results=[], top_result=None, query="", reranker_used=None, threshold=0.62)
-    mock_retrieval.query_food_ph.return_value = MagicMock(has_confident_result=False, results=[], top_result=None, query="", reranker_used=None, threshold=0.62)
-    mock_retrieval.query_food_water_activity.return_value = MagicMock(has_confident_result=False, results=[], top_result=None, query="", reranker_used=None, threshold=0.62)
-    mock_retrieval.query_pathogen_hazards.return_value = MagicMock(has_confident_result=False, results=[], top_result=None, query="", reranker_used=None, threshold=0.62)
+    mock_retrieval.query_food_properties.return_value = MagicMock(
+        has_confident_result=False,
+        results=[],
+        top_result=None,
+        query="",
+        reranker_used=None,
+        threshold=0.62,
+    )
+    mock_retrieval.query_food_ph.return_value = MagicMock(
+        has_confident_result=False,
+        results=[],
+        top_result=None,
+        query="",
+        reranker_used=None,
+        threshold=0.62,
+    )
+    mock_retrieval.query_food_water_activity.return_value = MagicMock(
+        has_confident_result=False,
+        results=[],
+        top_result=None,
+        query="",
+        reranker_used=None,
+        threshold=0.62,
+    )
+    mock_retrieval.query_pathogen_hazards.return_value = MagicMock(
+        has_confident_result=False,
+        results=[],
+        top_result=None,
+        query="",
+        reranker_used=None,
+        threshold=0.62,
+    )
     mock_retrieval.get_hazards_for_food.return_value = []
 
     if taxonomy_bridge is None:
         from app.services.grounding.taxonomy_bridge import TaxonomyBridge
+
         taxonomy_bridge = TaxonomyBridge()
 
     return GroundingService(
@@ -62,6 +91,7 @@ def call_fallback(service: GroundingService, food_description: str) -> GroundedV
 # TestGetFullCitationsUnknownId
 # ---------------------------------------------------------------------------
 
+
 class TestGetFullCitationsUnknownId:
     """Unknown source IDs must be silently omitted — not raised, not given placeholder text."""
 
@@ -79,35 +109,58 @@ class TestGetFullCitationsUnknownId:
 # TestPathogenNameNormalization
 # ---------------------------------------------------------------------------
 
+
 class TestPathogenNameNormalization:
     """Assert every row in _PATHOGEN_NAME_NORMALIZATION maps to the correct characteristics-CSV name."""
 
     def test_salmonella_spp_to_nontyphoidal(self):
-        assert _PATHOGEN_NAME_NORMALIZATION["salmonella spp."] == "salmonella nontyphoidal"
+        assert (
+            _PATHOGEN_NAME_NORMALIZATION["salmonella spp."] == "salmonella nontyphoidal"
+        )
 
     def test_campylobacter_jejuni_to_spp(self):
-        assert _PATHOGEN_NAME_NORMALIZATION["campylobacter jejuni"] == "campylobacter spp."
+        assert (
+            _PATHOGEN_NAME_NORMALIZATION["campylobacter jejuni"] == "campylobacter spp."
+        )
 
     def test_ecoli_o157_to_stec_o157(self):
         assert _PATHOGEN_NAME_NORMALIZATION["escherichia coli o157:h7"] == "stec o157"
 
     def test_vibrio_cholerae_to_toxigenic(self):
-        assert _PATHOGEN_NAME_NORMALIZATION["vibrio cholerae"] == "vibrio cholerae toxigenic"
+        assert (
+            _PATHOGEN_NAME_NORMALIZATION["vibrio cholerae"]
+            == "vibrio cholerae toxigenic"
+        )
 
     def test_clostridium_botulinum_identity(self):
-        assert _PATHOGEN_NAME_NORMALIZATION["clostridium botulinum"] == "clostridium botulinum"
+        assert (
+            _PATHOGEN_NAME_NORMALIZATION["clostridium botulinum"]
+            == "clostridium botulinum"
+        )
 
     def test_clostridium_perfringens_identity(self):
-        assert _PATHOGEN_NAME_NORMALIZATION["clostridium perfringens"] == "clostridium perfringens"
+        assert (
+            _PATHOGEN_NAME_NORMALIZATION["clostridium perfringens"]
+            == "clostridium perfringens"
+        )
 
     def test_listeria_monocytogenes_identity(self):
-        assert _PATHOGEN_NAME_NORMALIZATION["listeria monocytogenes"] == "listeria monocytogenes"
+        assert (
+            _PATHOGEN_NAME_NORMALIZATION["listeria monocytogenes"]
+            == "listeria monocytogenes"
+        )
 
     def test_yersinia_enterocolitica_identity(self):
-        assert _PATHOGEN_NAME_NORMALIZATION["yersinia enterocolitica"] == "yersinia enterocolitica"
+        assert (
+            _PATHOGEN_NAME_NORMALIZATION["yersinia enterocolitica"]
+            == "yersinia enterocolitica"
+        )
 
     def test_staphylococcus_aureus_identity(self):
-        assert _PATHOGEN_NAME_NORMALIZATION["staphylococcus aureus"] == "staphylococcus aureus"
+        assert (
+            _PATHOGEN_NAME_NORMALIZATION["staphylococcus aureus"]
+            == "staphylococcus aureus"
+        )
 
     def test_bacillus_cereus_identity(self):
         assert _PATHOGEN_NAME_NORMALIZATION["bacillus cereus"] == "bacillus cereus"
@@ -119,7 +172,10 @@ class TestPathogenNameNormalization:
         assert _PATHOGEN_NAME_NORMALIZATION["vibrio vulnificus"] == "vibrio vulnificus"
 
     def test_vibrio_parahaemolyticus_identity(self):
-        assert _PATHOGEN_NAME_NORMALIZATION["vibrio parahaemolyticus"] == "vibrio parahaemolyticus"
+        assert (
+            _PATHOGEN_NAME_NORMALIZATION["vibrio parahaemolyticus"]
+            == "vibrio parahaemolyticus"
+        )
 
     def test_all_values_are_lowercase(self):
         """All map values should be lowercase (characteristics CSV names)."""
@@ -132,6 +188,7 @@ class TestPathogenNameNormalization:
 # TestCategoryFallbackEdgeCases
 # ---------------------------------------------------------------------------
 
+
 class TestCategoryFallbackEdgeCases:
     """_category_pathogen_fallback with synthetic injected tables — no filesystem reads."""
 
@@ -141,15 +198,22 @@ class TestCategoryFallbackEdgeCases:
         # Salmonella spp. must be selected after Campylobacter is skipped.
         service = make_service(
             ift_alignment={"grain": ["cereal grains"]},
-            pathogen_associations={"cereal grains": ["Campylobacter jejuni", "Salmonella spp."]},
+            pathogen_associations={
+                "cereal grains": ["Campylobacter jejuni", "Salmonella spp."]
+            },
             pathogen_characteristics={
-                "campylobacter spp.": (9999, "CDC-TEST"),    # synthetic high deaths — ranks first
+                "campylobacter spp.": (
+                    9999,
+                    "CDC-TEST",
+                ),  # synthetic high deaths — ranks first
                 "salmonella nontyphoidal": (238, "CDC-2019-T1T2"),
             },
         )
         grounded = call_fallback(service, "barley")
 
-        assert grounded.has("organism"), "Organism should be grounded via second candidate"
+        assert grounded.has(
+            "organism"
+        ), "Organism should be grounded via second candidate"
         assert grounded.get("organism") == ComBaseOrganism.SALMONELLA
         prov = grounded.provenance["organism"]
         assert prov.source == ValueSource.RAG_PATHOGEN_CATEGORY_FALLBACK
@@ -173,9 +237,14 @@ class TestCategoryFallbackEdgeCases:
         )
         grounded = call_fallback(service, "barley")
 
-        assert not grounded.has("organism"), "No organism should be grounded when all candidates are unmappable"
+        assert not grounded.has(
+            "organism"
+        ), "No organism should be grounded when all candidates are unmappable"
         assert grounded.organism_failure is not None
-        assert grounded.organism_failure.stage == OrganismGroundingFailureStage.INTERNAL_NO_MAPPABLE_CANDIDATE
+        assert (
+            grounded.organism_failure.stage
+            == OrganismGroundingFailureStage.INTERNAL_NO_MAPPABLE_CANDIDATE
+        )
 
     def test_pathogen_absent_from_characteristics_excluded_from_ranking(self):
         """A pathogen present in associations but absent from characteristics is not ranked."""
@@ -183,7 +252,9 @@ class TestCategoryFallbackEdgeCases:
         # Salmonella spp. is in both — it should still be selected.
         service = make_service(
             ift_alignment={"grain": ["cereal grains"]},
-            pathogen_associations={"cereal grains": ["Unknown pathogen", "Salmonella spp."]},
+            pathogen_associations={
+                "cereal grains": ["Unknown pathogen", "Salmonella spp."]
+            },
             pathogen_characteristics={
                 "salmonella nontyphoidal": (238, "CDC-2019-T1T2"),
                 # "Unknown pathogen" is intentionally absent
@@ -197,7 +268,9 @@ class TestCategoryFallbackEdgeCases:
         fb = grounded.provenance["organism"].pathogen_category_fallback
         assert fb is not None
         ranked_names = [c.pathogen for c in fb.candidate_pathogens]
-        assert "Unknown pathogen" not in ranked_names, "Absent-from-characteristics pathogen must not appear in ranked list"
+        assert (
+            "Unknown pathogen" not in ranked_names
+        ), "Absent-from-characteristics pathogen must not appear in ranked list"
 
     def test_normalization_applied_before_characteristics_lookup(self):
         """'Salmonella spp.' in associations must look up 'salmonella nontyphoidal' in characteristics."""
@@ -212,7 +285,9 @@ class TestCategoryFallbackEdgeCases:
         )
         grounded = call_fallback(service, "boiled egg")
 
-        assert grounded.has("organism"), "Normalization must succeed so Salmonella is found in characteristics"
+        assert grounded.has(
+            "organism"
+        ), "Normalization must succeed so Salmonella is found in characteristics"
         fb = grounded.provenance["organism"].pathogen_category_fallback
         assert fb is not None
         assert fb.candidate_pathogens[0].normalized_name == "salmonella nontyphoidal"
@@ -222,8 +297,12 @@ class TestCategoryFallbackEdgeCases:
         """When taxonomy_bridge is None, fallback must not ground anything."""
         mock_retrieval = MagicMock()
         mock_retrieval.query_pathogen_hazards.return_value = MagicMock(
-            has_confident_result=False, results=[], top_result=None,
-            query="", reranker_used=None, threshold=0.62,
+            has_confident_result=False,
+            results=[],
+            top_result=None,
+            query="",
+            reranker_used=None,
+            threshold=0.62,
         )
         service = GroundingService(
             retrieval_service=mock_retrieval,
@@ -232,13 +311,18 @@ class TestCategoryFallbackEdgeCases:
             taxonomy_bridge=None,  # explicitly disabled
             ift_alignment={"grain": ["cereal grains"]},
             pathogen_associations={"cereal grains": ["Salmonella spp."]},
-            pathogen_characteristics={"salmonella nontyphoidal": (238, "CDC-2019-T1T2")},
+            pathogen_characteristics={
+                "salmonella nontyphoidal": (238, "CDC-2019-T1T2")
+            },
         )
         grounded = call_fallback(service, "barley")
 
         assert not grounded.has("organism")
         assert grounded.organism_failure is not None
-        assert grounded.organism_failure.stage == OrganismGroundingFailureStage.BRIDGE_DISABLED
+        assert (
+            grounded.organism_failure.stage
+            == OrganismGroundingFailureStage.BRIDGE_DISABLED
+        )
 
     def test_no_ift_mapping_returns_without_grounding(self):
         """When ptm_category has no IFT row (e.g. condiment), fallback must not ground anything.
@@ -256,7 +340,10 @@ class TestCategoryFallbackEdgeCases:
 
         assert not grounded.has("organism")
         assert grounded.organism_failure is not None
-        assert grounded.organism_failure.stage == OrganismGroundingFailureStage.CATEGORY_HAS_NO_HAZARD_DATA
+        assert (
+            grounded.organism_failure.stage
+            == OrganismGroundingFailureStage.CATEGORY_HAS_NO_HAZARD_DATA
+        )
         assert grounded.organism_failure.resolved_category is not None
         assert grounded.organism_failure.match_score is not None
 
@@ -272,7 +359,9 @@ class TestCategoryFallbackEdgeCases:
         )
         grounded = call_fallback(service, "barley")
 
-        assert grounded.has("organism"), "Zero-death pathogen must still be selected if it maps to ComBaseOrganism"
+        assert grounded.has(
+            "organism"
+        ), "Zero-death pathogen must still be selected if it maps to ComBaseOrganism"
         assert grounded.get("organism") == ComBaseOrganism.BACILLUS_CEREUS
         fb = grounded.provenance["organism"].pathogen_category_fallback
         assert fb.selected_pathogen.annual_deaths_us == 0
@@ -282,7 +371,9 @@ class TestCategoryFallbackEdgeCases:
         service = make_service(
             ift_alignment={"grain": ["cereal grains"]},
             pathogen_associations={"cereal grains": ["Salmonella spp."]},
-            pathogen_characteristics={"salmonella nontyphoidal": (238, "CDC-2019-T1T2")},
+            pathogen_characteristics={
+                "salmonella nontyphoidal": (238, "CDC-2019-T1T2")
+            },
         )
         grounded = call_fallback(service, "barley")
 

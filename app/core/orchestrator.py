@@ -14,23 +14,28 @@ import re
 
 _log = logging.getLogger(__name__)
 
-from app.core.state import SessionState, SessionManager, get_session_manager
-from app.models.enums import SessionStatus, IntentType, ModelType
-from app.services.llm.exceptions import LLMProviderError
-from app.models.metadata import ComBaseModelAudit, SystemAudit, ValueProvenance, ValueSource
-from app.services.audit.system import build_system_audit
+from app.core.state import SessionManager, SessionState, get_session_manager
+from app.engines.combase.engine import ComBaseEngine, get_combase_engine
+from app.models.enums import IntentType, ModelType, SessionStatus
 from app.models.extraction import ExtractedDuration
+from app.models.metadata import (
+    ComBaseModelAudit,
+    SystemAudit,
+    ValueProvenance,
+    ValueSource,
+)
+from app.services.audit.system import build_system_audit
 from app.services.extraction.semantic_parser import SemanticParser, get_semantic_parser
 from app.services.grounding.grounding_service import (
     GroundedValues,
     GroundingService,
     get_grounding_service,
 )
+from app.services.llm.exceptions import LLMProviderError
 from app.services.standardization.standardization_service import (
     StandardizationService,
     get_standardization_service,
 )
-from app.engines.combase.engine import ComBaseEngine, get_combase_engine
 
 
 def _missing_key_to_audit_key(field_spec: str) -> str:
@@ -60,22 +65,25 @@ def _missing_key_to_audit_key(field_spec: str) -> str:
         return "temperature_celsius"
     if field_spec == "organism" or field_spec.startswith("organism ("):
         return "organism"
-    _log.warning("_missing_key_to_audit_key: unrecognised field spec %r — passing through; audit key may be wrong", field_spec)
+    _log.warning(
+        "_missing_key_to_audit_key: unrecognised field spec %r — passing through; audit key may be wrong",
+        field_spec,
+    )
     return field_spec
 
 
 class TranslationResult:
     """Result of the translation pipeline."""
-    
+
     def __init__(self, state: SessionState):
         self.state = state
         self.success = state.status == SessionStatus.COMPLETED
         self.error = state.error
-    
+
     @property
     def execution_result(self):
         return self.state.execution_result
-    
+
     @property
     def metadata(self):
         return self.state.metadata
@@ -84,12 +92,12 @@ class TranslationResult:
 class Orchestrator:
     """
     Orchestrates the full translation pipeline.
-    
+
     Usage:
         orchestrator = Orchestrator()
         result = await orchestrator.translate("Raw chicken left out for 3 hours at 25C")
     """
-    
+
     def __init__(
         self,
         session_manager: SessionManager | None = None,
@@ -103,7 +111,7 @@ class Orchestrator:
         self._grounder = grounding_service or get_grounding_service()
         self._standardizer = standardization_service or get_standardization_service()
         self._engine = combase_engine or get_combase_engine()
-    
+
     async def translate(
         self,
         user_input: str,
@@ -111,30 +119,30 @@ class Orchestrator:
     ) -> TranslationResult:
         """
         Run the full translation pipeline.
-        
+
         Args:
             user_input: User's natural language input
             model_type: Type of model to run
-            
+
         Returns:
             TranslationResult with execution result and metadata
         """
         # Create session
         state = self._sessions.create_session(user_input)
-        
+
         try:
             # Step 1: Classify intent
             state.update_status(SessionStatus.EXTRACTING)
             await self._classify_intent(state)
-            
+
             if state.intent_type == IntentType.OUT_OF_SCOPE:
                 state.set_error("Query is out of scope for food safety predictions")
                 return TranslationResult(state)
-            
+
             if state.intent_type == IntentType.INFORMATION_QUERY:
                 state.set_error("Information queries not yet implemented")
                 return TranslationResult(state)
-            
+
             # Step 2: Extract scenario
             await self._extract_scenario(state)
 
@@ -189,7 +197,11 @@ class Orchestrator:
                 return TranslationResult(state)
 
             if std_result.payload is None:
-                error_detail = "; ".join(std_result.warnings) if std_result.warnings else "Failed to build execution payload"
+                error_detail = (
+                    "; ".join(std_result.warnings)
+                    if std_result.warnings
+                    else "Failed to build execution payload"
+                )
                 state.set_error(error_detail)
                 return TranslationResult(state)
 
@@ -201,7 +213,9 @@ class Orchestrator:
 
             # Record ComBase model selection audit after execution (organism known now)
             if state.metadata and state.execution_payload:
-                self._record_combase_model_audit(state, effective_model_type, model_type_reason)
+                self._record_combase_model_audit(
+                    state, effective_model_type, model_type_reason
+                )
 
             # Complete
             state.update_status(SessionStatus.COMPLETED)
@@ -213,15 +227,15 @@ class Orchestrator:
                     state.metadata.warnings.append(
                         "RAG manifest missing — store provenance unknown"
                     )
-            
+
             return TranslationResult(state)
-            
+
         except LLMProviderError:
             raise
         except Exception as e:
             state.set_error(str(e))
             return TranslationResult(state)
-    
+
     def _determine_model_type(
         self,
         explicit_type: ModelType | None,
@@ -262,7 +276,10 @@ class Orchestrator:
             return explicit_type, "explicit model_type parameter override"
 
         if scenario.implied_model_type is not None:
-            return scenario.implied_model_type, "LLM inference (implied_model_type field)"
+            return (
+                scenario.implied_model_type,
+                "LLM inference (implied_model_type field)",
+            )
 
         temp = scenario.single_step_temperature
         if temp.value_celsius is not None and temp.value_celsius > 50:
@@ -275,7 +292,10 @@ class Orchestrator:
             return ModelType.THERMAL_INACTIVATION, "scenario flag: is_cooking_scenario"
 
         if scenario.is_non_thermal_treatment:
-            return ModelType.NON_THERMAL_SURVIVAL, "scenario flag: is_non_thermal_treatment"
+            return (
+                ModelType.NON_THERMAL_SURVIVAL,
+                "scenario flag: is_non_thermal_treatment",
+            )
 
         env = scenario.environmental_conditions
         if env.ph_value is not None and env.ph_value < 4.5:
@@ -349,7 +369,7 @@ class Orchestrator:
     async def _classify_intent(self, state: SessionState) -> None:
         """Classify user intent."""
         state.intent = await self._parser.classify_intent(state.user_input)
-        
+
         if state.intent.is_prediction_request:
             state.intent_type = IntentType.PREDICTION_REQUEST
         elif state.intent.is_information_query:
@@ -358,7 +378,7 @@ class Orchestrator:
             state.intent_type = IntentType.PREDICTION_REQUEST
         else:
             state.intent_type = IntentType.OUT_OF_SCOPE
-    
+
     async def _extract_scenario(self, state: SessionState) -> None:
         """Extract scenario from user input."""
         state.extracted_scenario = await self._parser.extract_scenario(state.user_input)
@@ -392,7 +412,7 @@ class Orchestrator:
         _check(scenario.single_step_duration, "single-step")
         for i, step in enumerate(scenario.time_temperature_steps):
             _check(step.duration, f"step {i + 1}")
-    
+
     async def _ground_values(self, state: SessionState) -> "GroundedValues":
         """Ground extracted values via RAG."""
         grounded = await self._grounder.ground_scenario(state.extracted_scenario)
@@ -432,14 +452,14 @@ class Orchestrator:
                 state.metadata.warnings.extend(grounded.warnings)
 
         return grounded
-    
+
     async def _execute_model(self, state: SessionState) -> None:
         """Execute the ComBase model."""
         if not self._engine.is_available:
             raise RuntimeError("ComBase engine not available")
-        
+
         state.execution_result = await self._engine.execute(state.execution_payload)
-        
+
         # Add execution warnings to metadata
         if state.metadata and state.execution_result:
             state.metadata.warnings.extend(state.execution_result.warnings)

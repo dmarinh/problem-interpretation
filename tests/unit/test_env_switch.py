@@ -27,25 +27,27 @@ Sentinel design:
   and lets production code use a single env-var gate.
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+
 from app.services.grounding.grounding_service import (
-    GroundingService,
-    GroundedValues,
-    _parse_bridge_enabled_env,
     _BRIDGE_SENTINEL,
+    GroundedValues,
+    GroundingService,
+    _parse_bridge_enabled_env,
 )
 from app.services.grounding.taxonomy_bridge import TaxonomyBridge
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def mock_retrieval() -> MagicMock:
     """Minimal mock retrieval service — all queries return no confident result."""
+
     def _no_hit():
         r = MagicMock()
         r.has_confident_result = False
@@ -68,6 +70,7 @@ def mock_retrieval() -> MagicMock:
 # ---------------------------------------------------------------------------
 # _parse_bridge_enabled_env
 # ---------------------------------------------------------------------------
+
 
 class TestParseBridgeEnabledEnv:
 
@@ -94,6 +97,7 @@ class TestParseBridgeEnabledEnv:
 # Sentinel identity
 # ---------------------------------------------------------------------------
 
+
 class TestBridgeSentinelIdentity:
 
     def test_sentinel_is_not_none(self) -> None:
@@ -107,6 +111,7 @@ class TestBridgeSentinelIdentity:
 # ---------------------------------------------------------------------------
 # GroundingService.__init__ sentinel behaviour
 # ---------------------------------------------------------------------------
+
 
 class TestGroundingServiceInitBridgeSelection:
 
@@ -162,6 +167,7 @@ class TestGroundingServiceInitBridgeSelection:
 # ---------------------------------------------------------------------------
 # Bridge disabled is a no-op on _ground_food_properties
 # ---------------------------------------------------------------------------
+
 
 class TestBridgeDisabledIsNoOp:
     """When _taxonomy_bridge is None, Tier 3 must not set any field or record attempts."""

@@ -2,21 +2,18 @@
 Unit tests for metadata models.
 """
 
-import pytest
 from datetime import datetime
 
+from app.models.enums import (
+    SessionStatus,
+)
 from app.models.metadata import (
-    ValueSource,
-    ValueProvenance,
     DefaultImputed,
+    InterpretationMetadata,
     RangeClamp,
     RetrievalResult,
-    ClarificationRecord,
-    InterpretationMetadata,
-)
-from app.models.enums import (
-    ClarificationReason,
-    SessionStatus,
+    ValueProvenance,
+    ValueSource,
 )
 
 
@@ -146,11 +143,13 @@ class TestInterpretationMetadata:
             "temperature_celsius",
             ValueProvenance(
                 source=ValueSource.USER_EXPLICIT,
-            )
+            ),
         )
 
         assert "temperature_celsius" in meta.provenance
-        assert meta.provenance["temperature_celsius"].source == ValueSource.USER_EXPLICIT
+        assert (
+            meta.provenance["temperature_celsius"].source == ValueSource.USER_EXPLICIT
+        )
 
     def test_add_default_imputed(self):
         """Should track defaults imputed and range clamps."""
@@ -159,20 +158,24 @@ class TestInterpretationMetadata:
             original_input="test",
         )
 
-        meta.add_default_imputed(DefaultImputed(
-            field_name="temperature_celsius",
-            imputed_value=25.0,
-            reason="No temperature specified. Using conservative abuse temperature (25°C).",
-        ))
+        meta.add_default_imputed(
+            DefaultImputed(
+                field_name="temperature_celsius",
+                imputed_value=25.0,
+                reason="No temperature specified. Using conservative abuse temperature (25°C).",
+            )
+        )
 
-        meta.add_range_clamp(RangeClamp(
-            field_name="ph",
-            original_value=3.5,
-            clamped_value=4.0,
-            valid_min=4.0,
-            valid_max=7.5,
-            reason="Model constraint",
-        ))
+        meta.add_range_clamp(
+            RangeClamp(
+                field_name="ph",
+                original_value=3.5,
+                clamped_value=4.0,
+                valid_min=4.0,
+                valid_max=7.5,
+                reason="Model constraint",
+            )
+        )
 
         assert len(meta.defaults_imputed) == 1
         assert len(meta.range_clamps) == 1

@@ -2,16 +2,21 @@
 Unit tests for ComBase engine.
 """
 
-import pytest
 from pathlib import Path
 
-from app.engines.combase.engine import ComBaseEngine, get_combase_engine, reset_combase_engine
-from app.models.enums import ModelType, ComBaseOrganism, Factor4Type, EngineType
-from app.models.execution.base import TimeTemperatureStep, TimeTemperatureProfile
+import pytest
+
+from app.engines.combase.engine import (
+    ComBaseEngine,
+    get_combase_engine,
+    reset_combase_engine,
+)
+from app.models.enums import ComBaseOrganism, EngineType, Factor4Type, ModelType
+from app.models.execution.base import TimeTemperatureProfile, TimeTemperatureStep
 from app.models.execution.combase import (
-    ComBaseParameters,
-    ComBaseModelSelection,
     ComBaseExecutionPayload,
+    ComBaseModelSelection,
+    ComBaseParameters,
 )
 
 
@@ -56,40 +61,40 @@ def simple_payload() -> ComBaseExecutionPayload:
 
 class TestComBaseEngine:
     """Tests for ComBaseEngine."""
-    
+
     def test_engine_not_loaded(self):
         """Should report not available before loading."""
         eng = ComBaseEngine()
-        
+
         assert eng.is_available is False
-    
+
     def test_load_models(self, engine):
         """Should load models from CSV."""
         if not engine.is_available:
             pytest.skip("combase_models.csv not found")
-        
+
         assert engine.is_available is True
         assert len(engine.registry) > 0
-    
+
     @pytest.mark.asyncio
     async def test_execute_growth(self, engine, simple_payload):
         """Should execute growth prediction."""
         if not engine.is_available:
             pytest.skip("combase_models.csv not found")
-        
+
         result = await engine.execute(simple_payload)
-        
+
         assert result.model_result.mu_max > 0
         assert result.model_result.doubling_time_hours > 0
         assert result.total_log_increase > 0
         assert result.engine_type == EngineType.COMBASE_LOCAL
-    
+
     @pytest.mark.asyncio
     async def test_execute_multi_step(self, engine):
         """Should execute multi-step prediction."""
         if not engine.is_available:
             pytest.skip("combase_models.csv not found")
-        
+
         payload = ComBaseExecutionPayload(
             model_selection=ComBaseModelSelection(
                 organism=ComBaseOrganism.SALMONELLA,
@@ -119,23 +124,26 @@ class TestComBaseEngine:
                 total_duration_minutes=300.0,
             ),
         )
-        
+
         result = await engine.execute(payload)
-        
+
         assert len(result.step_predictions) == 2
         assert result.step_predictions[0].step_order == 1
         assert result.step_predictions[1].step_order == 2
         assert result.step_predictions[0].mu_max > 0  # check mu_max per step
         assert result.step_predictions[1].mu_max > 0
         # First step at 25°C should have more growth than second at 4°C
-        assert result.step_predictions[0].log_increase > result.step_predictions[1].log_increase
-    
+        assert (
+            result.step_predictions[0].log_increase
+            > result.step_predictions[1].log_increase
+        )
+
     @pytest.mark.asyncio
     async def test_execute_inactivation(self, engine):
         """Should execute thermal inactivation prediction."""
         if not engine.is_available:
             pytest.skip("combase_models.csv not found")
-        
+
         payload = ComBaseExecutionPayload(
             model_selection=ComBaseModelSelection(
                 organism=ComBaseOrganism.SALMONELLA,
@@ -160,18 +168,18 @@ class TestComBaseEngine:
                 total_duration_minutes=10.0,
             ),
         )
-        
+
         result = await engine.execute(payload)
-        
+
         assert result.model_result.mu_max < 0  # Negative for inactivation
         assert result.total_log_increase < 0  # Log reduction
-    
+
     @pytest.mark.asyncio
     async def test_model_not_found(self, engine):
         """Should raise error for unknown model."""
         if not engine.is_available:
             pytest.skip("combase_models.csv not found")
-        
+
         payload = ComBaseExecutionPayload(
             model_selection=ComBaseModelSelection(
                 organism=ComBaseOrganism.PSEUDOMONAS,
@@ -196,28 +204,28 @@ class TestComBaseEngine:
                 total_duration_minutes=10.0,
             ),
         )
-        
+
         with pytest.raises(ValueError, match="Model not found"):
             await engine.execute(payload)
-    
+
     @pytest.mark.asyncio
     async def test_health_check_loaded(self, engine):
         """Should report healthy when loaded."""
         if not engine.is_available:
             pytest.skip("combase_models.csv not found")
-        
+
         health = await engine.health_check()
-        
+
         assert health["healthy"] is True
         assert "models" in health["message"].lower()
-    
+
     @pytest.mark.asyncio
     async def test_health_check_not_loaded(self):
         """Should report unhealthy when not loaded."""
         eng = ComBaseEngine()
-        
+
         health = await eng.health_check()
-        
+
         assert health["healthy"] is False
 
 
@@ -258,15 +266,15 @@ class TestPhysicalLogCap:
         result = await engine.execute(payload)
 
         assert result.total_log_increase == pytest.approx(-15.0)
-        assert result.step_predictions[0].log_increase == pytest.approx(-15.0), (
-            f"step_predictions[0].log_increase should also be capped; got {result.step_predictions[0].log_increase}"
-        )
-        assert any("capped" in w.lower() for w in result.warnings), (
-            f"Expected a cap warning but got: {result.warnings}"
-        )
-        assert any("-321" in w for w in result.warnings), (
-            "Warning should include the raw uncapped value (-321...)"
-        )
+        assert result.step_predictions[0].log_increase == pytest.approx(
+            -15.0
+        ), f"step_predictions[0].log_increase should also be capped; got {result.step_predictions[0].log_increase}"
+        assert any(
+            "capped" in w.lower() for w in result.warnings
+        ), f"Expected a cap warning but got: {result.warnings}"
+        assert any(
+            "-321" in w for w in result.warnings
+        ), "Warning should include the raw uncapped value (-321...)"
 
     @pytest.mark.asyncio
     async def test_no_cap_for_in_range_queries(self, engine):
@@ -275,7 +283,7 @@ class TestPhysicalLogCap:
             pytest.skip("combase_models.csv not found")
 
         cases = [
-            (60.0, 5.0, 6.2, 0.997),   # chicken at 60°C for 5 min
+            (60.0, 5.0, 6.2, 0.997),  # chicken at 60°C for 5 min
             (58.0, 12.0, 5.6, 0.950),  # beef at 58°C for 12 min
         ]
 
@@ -308,28 +316,28 @@ class TestPhysicalLogCap:
             result = await engine.execute(payload)
 
             cap_warnings = [w for w in result.warnings if "capped" in w.lower()]
-            assert not cap_warnings, (
-                f"T={temp}°C/{dur}min should not trigger cap but got: {cap_warnings}"
-            )
-            assert result.total_log_increase > -15.0, (
-                f"T={temp}°C/{dur}min gave {result.total_log_increase}, expected > -15"
-            )
+            assert (
+                not cap_warnings
+            ), f"T={temp}°C/{dur}min should not trigger cap but got: {cap_warnings}"
+            assert (
+                result.total_log_increase > -15.0
+            ), f"T={temp}°C/{dur}min gave {result.total_log_increase}, expected > -15"
 
 
 class TestComBaseEngineSingleton:
     """Tests for singleton management."""
-    
+
     def test_get_engine_returns_instance(self):
         """get_combase_engine should return an engine."""
         reset_combase_engine()
         engine = get_combase_engine()
-        
+
         assert isinstance(engine, ComBaseEngine)
-    
+
     def test_get_engine_returns_same_instance(self):
         """get_combase_engine should return singleton."""
         reset_combase_engine()
         engine1 = get_combase_engine()
         engine2 = get_combase_engine()
-        
+
         assert engine1 is engine2

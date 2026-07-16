@@ -14,15 +14,16 @@ from app.models.enums import (
     SessionStatus,
 )
 
-
 # =============================================================================
 # REQUEST
 # =============================================================================
+
 
 class TranslationRequest(BaseModel):
     """
     Request body for translation endpoint.
     """
+
     query: str = Field(
         ...,
         min_length=1,
@@ -38,7 +39,7 @@ class TranslationRequest(BaseModel):
         default=None,
         description="Type of prediction model. If not provided, inferred from query context.",
     )
-    
+
     model_config = {
         "json_schema_extra": {
             "examples": [
@@ -50,7 +51,7 @@ class TranslationRequest(BaseModel):
                 },
                 {
                     "query": "Marinating raw fish in vinegar for preservation",
-                }
+                },
             ]
         }
     }
@@ -60,8 +61,10 @@ class TranslationRequest(BaseModel):
 # RESPONSE COMPONENTS
 # =============================================================================
 
+
 class ProvenanceInfo(BaseModel):
     """Provenance information for a grounded value."""
+
     field: str = Field(description="Field name")
     value: str = Field(description="Value used")
     source: str = Field(description="Source of the value")
@@ -70,6 +73,7 @@ class ProvenanceInfo(BaseModel):
 
 class WarningInfo(BaseModel):
     """Warning or correction applied during translation."""
+
     type: str = Field(description="Warning type")
     message: str = Field(description="Warning message")
     field: str | None = Field(default=None, description="Affected field")
@@ -77,6 +81,7 @@ class WarningInfo(BaseModel):
 
 class StepInput(BaseModel):
     """A single time-temperature step as submitted to the engine."""
+
     step_order: int = Field(description="Step order (1-indexed)")
     temperature_celsius: float = Field(description="Temperature during this step (°C)")
     duration_minutes: float = Field(description="Duration of this step (minutes)")
@@ -84,15 +89,19 @@ class StepInput(BaseModel):
 
 class StepPrediction(BaseModel):
     """Per-step growth prediction output from the engine."""
+
     step_order: int = Field(description="Step order (1-indexed)")
     temperature_celsius: float = Field(description="Temperature during this step (°C)")
     duration_minutes: float = Field(description="Duration of this step (minutes)")
-    mu_max: float = Field(description="Growth rate at this step's temperature (ln/h, natural log base)")
+    mu_max: float = Field(
+        description="Growth rate at this step's temperature (ln/h, natural log base)"
+    )
     log_increase: float = Field(description="log10 CFU change during this step")
 
 
 class PredictionResult(BaseModel):
     """Prediction results from the model."""
+
     # Model info
     organism: str = Field(description="Organism modeled")
     model_type: str = Field(description="Type of model used")
@@ -100,18 +109,32 @@ class PredictionResult(BaseModel):
 
     # Parameters used (scalar summary — first-step values for multi-step scenarios)
     temperature_celsius: float = Field(description="Temperature used (°C)")
-    duration_minutes: float = Field(description="Duration used (minutes) — total across all steps")
+    duration_minutes: float = Field(
+        description="Duration used (minutes) — total across all steps"
+    )
     ph: float = Field(description="pH used")
     water_activity: float = Field(description="Water activity used")
 
     # Results (scalar summary)
-    mu_max: float = Field(description="Maximum growth rate (ln/h, natural log base) — first-step value for multi-step scenarios")
-    doubling_time_hours: float | None = Field(description="Doubling time (hours) — first-step value for multi-step scenarios")
-    total_log_increase: float = Field(description="Total log10 CFU change across all steps")
+    mu_max: float = Field(
+        description="Maximum growth rate (ln/h, natural log base) — first-step value for multi-step scenarios"
+    )
+    doubling_time_hours: float | None = Field(
+        description="Doubling time (hours) — first-step value for multi-step scenarios"
+    )
+    total_log_increase: float = Field(
+        description="Total log10 CFU change across all steps"
+    )
     initial_log_cfu: float = Field(description="Initial bacterial count (log10 CFU/g)")
-    final_log_cfu: float = Field(description="Final bacterial count (log10 CFU/g) = initial + total_log_increase")
-    y_max: float = Field(description="Maximum population density (Baranyi model parameter)")
-    h0: float = Field(description="Initial physiological state (Baranyi model parameter)")
+    final_log_cfu: float = Field(
+        description="Final bacterial count (log10 CFU/g) = initial + total_log_increase"
+    )
+    y_max: float = Field(
+        description="Maximum population density (Baranyi model parameter)"
+    )
+    h0: float = Field(
+        description="Initial physiological state (Baranyi model parameter)"
+    )
 
     # Multi-step breakdown (always populated; length 1 for single-step scenarios)
     is_multi_step: bool = Field(
@@ -139,8 +162,10 @@ class PredictionResult(BaseModel):
 # AUDIT SCHEMA (verbose=true only)
 # =============================================================================
 
+
 class RunnerUpInfo(BaseModel):
     """A non-winning retrieval candidate."""
+
     doc_id: str | None
     content_preview: str | None
     embedding_score: float | None
@@ -149,6 +174,7 @@ class RunnerUpInfo(BaseModel):
 
 class RetrievalTopMatchInfo(BaseModel):
     """Full details of the top retrieval hit."""
+
     doc_id: str | None
     embedding_score: float | None
     rerank_score: float | None
@@ -159,6 +185,7 @@ class RetrievalTopMatchInfo(BaseModel):
 
 class RerankerSkippedDocInfo(BaseModel):
     """A doc ranked first by the reranker but skipped because it failed the embedding threshold gate."""
+
     doc_id: str | None
     content_preview: str | None
     embedding_score: float | None
@@ -168,6 +195,7 @@ class RerankerSkippedDocInfo(BaseModel):
 
 class RetrievalAuditInfo(BaseModel):
     """Retrieval details for one RAG call."""
+
     query: str
     top_match: RetrievalTopMatchInfo | None
     runners_up: list[RunnerUpInfo]
@@ -177,6 +205,7 @@ class RetrievalAuditInfo(BaseModel):
 
 class ExtractionAuditInfo(BaseModel):
     """How the numeric value was extracted from retrieved text or rule lookup."""
+
     method: str | None
     raw_match: str | None
     parsed_range: list[float] | None
@@ -198,6 +227,7 @@ class StandardizationAuditInfo(BaseModel):
     after_value: the post-standardization value that reached the model (float for numeric fields, str for organism)
     reason: human-readable rationale
     """
+
     rule: str
     direction: str | None = None
     before_value: list[float] | float | None = None
@@ -207,6 +237,7 @@ class StandardizationAuditInfo(BaseModel):
 
 class PathogenCandidateInfo(BaseModel):
     """One ranked pathogen candidate from the category-level fallback."""
+
     pathogen: str
     normalized_name: str
     annual_deaths_us: int
@@ -220,6 +251,7 @@ class PathogenCategoryFallbackAuditInfo(BaseModel):
     all ranked candidates, the selected organism, and any candidates that
     were skipped because they do not map to a ComBaseOrganism.
     """
+
     ptm_category: str
     ift_categories: list[str]
     ift_source_id: str
@@ -231,6 +263,7 @@ class PathogenCategoryFallbackAuditInfo(BaseModel):
 
 class FieldAuditEntry(BaseModel):
     """Complete per-field audit record."""
+
     final_value: float | str | None
     source: str
     retrieval: RetrievalAuditInfo | None
@@ -241,6 +274,7 @@ class FieldAuditEntry(BaseModel):
 
 class ComBaseModelAuditInfo(BaseModel):
     """Which ComBase model was selected and why."""
+
     organism: str
     organism_id: str | None = None
     organism_display_name: str | None = None
@@ -255,6 +289,7 @@ class ComBaseModelAuditInfo(BaseModel):
 
 class SystemAuditInfo(BaseModel):
     """Software and data state at time of prediction."""
+
     rag_store_hash: str | None
     rag_ingested_at: str | None
     source_csv_audit_date: str | None
@@ -264,6 +299,7 @@ class SystemAuditInfo(BaseModel):
 
 class DefaultImputedInfo(BaseModel):
     """A conservative default substituted for a missing field."""
+
     field_name: str
     default_value: float | str
     reason: str
@@ -278,6 +314,7 @@ class DefaultImputedInfo(BaseModel):
 
 class RangeClampInfo(BaseModel):
     """A value that was clamped to the model's valid range."""
+
     field_name: str
     original_value: float
     clamped_value: float
@@ -288,6 +325,7 @@ class RangeClampInfo(BaseModel):
 
 class AuditSummary(BaseModel):
     """Cross-field audit summary."""
+
     range_clamps: list[RangeClampInfo] = Field(default_factory=list)
     defaults_imputed: list[DefaultImputedInfo] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
@@ -295,6 +333,7 @@ class AuditSummary(BaseModel):
 
 class AuditDetail(BaseModel):
     """Full verbose audit payload, returned only when verbose=true."""
+
     field_audit: dict[str, FieldAuditEntry]
     combase_model: ComBaseModelAuditInfo | None
     audit: AuditSummary
@@ -305,36 +344,37 @@ class TranslationResponse(BaseModel):
     """
     Response from translation endpoint.
     """
+
     # Status
     success: bool = Field(description="Whether translation succeeded")
     session_id: str = Field(description="Unique session identifier")
     status: SessionStatus = Field(description="Final session status")
-    
+
     # Timing
     created_at: datetime = Field(description="When the request was received")
     completed_at: datetime = Field(description="When processing completed")
-    
+
     # Original input
     original_query: str = Field(description="The original user query")
-    
+
     # Results (only if success=True)
     prediction: PredictionResult | None = Field(
         default=None,
         description="Prediction results",
     )
-    
+
     # Provenance (transparency)
     provenance: list[ProvenanceInfo] = Field(
         default_factory=list,
         description="How each value was determined",
     )
-    
+
     # Warnings and corrections
     warnings: list[WarningInfo] = Field(
         default_factory=list,
         description="Warnings and corrections applied",
     )
-    
+
     # Error (only if success=False)
     error: str | None = Field(
         default=None,
@@ -346,7 +386,7 @@ class TranslationResponse(BaseModel):
         default=None,
         description="Full per-field audit trail (populated only when verbose=true)",
     )
-    
+
     model_config = {
         "json_schema_extra": {
             "examples": [
@@ -372,7 +412,11 @@ class TranslationResponse(BaseModel):
                         "final_log_cfu": 3.78,
                         "is_multi_step": False,
                         "steps": [
-                            {"step_order": 1, "temperature_celsius": 25.0, "duration_minutes": 180.0}
+                            {
+                                "step_order": 1,
+                                "temperature_celsius": 25.0,
+                                "duration_minutes": 180.0,
+                            }
                         ],
                         "step_predictions": [
                             {
@@ -408,14 +452,44 @@ class TranslationResponse(BaseModel):
                         "final_log_cfu": 4.10,
                         "is_multi_step": True,
                         "steps": [
-                            {"step_order": 1, "temperature_celsius": 28.0, "duration_minutes": 45.0},
-                            {"step_order": 2, "temperature_celsius": 22.0, "duration_minutes": 60.0},
-                            {"step_order": 3, "temperature_celsius": 4.0, "duration_minutes": 120.0},
+                            {
+                                "step_order": 1,
+                                "temperature_celsius": 28.0,
+                                "duration_minutes": 45.0,
+                            },
+                            {
+                                "step_order": 2,
+                                "temperature_celsius": 22.0,
+                                "duration_minutes": 60.0,
+                            },
+                            {
+                                "step_order": 3,
+                                "temperature_celsius": 4.0,
+                                "duration_minutes": 120.0,
+                            },
                         ],
                         "step_predictions": [
-                            {"step_order": 1, "temperature_celsius": 28.0, "duration_minutes": 45.0, "mu_max": 0.55, "log_increase": 0.72},
-                            {"step_order": 2, "temperature_celsius": 22.0, "duration_minutes": 60.0, "mu_max": 0.32, "log_increase": 0.38},
-                            {"step_order": 3, "temperature_celsius": 4.0, "duration_minutes": 120.0, "mu_max": 0.0, "log_increase": 0.0},
+                            {
+                                "step_order": 1,
+                                "temperature_celsius": 28.0,
+                                "duration_minutes": 45.0,
+                                "mu_max": 0.55,
+                                "log_increase": 0.72,
+                            },
+                            {
+                                "step_order": 2,
+                                "temperature_celsius": 22.0,
+                                "duration_minutes": 60.0,
+                                "mu_max": 0.32,
+                                "log_increase": 0.38,
+                            },
+                            {
+                                "step_order": 3,
+                                "temperature_celsius": 4.0,
+                                "duration_minutes": 120.0,
+                                "mu_max": 0.0,
+                                "log_increase": 0.0,
+                            },
                         ],
                         "growth_description": "Significant growth: 1.1 log increase (~13x population)",
                     },

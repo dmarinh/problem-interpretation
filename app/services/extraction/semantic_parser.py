@@ -15,14 +15,12 @@ from typing import TypeVar
 
 from pydantic import BaseModel
 
-from app.config import settings
-from app.services.llm.client import LLMClient, get_llm_client
 from app.models.extraction import (
-    ExtractedScenario,
-    ExtractedIntent,
     ExtractedClarificationResponse,
+    ExtractedIntent,
+    ExtractedScenario,
 )
-
+from app.services.llm.client import LLMClient, get_llm_client
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -226,25 +224,26 @@ Extract:
 # SEMANTIC PARSER
 # =============================================================================
 
+
 class SemanticParser:
     """
     Extracts structured information from user input using LLM + Instructor.
-    
+
     Usage:
         parser = SemanticParser()
         scenario = await parser.extract_scenario("Raw chicken left out for 3 hours")
         intent = await parser.classify_intent("Is my chicken still safe to eat?")
     """
-    
+
     def __init__(self, llm_client: LLMClient | None = None):
         """
         Initialize the semantic parser.
-        
+
         Args:
             llm_client: Optional LLM client. If not provided, uses the global client.
         """
         self._client = llm_client or get_llm_client()
-    
+
     async def extract_scenario(
         self,
         user_input: str,
@@ -252,43 +251,45 @@ class SemanticParser:
     ) -> ExtractedScenario:
         """
         Extract a food safety scenario from user input.
-        
+
         Args:
             user_input: The user's description of their food safety scenario
             conversation_context: Optional previous conversation for context
-        
+
         Returns:
             ExtractedScenario with all extracted information
         """
         messages = [
             {"role": "system", "content": SCENARIO_EXTRACTION_PROMPT},
         ]
-        
+
         if conversation_context:
-            messages.append({
-                "role": "user",
-                "content": f"Previous context:\n{conversation_context}\n\nCurrent input:\n{user_input}"
-            })
+            messages.append(
+                {
+                    "role": "user",
+                    "content": f"Previous context:\n{conversation_context}\n\nCurrent input:\n{user_input}",
+                }
+            )
         else:
             messages.append({"role": "user", "content": user_input})
-        
+
         result = await self._client.extract(
             response_model=ExtractedScenario,
             messages=messages,
         )
-        
+
         return result
-    
+
     async def classify_intent(
         self,
         user_input: str,
     ) -> ExtractedIntent:
         """
         Classify the user's intent.
-        
+
         Args:
             user_input: The user's message
-        
+
         Returns:
             ExtractedIntent with classification
         """
@@ -296,14 +297,14 @@ class SemanticParser:
             {"role": "system", "content": INTENT_CLASSIFICATION_PROMPT},
             {"role": "user", "content": user_input},
         ]
-        
+
         result = await self._client.extract(
             response_model=ExtractedIntent,
             messages=messages,
         )
-        
+
         return result
-    
+
     async def extract_clarification_response(
         self,
         user_response: str,
@@ -312,31 +313,31 @@ class SemanticParser:
     ) -> ExtractedClarificationResponse:
         """
         Extract information from user's response to a clarification question.
-        
+
         Args:
             user_response: The user's response
             original_question: The clarification question that was asked
             options: The options that were provided (if any)
-        
+
         Returns:
             ExtractedClarificationResponse with extracted information
         """
         context = f"Original question: {original_question}"
         if options:
             context += f"\nOptions provided: {', '.join(options)}"
-        
+
         messages = [
             {"role": "system", "content": CLARIFICATION_RESPONSE_PROMPT},
             {"role": "user", "content": f"{context}\n\nUser response: {user_response}"},
         ]
-        
+
         result = await self._client.extract(
             response_model=ExtractedClarificationResponse,
             messages=messages,
         )
-        
+
         return result
-    
+
     async def extract_generic(
         self,
         response_model: type[T],
@@ -345,12 +346,12 @@ class SemanticParser:
     ) -> T:
         """
         Generic extraction for custom models.
-        
+
         Args:
             response_model: The Pydantic model to extract into
             user_input: The user's input
             system_prompt: The system prompt for extraction
-        
+
         Returns:
             Instance of response_model with extracted data
         """
@@ -358,12 +359,12 @@ class SemanticParser:
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_input},
         ]
-        
+
         result = await self._client.extract(
             response_model=response_model,
             messages=messages,
         )
-        
+
         return result
 
 

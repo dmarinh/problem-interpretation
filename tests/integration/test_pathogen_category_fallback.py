@@ -26,26 +26,29 @@ constructor (GroundingService injects real production lookup tables from disk un
 the tests override them for isolation).
 """
 
-import pytest
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
-from app.services.grounding.grounding_service import GroundingService
-from app.services.grounding.taxonomy_bridge import TaxonomyBridge
+import pytest
+
 from app.models.enums import ComBaseOrganism, OrganismGroundingFailureStage
-from app.models.metadata import ValueSource
 from app.models.extraction import (
-    ExtractedScenario,
-    ExtractedTemperature,
     ExtractedDuration,
     ExtractedEnvironmentalConditions,
+    ExtractedScenario,
+    ExtractedTemperature,
 )
-
+from app.models.metadata import ValueSource
+from app.services.grounding.grounding_service import GroundingService
+from app.services.grounding.taxonomy_bridge import TaxonomyBridge
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-def make_scenario(food_description: str, pathogen_mentioned: str | None = None) -> ExtractedScenario:
+
+def make_scenario(
+    food_description: str, pathogen_mentioned: str | None = None
+) -> ExtractedScenario:
     """Minimal ExtractedScenario focused on food_description / pathogen_mentioned."""
     return ExtractedScenario(
         food_description=food_description,
@@ -77,7 +80,9 @@ def make_no_hit_response(query: str = "") -> MagicMock:
     return r
 
 
-def make_confident_pathogen_response(food_name: str, doc_id: str = "test-doc") -> MagicMock:
+def make_confident_pathogen_response(
+    food_name: str, doc_id: str = "test-doc"
+) -> MagicMock:
     """Stage 1 response with a confident food_name result for get_hazards_for_food."""
     top = MagicMock()
     top.doc_id = doc_id
@@ -115,7 +120,9 @@ def mock_retrieval_no_hit() -> MagicMock:
 
 
 @pytest.fixture
-def grounding_service(mock_retrieval_no_hit: MagicMock, real_bridge: TaxonomyBridge) -> GroundingService:
+def grounding_service(
+    mock_retrieval_no_hit: MagicMock, real_bridge: TaxonomyBridge
+) -> GroundingService:
     """GroundingService with mock retrieval (all misses) and real TaxonomyBridge + real production CSVs."""
     return GroundingService(
         retrieval_service=mock_retrieval_no_hit,
@@ -129,6 +136,7 @@ def grounding_service(mock_retrieval_no_hit: MagicMock, real_bridge: TaxonomyBri
 # T1 — barley → grain → cereal grains
 # ---------------------------------------------------------------------------
 
+
 class TestT1Barley:
     """T1: 'barley' triggers category fallback → grain → cereal grains → Salmonella selected.
 
@@ -140,22 +148,31 @@ class TestT1Barley:
     """
 
     @pytest.mark.asyncio
-    async def test_organism_grounded_via_fallback(self, grounding_service: GroundingService) -> None:
+    async def test_organism_grounded_via_fallback(
+        self, grounding_service: GroundingService
+    ) -> None:
         """Organism must be grounded with source=rag_pathogen_category_fallback."""
         grounded = await grounding_service.ground_scenario(make_scenario("barley"))
 
         assert grounded.has("organism")
-        assert grounded.provenance["organism"].source == ValueSource.RAG_PATHOGEN_CATEGORY_FALLBACK
+        assert (
+            grounded.provenance["organism"].source
+            == ValueSource.RAG_PATHOGEN_CATEGORY_FALLBACK
+        )
 
     @pytest.mark.asyncio
-    async def test_salmonella_selected(self, grounding_service: GroundingService) -> None:
+    async def test_salmonella_selected(
+        self, grounding_service: GroundingService
+    ) -> None:
         """Salmonella (238 deaths) must win the ranking for cereal grains."""
         grounded = await grounding_service.ground_scenario(make_scenario("barley"))
 
         assert grounded.get("organism") == ComBaseOrganism.SALMONELLA
 
     @pytest.mark.asyncio
-    async def test_ift_category_and_ptm_category(self, grounding_service: GroundingService) -> None:
+    async def test_ift_category_and_ptm_category(
+        self, grounding_service: GroundingService
+    ) -> None:
         """Fallback audit must record ptm_category=grain, ift_categories=[cereal grains]."""
         grounded = await grounding_service.ground_scenario(make_scenario("barley"))
 
@@ -166,7 +183,9 @@ class TestT1Barley:
         assert fb.ift_source_id == "IFT-2003-T1"
 
     @pytest.mark.asyncio
-    async def test_all_four_candidates_present(self, grounding_service: GroundingService) -> None:
+    async def test_all_four_candidates_present(
+        self, grounding_service: GroundingService
+    ) -> None:
         """All four cereal-grains pathogens must appear in candidate_pathogens, ranked by deaths."""
         grounded = await grounding_service.ground_scenario(make_scenario("barley"))
 
@@ -181,7 +200,9 @@ class TestT1Barley:
 
         # Ranked descending by deaths
         deaths = [c.annual_deaths_us for c in fb.candidate_pathogens]
-        assert deaths == sorted(deaths, reverse=True), "Candidates must be sorted descending by annual_deaths_us"
+        assert deaths == sorted(
+            deaths, reverse=True
+        ), "Candidates must be sorted descending by annual_deaths_us"
 
         # Spot-check expected death counts
         by_name = {c.pathogen: c.annual_deaths_us for c in fb.candidate_pathogens}
@@ -191,7 +212,9 @@ class TestT1Barley:
         assert by_name["Bacillus cereus"] == 0
 
     @pytest.mark.asyncio
-    async def test_skipped_pathogens_empty(self, grounding_service: GroundingService) -> None:
+    async def test_skipped_pathogens_empty(
+        self, grounding_service: GroundingService
+    ) -> None:
         """All cereal-grains pathogens map to ComBaseOrganism — skipped_pathogens must be empty."""
         grounded = await grounding_service.ground_scenario(make_scenario("barley"))
 
@@ -199,7 +222,9 @@ class TestT1Barley:
         assert fb.skipped_pathogens == []
 
     @pytest.mark.asyncio
-    async def test_warning_contains_grain(self, grounding_service: GroundingService) -> None:
+    async def test_warning_contains_grain(
+        self, grounding_service: GroundingService
+    ) -> None:
         """A warning mentioning 'grain' and 'IFT-2003-T1' must be emitted."""
         grounded = await grounding_service.ground_scenario(make_scenario("barley"))
 
@@ -207,11 +232,15 @@ class TestT1Barley:
 
     @pytest.mark.asyncio
     async def test_extraction_method(self, grounding_service: GroundingService) -> None:
-        prov = (await grounding_service.ground_scenario(make_scenario("barley"))).provenance["organism"]
+        prov = (
+            await grounding_service.ground_scenario(make_scenario("barley"))
+        ).provenance["organism"]
         assert prov.extraction_method == "category_fallback_ranked_by_annual_deaths"
 
     @pytest.mark.asyncio
-    async def test_full_citations_populated(self, grounding_service: GroundingService) -> None:
+    async def test_full_citations_populated(
+        self, grounding_service: GroundingService
+    ) -> None:
         """full_citations must contain both IFT and CDC source IDs with non-empty values."""
         grounded = await grounding_service.ground_scenario(make_scenario("barley"))
 
@@ -228,6 +257,7 @@ class TestT1Barley:
 # T2 — mascarpone → dairy → 3 IFT categories; Campylobacter in skipped
 # ---------------------------------------------------------------------------
 
+
 class TestT2Mascarpone:
     """T2: 'mascarpone' → dairy → 3 IFT categories.
 
@@ -243,14 +273,18 @@ class TestT2Mascarpone:
     """
 
     @pytest.mark.asyncio
-    async def test_organism_grounded_as_salmonella(self, grounding_service: GroundingService) -> None:
+    async def test_organism_grounded_as_salmonella(
+        self, grounding_service: GroundingService
+    ) -> None:
         grounded = await grounding_service.ground_scenario(make_scenario("mascarpone"))
 
         assert grounded.has("organism")
         assert grounded.get("organism") == ComBaseOrganism.SALMONELLA
 
     @pytest.mark.asyncio
-    async def test_three_ift_categories(self, grounding_service: GroundingService) -> None:
+    async def test_three_ift_categories(
+        self, grounding_service: GroundingService
+    ) -> None:
         grounded = await grounding_service.ground_scenario(make_scenario("mascarpone"))
 
         fb = grounded.provenance["organism"].pathogen_category_fallback
@@ -263,7 +297,9 @@ class TestT2Mascarpone:
         }
 
     @pytest.mark.asyncio
-    async def test_union_includes_all_three_categories(self, grounding_service: GroundingService) -> None:
+    async def test_union_includes_all_three_categories(
+        self, grounding_service: GroundingService
+    ) -> None:
         """Candidate list must include pathogens from all three IFT categories (union logic)."""
         grounded = await grounding_service.ground_scenario(make_scenario("mascarpone"))
 
@@ -277,7 +313,9 @@ class TestT2Mascarpone:
         assert "Yersinia enterocolitica" in names
 
     @pytest.mark.asyncio
-    async def test_skipped_pathogens_empty(self, grounding_service: GroundingService) -> None:
+    async def test_skipped_pathogens_empty(
+        self, grounding_service: GroundingService
+    ) -> None:
         """Salmonella (rank 1) maps successfully → no candidates are ever skipped."""
         grounded = await grounding_service.ground_scenario(make_scenario("mascarpone"))
 
@@ -285,13 +323,20 @@ class TestT2Mascarpone:
         assert fb.skipped_pathogens == []
 
     @pytest.mark.asyncio
-    async def test_source_is_category_fallback(self, grounding_service: GroundingService) -> None:
+    async def test_source_is_category_fallback(
+        self, grounding_service: GroundingService
+    ) -> None:
         grounded = await grounding_service.ground_scenario(make_scenario("mascarpone"))
 
-        assert grounded.provenance["organism"].source == ValueSource.RAG_PATHOGEN_CATEGORY_FALLBACK
+        assert (
+            grounded.provenance["organism"].source
+            == ValueSource.RAG_PATHOGEN_CATEGORY_FALLBACK
+        )
 
     @pytest.mark.asyncio
-    async def test_full_citations_populated(self, grounding_service: GroundingService) -> None:
+    async def test_full_citations_populated(
+        self, grounding_service: GroundingService
+    ) -> None:
         """full_citations must contain both IFT and CDC source IDs with non-empty values."""
         grounded = await grounding_service.ground_scenario(make_scenario("mascarpone"))
 
@@ -308,6 +353,7 @@ class TestT2Mascarpone:
 # T3 — boiled egg → eggs → eggs and egg products
 # ---------------------------------------------------------------------------
 
+
 class TestT3BoiledEgg:
     """T3: 'boiled egg' → eggs → eggs and egg products → Salmonella selected.
 
@@ -318,14 +364,18 @@ class TestT3BoiledEgg:
     """
 
     @pytest.mark.asyncio
-    async def test_organism_grounded_as_salmonella(self, grounding_service: GroundingService) -> None:
+    async def test_organism_grounded_as_salmonella(
+        self, grounding_service: GroundingService
+    ) -> None:
         grounded = await grounding_service.ground_scenario(make_scenario("boiled egg"))
 
         assert grounded.has("organism")
         assert grounded.get("organism") == ComBaseOrganism.SALMONELLA
 
     @pytest.mark.asyncio
-    async def test_ptm_category_is_eggs(self, grounding_service: GroundingService) -> None:
+    async def test_ptm_category_is_eggs(
+        self, grounding_service: GroundingService
+    ) -> None:
         grounded = await grounding_service.ground_scenario(make_scenario("boiled egg"))
 
         fb = grounded.provenance["organism"].pathogen_category_fallback
@@ -334,16 +384,22 @@ class TestT3BoiledEgg:
         assert fb.ift_categories == ["eggs and egg products"]
 
     @pytest.mark.asyncio
-    async def test_salmonella_ranked_above_listeria(self, grounding_service: GroundingService) -> None:
+    async def test_salmonella_ranked_above_listeria(
+        self, grounding_service: GroundingService
+    ) -> None:
         """Salmonella (238 deaths) must rank above Listeria (172 deaths)."""
         grounded = await grounding_service.ground_scenario(make_scenario("boiled egg"))
 
         fb = grounded.provenance["organism"].pathogen_category_fallback
         candidate_names = [c.pathogen for c in fb.candidate_pathogens]
-        assert candidate_names.index("Salmonella spp.") < candidate_names.index("Listeria monocytogenes")
+        assert candidate_names.index("Salmonella spp.") < candidate_names.index(
+            "Listeria monocytogenes"
+        )
 
     @pytest.mark.asyncio
-    async def test_skipped_pathogens_empty(self, grounding_service: GroundingService) -> None:
+    async def test_skipped_pathogens_empty(
+        self, grounding_service: GroundingService
+    ) -> None:
         """Both egg pathogens (Salmonella, Listeria) map to ComBaseOrganism — no skipped."""
         grounded = await grounding_service.ground_scenario(make_scenario("boiled egg"))
 
@@ -351,7 +407,9 @@ class TestT3BoiledEgg:
         assert fb.skipped_pathogens == []
 
     @pytest.mark.asyncio
-    async def test_full_citations_populated(self, grounding_service: GroundingService) -> None:
+    async def test_full_citations_populated(
+        self, grounding_service: GroundingService
+    ) -> None:
         """full_citations must contain both IFT and CDC source IDs with non-empty values."""
         grounded = await grounding_service.ground_scenario(make_scenario("boiled egg"))
 
@@ -368,34 +426,47 @@ class TestT3BoiledEgg:
 # N1 — frobnitz: bridge cannot resolve food → fallback does not fire
 # ---------------------------------------------------------------------------
 
+
 class TestN1Frobnitz:
     """N1: 'frobnitz' is an unrecognisable food → TaxonomyBridge returns None → organism ungrounded."""
 
     @pytest.mark.asyncio
-    async def test_organism_not_grounded(self, grounding_service: GroundingService) -> None:
+    async def test_organism_not_grounded(
+        self, grounding_service: GroundingService
+    ) -> None:
         grounded = await grounding_service.ground_scenario(make_scenario("frobnitz"))
 
-        assert not grounded.has("organism"), "No organism should be grounded for an unrecognisable food"
+        assert not grounded.has(
+            "organism"
+        ), "No organism should be grounded for an unrecognisable food"
 
     @pytest.mark.asyncio
-    async def test_no_fallback_warning(self, grounding_service: GroundingService) -> None:
+    async def test_no_fallback_warning(
+        self, grounding_service: GroundingService
+    ) -> None:
         """No IFT-2003-T1 warning should be emitted — the fallback must not have run."""
         grounded = await grounding_service.ground_scenario(make_scenario("frobnitz"))
 
         assert not any("IFT-2003-T1" in w for w in grounded.warnings)
 
     @pytest.mark.asyncio
-    async def test_organism_failure_recorded(self, grounding_service: GroundingService) -> None:
+    async def test_organism_failure_recorded(
+        self, grounding_service: GroundingService
+    ) -> None:
         """organism_failure records FOOD_UNRECOGNISED — the taxonomy bridge returned None."""
         grounded = await grounding_service.ground_scenario(make_scenario("frobnitz"))
 
         assert grounded.organism_failure is not None
-        assert grounded.organism_failure.stage == OrganismGroundingFailureStage.FOOD_UNRECOGNISED
+        assert (
+            grounded.organism_failure.stage
+            == OrganismGroundingFailureStage.FOOD_UNRECOGNISED
+        )
 
 
 # ---------------------------------------------------------------------------
 # N2 — mustard: bridge → condiment → no IFT category → fallback returns early
 # ---------------------------------------------------------------------------
+
 
 class TestN2Mustard:
     """N2: 'mustard' → condiment → no IFT mapping → organism ungrounded.
@@ -405,24 +476,35 @@ class TestN2Mustard:
     """
 
     @pytest.mark.asyncio
-    async def test_organism_not_grounded(self, grounding_service: GroundingService) -> None:
+    async def test_organism_not_grounded(
+        self, grounding_service: GroundingService
+    ) -> None:
         grounded = await grounding_service.ground_scenario(make_scenario("mustard"))
 
-        assert not grounded.has("organism"), "No organism for condiment category (no IFT mapping)"
+        assert not grounded.has(
+            "organism"
+        ), "No organism for condiment category (no IFT mapping)"
 
     @pytest.mark.asyncio
-    async def test_no_fallback_warning(self, grounding_service: GroundingService) -> None:
+    async def test_no_fallback_warning(
+        self, grounding_service: GroundingService
+    ) -> None:
         grounded = await grounding_service.ground_scenario(make_scenario("mustard"))
 
         assert not any("IFT-2003-T1" in w for w in grounded.warnings)
 
     @pytest.mark.asyncio
-    async def test_organism_failure_recorded(self, grounding_service: GroundingService) -> None:
+    async def test_organism_failure_recorded(
+        self, grounding_service: GroundingService
+    ) -> None:
         """organism_failure records CATEGORY_HAS_NO_HAZARD_DATA with the resolved category and a match score."""
         grounded = await grounding_service.ground_scenario(make_scenario("mustard"))
 
         assert grounded.organism_failure is not None
-        assert grounded.organism_failure.stage == OrganismGroundingFailureStage.CATEGORY_HAS_NO_HAZARD_DATA
+        assert (
+            grounded.organism_failure.stage
+            == OrganismGroundingFailureStage.CATEGORY_HAS_NO_HAZARD_DATA
+        )
         assert grounded.organism_failure.resolved_category == "condiment"
         assert grounded.organism_failure.match_score is not None
 
@@ -430,6 +512,7 @@ class TestN2Mustard:
 # ---------------------------------------------------------------------------
 # U1 — raw chicken: Stage 1 confident → RAG_RETRIEVAL (fallback must not fire)
 # ---------------------------------------------------------------------------
+
 
 class TestU1RawChicken:
     """U1: 'raw chicken' succeeds Stage 1 embedding (empirically ≥ 0.75).
@@ -445,7 +528,9 @@ class TestU1RawChicken:
         m.query_food_properties.return_value = make_no_hit_response()
         m.query_food_ph.return_value = make_no_hit_response()
         m.query_food_water_activity.return_value = make_no_hit_response()
-        m.query_pathogen_hazards.return_value = make_confident_pathogen_response("chicken raw", "rag-doc-001")
+        m.query_pathogen_hazards.return_value = make_confident_pathogen_response(
+            "chicken raw", "rag-doc-001"
+        )
         # Stage 2: top hazard is Salmonella
         m.get_hazards_for_food.return_value = [
             {"document": "Salmonella spp. chicken raw", "id": "cdc-chicken-001"},
@@ -453,7 +538,9 @@ class TestU1RawChicken:
         return m
 
     @pytest.fixture
-    def grounding_service_with_hit(self, retrieval_with_chicken_hit: MagicMock, real_bridge: TaxonomyBridge) -> GroundingService:
+    def grounding_service_with_hit(
+        self, retrieval_with_chicken_hit: MagicMock, real_bridge: TaxonomyBridge
+    ) -> GroundingService:
         return GroundingService(
             retrieval_service=retrieval_with_chicken_hit,
             llm_client=AsyncMock(),
@@ -462,24 +549,36 @@ class TestU1RawChicken:
         )
 
     @pytest.mark.asyncio
-    async def test_source_is_rag_retrieval(self, grounding_service_with_hit: GroundingService) -> None:
+    async def test_source_is_rag_retrieval(
+        self, grounding_service_with_hit: GroundingService
+    ) -> None:
         """Source must be rag_retrieval — Stage 1 succeeded so fallback must not have run."""
-        grounded = await grounding_service_with_hit.ground_scenario(make_scenario("raw chicken"))
+        grounded = await grounding_service_with_hit.ground_scenario(
+            make_scenario("raw chicken")
+        )
 
         assert grounded.has("organism")
         assert grounded.provenance["organism"].source == ValueSource.RAG_RETRIEVAL
 
     @pytest.mark.asyncio
-    async def test_no_fallback_provenance(self, grounding_service_with_hit: GroundingService) -> None:
+    async def test_no_fallback_provenance(
+        self, grounding_service_with_hit: GroundingService
+    ) -> None:
         """pathogen_category_fallback must be None when Stage 1 succeeded."""
-        grounded = await grounding_service_with_hit.ground_scenario(make_scenario("raw chicken"))
+        grounded = await grounding_service_with_hit.ground_scenario(
+            make_scenario("raw chicken")
+        )
 
         prov = grounded.provenance["organism"]
         assert prov.pathogen_category_fallback is None
 
     @pytest.mark.asyncio
-    async def test_no_fallback_warning(self, grounding_service_with_hit: GroundingService) -> None:
-        grounded = await grounding_service_with_hit.ground_scenario(make_scenario("raw chicken"))
+    async def test_no_fallback_warning(
+        self, grounding_service_with_hit: GroundingService
+    ) -> None:
+        grounded = await grounding_service_with_hit.ground_scenario(
+            make_scenario("raw chicken")
+        )
 
         assert not any("IFT-2003-T1" in w for w in grounded.warnings)
 
@@ -488,6 +587,7 @@ class TestU1RawChicken:
 # U2 — Salmonella on bread: pathogen_mentioned → USER_EXPLICIT
 # ---------------------------------------------------------------------------
 
+
 class TestU2SalmonellaOnBread:
     """U2: 'Salmonella on bread' with pathogen_mentioned set → USER_EXPLICIT.
 
@@ -495,7 +595,9 @@ class TestU2SalmonellaOnBread:
     """
 
     @pytest.mark.asyncio
-    async def test_source_is_user_explicit(self, grounding_service: GroundingService) -> None:
+    async def test_source_is_user_explicit(
+        self, grounding_service: GroundingService
+    ) -> None:
         """Explicit pathogen_mentioned must yield source=user_explicit."""
         scenario = make_scenario("bread", pathogen_mentioned="Salmonella")
         grounded = await grounding_service.ground_scenario(scenario)
@@ -504,14 +606,18 @@ class TestU2SalmonellaOnBread:
         assert grounded.provenance["organism"].source == ValueSource.USER_EXPLICIT
 
     @pytest.mark.asyncio
-    async def test_no_fallback_provenance(self, grounding_service: GroundingService) -> None:
+    async def test_no_fallback_provenance(
+        self, grounding_service: GroundingService
+    ) -> None:
         scenario = make_scenario("bread", pathogen_mentioned="Salmonella")
         grounded = await grounding_service.ground_scenario(scenario)
 
         assert grounded.provenance["organism"].pathogen_category_fallback is None
 
     @pytest.mark.asyncio
-    async def test_no_fallback_warning(self, grounding_service: GroundingService) -> None:
+    async def test_no_fallback_warning(
+        self, grounding_service: GroundingService
+    ) -> None:
         scenario = make_scenario("bread", pathogen_mentioned="Salmonella")
         grounded = await grounding_service.ground_scenario(scenario)
 
@@ -521,6 +627,7 @@ class TestU2SalmonellaOnBread:
 # ---------------------------------------------------------------------------
 # U3 — chicken soup: composite guard + category fallback are orthogonal
 # ---------------------------------------------------------------------------
+
 
 class TestU3ChickenSoup:
     """U3: 'chicken soup' demonstrates that the composite guard (ph/aw) and the
@@ -532,41 +639,67 @@ class TestU3ChickenSoup:
     """
 
     @pytest.mark.asyncio
-    async def test_ph_blocked_by_composite_guard(self, grounding_service: GroundingService) -> None:
+    async def test_ph_blocked_by_composite_guard(
+        self, grounding_service: GroundingService
+    ) -> None:
         """ph must NOT be grounded — composite guard skipped retrieval."""
-        grounded = await grounding_service.ground_scenario(make_scenario("chicken soup"))
+        grounded = await grounding_service.ground_scenario(
+            make_scenario("chicken soup")
+        )
 
         assert not grounded.has("ph")
-        assert "ph" in grounded.composite_skip or "water_activity" in grounded.composite_skip
+        assert (
+            "ph" in grounded.composite_skip
+            or "water_activity" in grounded.composite_skip
+        )
 
     @pytest.mark.asyncio
-    async def test_aw_blocked_by_composite_guard(self, grounding_service: GroundingService) -> None:
+    async def test_aw_blocked_by_composite_guard(
+        self, grounding_service: GroundingService
+    ) -> None:
         """water_activity must NOT be grounded — composite guard skipped retrieval."""
-        grounded = await grounding_service.ground_scenario(make_scenario("chicken soup"))
+        grounded = await grounding_service.ground_scenario(
+            make_scenario("chicken soup")
+        )
 
         assert not grounded.has("water_activity")
 
     @pytest.mark.asyncio
-    async def test_organism_grounded_via_category_fallback(self, grounding_service: GroundingService) -> None:
+    async def test_organism_grounded_via_category_fallback(
+        self, grounding_service: GroundingService
+    ) -> None:
         """Organism must be grounded via RAG_PATHOGEN_CATEGORY_FALLBACK, not composite guard."""
-        grounded = await grounding_service.ground_scenario(make_scenario("chicken soup"))
+        grounded = await grounding_service.ground_scenario(
+            make_scenario("chicken soup")
+        )
 
         assert grounded.has("organism")
-        assert grounded.provenance["organism"].source == ValueSource.RAG_PATHOGEN_CATEGORY_FALLBACK
+        assert (
+            grounded.provenance["organism"].source
+            == ValueSource.RAG_PATHOGEN_CATEGORY_FALLBACK
+        )
 
     @pytest.mark.asyncio
-    async def test_ptm_category_is_poultry(self, grounding_service: GroundingService) -> None:
+    async def test_ptm_category_is_poultry(
+        self, grounding_service: GroundingService
+    ) -> None:
         """Bridge must resolve 'chicken soup' to ptm_category=poultry."""
-        grounded = await grounding_service.ground_scenario(make_scenario("chicken soup"))
+        grounded = await grounding_service.ground_scenario(
+            make_scenario("chicken soup")
+        )
 
         fb = grounded.provenance["organism"].pathogen_category_fallback
         assert fb is not None
         assert fb.ptm_category == "poultry"
 
     @pytest.mark.asyncio
-    async def test_composite_skip_keyword_is_soup(self, grounding_service: GroundingService) -> None:
+    async def test_composite_skip_keyword_is_soup(
+        self, grounding_service: GroundingService
+    ) -> None:
         """The composite guard must record 'soup' as the matched keyword."""
-        grounded = await grounding_service.ground_scenario(make_scenario("chicken soup"))
+        grounded = await grounding_service.ground_scenario(
+            make_scenario("chicken soup")
+        )
 
         # composite_skip["ph"] or ["water_activity"] should contain the matched keyword
         matched_keywords = set(grounded.composite_skip.values())

@@ -2,27 +2,26 @@
 Unit tests for grounding service.
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+
+from app.models.enums import ComBaseOrganism
+from app.models.extraction import (
+    ExtractedDuration,
+    ExtractedEnvironmentalConditions,
+    ExtractedFoodProperties,
+    ExtractedScenario,
+    ExtractedTemperature,
+)
+from app.models.metadata import ValueSource
 from app.services.grounding.grounding_service import (
-    GroundingService,
     GroundedValues,
+    GroundingService,
     _composite_keyword_match,
     get_grounding_service,
     reset_grounding_service,
 )
-from app.models.enums import ComBaseOrganism
-from app.models.extraction import (
-    ExtractedScenario,
-    ExtractedTemperature,
-    ExtractedDuration,
-    ExtractedEnvironmentalConditions,
-    ExtractedFoodProperties,
-)
-from app.models.metadata import ValueSource
-
-from app.models.enums import ComBaseOrganism
 
 
 @pytest.fixture
@@ -30,7 +29,7 @@ def grounding_service():
     """Create grounding service with mocked dependencies."""
     mock_retrieval = MagicMock()
     mock_llm = AsyncMock()
-    
+
     service = GroundingService(
         retrieval_service=mock_retrieval,
         llm_client=mock_llm,
@@ -41,28 +40,28 @@ def grounding_service():
 
 class TestGroundedValues:
     """Tests for GroundedValues container."""
-    
+
     def test_set_and_get(self):
         """Should set and get values."""
         grounded = GroundedValues()
         grounded.set("ph", 6.0, ValueSource.USER_EXPLICIT)
-        
+
         assert grounded.get("ph") == 6.0
         assert grounded.has("ph")
-    
+
     def test_get_default(self):
         """Should return default for missing values."""
         grounded = GroundedValues()
-        
+
         assert grounded.get("ph") is None
         assert grounded.get("ph", 7.0) == 7.0
-    
+
     def test_has_false_for_missing(self):
         """Should return False for missing fields."""
         grounded = GroundedValues()
-        
+
         assert grounded.has("ph") is False
-    
+
     def test_provenance_tracked(self):
         """Should track provenance."""
         grounded = GroundedValues()
@@ -75,85 +74,84 @@ class TestGroundedValues:
 
         assert "ph" in grounded.provenance
         assert grounded.provenance["ph"].source == ValueSource.RAG_RETRIEVAL
-    
+
     def test_mark_ungrounded(self):
         """Should mark fields as ungrounded with reason."""
         grounded = GroundedValues()
         grounded.mark_ungrounded("organism", "No pathogen found")
-        
+
         assert "organism" in grounded.ungrounded_fields
         assert any("organism" in w for w in grounded.warnings)
 
 
 class TestExtractNumericValue:
     """Tests for regex-based numeric extraction."""
-    
+
     @pytest.fixture
     def service(self):
         return GroundingService(
             retrieval_service=MagicMock(),
             use_llm_extraction=False,
         )
-    
+
     def test_extract_single_value(self, service):
         """Should extract single pH value."""
         result = service._extract_numeric_value("pH 6.0", ["ph"])
-        
+
         assert result.value == 6.0
         assert result.is_range is False
-    
+
     def test_extract_value_with_colon(self, service):
         """Should extract value after colon."""
         result = service._extract_numeric_value("pH: 6.5", ["ph"])
-        
+
         assert result.value == 6.5
-    
+
     def test_extract_range_with_hyphen(self, service):
         """Should extract range with hyphen."""
         result = service._extract_numeric_value("pH 5.9-6.2", ["ph"])
-        
+
         assert result.is_range is True
         assert result.range_min == 5.9
         assert result.range_max == 6.2
-    
+
     def test_extract_range_with_and(self, service):
         """Should extract range with 'and'."""
         result = service._extract_numeric_value("pH between 5.5 and 6.0", ["ph"])
-        
+
         assert result.is_range is True
         assert result.range_min == 5.5
         assert result.range_max == 6.0
-    
+
     def test_extract_range_with_to(self, service):
         """Should extract range with 'to'."""
         result = service._extract_numeric_value("pH 5.5 to 6.0", ["ph"])
-        
+
         assert result.is_range is True
         assert result.range_min == 5.5
         assert result.range_max == 6.0
-    
+
     def test_extract_water_activity(self, service):
         """Should extract water activity."""
         result = service._extract_numeric_value(
-            "water activity 0.99",
-            ["water activity", "aw"]
+            "water activity 0.99", ["water activity", "aw"]
         )
-        
+
         assert result.value == 0.99
-    
+
     def test_extract_aw_shorthand(self, service):
         """Should extract aw shorthand."""
         result = service._extract_numeric_value("aw 0.98", ["water activity", "aw"])
-        
+
         assert result.value == 0.98
-    
+
     def test_no_match_returns_empty(self, service):
         """Should return empty result for no match."""
         result = service._extract_numeric_value("no values here", ["ph"])
-        
+
         assert result.value is None
         assert result.is_range is False
-    
+
     def test_keyword_not_found(self, service):
         """Should return empty when keyword not in text."""
         result = service._extract_numeric_value("temperature is 25", ["ph"])
@@ -174,7 +172,9 @@ class TestExtractNumericValue:
 
     def test_aw_not_matched_inside_raw_with_citation(self, service):
         """Actual bug case: citation year must not leak into aw extraction."""
-        rag_content = "chicken (poultry): pH range 6.5 to 6.7. Raw chicken [FDA-PH-2007]"
+        rag_content = (
+            "chicken (poultry): pH range 6.5 to 6.7. Raw chicken [FDA-PH-2007]"
+        )
         result = service._extract_numeric_value(rag_content, ["water activity", "aw"])
         assert result.value is None
 
@@ -204,7 +204,8 @@ class TestExtractNumericValue:
         """Number buried in non-adjacent text must not be captured."""
         # "aw" matches but the next content is unrelated text before any number
         result = service._extract_numeric_value(
-            "aw category is high, but nothing quantified here: ref 200", ["water activity", "aw"]
+            "aw category is high, but nothing quantified here: ref 200",
+            ["water activity", "aw"],
         )
         # "is" connector allows "is high" — "high" is not a digit, so no match
         assert result.value is None
@@ -223,7 +224,9 @@ class TestExtractFoodPropertiesPlausibility:
     @pytest.mark.asyncio
     async def test_aw_200_treated_as_not_found(self, service_no_llm):
         """Regex-extracted aw=200 (from citation) must be discarded as implausible."""
-        rag_content = "chicken (poultry): pH range 6.5 to 6.7. Raw chicken [FDA-PH-2007]"
+        rag_content = (
+            "chicken (poultry): pH range 6.5 to 6.7. Raw chicken [FDA-PH-2007]"
+        )
         props, _, _ = await service_no_llm._extract_food_properties(rag_content)
         # pH should be extracted correctly
         assert props.has_ph
@@ -247,10 +250,12 @@ class TestExtractFoodPropertiesPlausibility:
     async def test_invalid_aw_triggers_llm_fallback(self):
         """Implausible regex aw triggers LLM fallback when LLM is enabled."""
         mock_llm = AsyncMock()
-        mock_llm.extract = AsyncMock(return_value=ExtractedFoodProperties(
-            aw_value=0.97,
-            extraction_method="llm",
-        ))
+        mock_llm.extract = AsyncMock(
+            return_value=ExtractedFoodProperties(
+                aw_value=0.97,
+                extraction_method="llm",
+            )
+        )
         service = GroundingService(
             retrieval_service=MagicMock(),
             llm_client=mock_llm,
@@ -277,26 +282,26 @@ class TestExtractFoodPropertiesPlausibility:
 
 class TestGroundEnvironmentalConditions:
     """Tests for grounding user explicit environmental conditions."""
-    
+
     def test_ground_explicit_ph(self, grounding_service):
         """Should ground explicit pH value."""
         service, _, _ = grounding_service
         grounded = GroundedValues()
-        
+
         conditions = ExtractedEnvironmentalConditions(ph_value=6.5)
         service._ground_environmental_conditions(conditions, grounded)
-        
+
         assert grounded.get("ph") == 6.5
         assert grounded.provenance["ph"].source == ValueSource.USER_EXPLICIT
-    
+
     def test_ground_explicit_water_activity(self, grounding_service):
         """Should ground explicit water activity."""
         service, _, _ = grounding_service
         grounded = GroundedValues()
-        
+
         conditions = ExtractedEnvironmentalConditions(water_activity=0.95)
         service._ground_environmental_conditions(conditions, grounded)
-        
+
         assert grounded.get("water_activity") == 0.95
         assert grounded.provenance["water_activity"].source == ValueSource.USER_EXPLICIT
 
@@ -304,7 +309,7 @@ class TestGroundEnvironmentalConditions:
         """Should ground multiple conditions."""
         service, _, _ = grounding_service
         grounded = GroundedValues()
-        
+
         conditions = ExtractedEnvironmentalConditions(
             ph_value=6.0,
             water_activity=0.98,
@@ -312,12 +317,12 @@ class TestGroundEnvironmentalConditions:
             nitrite_ppm=150.0,
         )
         service._ground_environmental_conditions(conditions, grounded)
-        
+
         assert grounded.get("ph") == 6.0
         assert grounded.get("water_activity") == 0.98
         assert grounded.get("co2_percent") == 5.0
         assert grounded.get("nitrite_ppm") == 150.0
-    
+
     def test_none_values_not_grounded(self, grounding_service):
         """Should not ground None values."""
         service, _, _ = grounding_service
@@ -348,7 +353,9 @@ class TestGroundEnvironmentalConditions:
         service, _, _ = grounding_service
         grounded = GroundedValues()
 
-        conditions = ExtractedEnvironmentalConditions(water_activity_min=0.93, water_activity_max=0.96)
+        conditions = ExtractedEnvironmentalConditions(
+            water_activity_min=0.93, water_activity_max=0.96
+        )
         service._ground_environmental_conditions(conditions, grounded)
 
         assert grounded.get("water_activity") == 0.93
@@ -375,7 +382,9 @@ class TestGroundEnvironmentalConditions:
         service, _, _ = grounding_service
         grounded = GroundedValues()
 
-        conditions = ExtractedEnvironmentalConditions(ph_value=5.5, ph_min=5.5, ph_max=6.0)
+        conditions = ExtractedEnvironmentalConditions(
+            ph_value=5.5, ph_min=5.5, ph_max=6.0
+        )
         service._ground_environmental_conditions(conditions, grounded)
 
         prov = grounded.provenance["ph"]
@@ -388,8 +397,10 @@ class TestGroundEnvironmentalConditions:
         grounded = GroundedValues()
 
         conditions = ExtractedEnvironmentalConditions(
-            ph_min=5.5, ph_max=6.0,
-            water_activity_min=0.93, water_activity_max=0.96,
+            ph_min=5.5,
+            ph_max=6.0,
+            water_activity_min=0.93,
+            water_activity_max=0.96,
         )
         service._ground_environmental_conditions(conditions, grounded)
 
@@ -415,12 +426,12 @@ class TestGroundEnvironmentalConditions:
 
 class TestGroundTemperature:
     """Tests for temperature grounding."""
-    
+
     def test_ground_explicit_temperature(self, grounding_service):
         """Should ground explicit temperature value."""
         service, _, _ = grounding_service
         grounded = GroundedValues()
-        
+
         scenario = ExtractedScenario(
             single_step_temperature=ExtractedTemperature(value_celsius=25.0),
             single_step_duration=ExtractedDuration(value_minutes=60.0),
@@ -428,8 +439,11 @@ class TestGroundTemperature:
         service._ground_temperature(scenario, grounded)
 
         assert grounded.get("temperature_celsius") == 25.0
-        assert grounded.provenance["temperature_celsius"].source == ValueSource.USER_EXPLICIT
-    
+        assert (
+            grounded.provenance["temperature_celsius"].source
+            == ValueSource.USER_EXPLICIT
+        )
+
     def test_ground_temperature_range_stores_pending(self, grounding_service):
         """Range temperature stores lower bound with range_pending=True; bound selection
         happens in StandardizationService, not here."""
@@ -451,26 +465,31 @@ class TestGroundTemperature:
         assert prov.source == ValueSource.USER_EXPLICIT
         assert prov.range_pending is True
         assert prov.parsed_range == [20.0, 25.0]
-    
+
     def test_ground_temperature_description(self, grounding_service):
         """Should interpret temperature description."""
         service, _, _ = grounding_service
         grounded = GroundedValues()
-        
+
         scenario = ExtractedScenario(
-            single_step_temperature=ExtractedTemperature(description="room temperature"),
+            single_step_temperature=ExtractedTemperature(
+                description="room temperature"
+            ),
             single_step_duration=ExtractedDuration(value_minutes=60.0),
         )
         service._ground_temperature(scenario, grounded)
 
         assert grounded.get("temperature_celsius") == 25.0
-        assert grounded.provenance["temperature_celsius"].source == ValueSource.USER_INFERRED
-    
+        assert (
+            grounded.provenance["temperature_celsius"].source
+            == ValueSource.USER_INFERRED
+        )
+
     def test_unknown_description_marks_ungrounded(self, grounding_service):
         """Should mark ungrounded for unknown description."""
         service, _, _ = grounding_service
         grounded = GroundedValues()
-        
+
         scenario = ExtractedScenario(
             single_step_temperature=ExtractedTemperature(description="xyz123"),
             single_step_duration=ExtractedDuration(value_minutes=60.0),
@@ -491,29 +510,36 @@ class TestNewTemperatureRules:
     2. Grounding service — confirms the full provenance shape (USER_INFERRED / rule_match).
     """
 
-    @pytest.mark.parametrize("phrase,expected_value", [
-        ("typical retail refrigeration", 4.0),
-        ("retail refrigeration",         4.0),
-        ("household refrigerator",       4.0),
-        ("domestic refrigerator",        4.0),
-        ("home refrigerator",            4.0),
-        ("retail display",               4.0),
-        ("home fridge",                  4.0),
-        ("household freezer",           -18.0),
-        ("home freezer",                -18.0),
-        ("stored cold",                  4.0),
-        ("kept cold",                    4.0),
-    ])
+    @pytest.mark.parametrize(
+        "phrase,expected_value",
+        [
+            ("typical retail refrigeration", 4.0),
+            ("retail refrigeration", 4.0),
+            ("household refrigerator", 4.0),
+            ("domestic refrigerator", 4.0),
+            ("home refrigerator", 4.0),
+            ("retail display", 4.0),
+            ("home fridge", 4.0),
+            ("household freezer", -18.0),
+            ("home freezer", -18.0),
+            ("stored cold", 4.0),
+            ("kept cold", 4.0),
+        ],
+    )
     def test_substring_rule_fires(self, phrase, expected_value):
         from app.config.rules import find_temperature_interpretation
+
         rule = find_temperature_interpretation(phrase)
         assert rule is not None, f"No rule matched '{phrase}'"
         assert rule.value == expected_value
-        assert rule.similarity is None, f"'{phrase}' should match via substring, not embedding"
+        assert (
+            rule.similarity is None
+        ), f"'{phrase}' should match via substring, not embedding"
 
     def test_stored_cold_wins_over_cold(self):
         """'stored cold' must resolve to 4°C, not 10°C from the 'cold' substring rule."""
         from app.config.rules import find_temperature_interpretation
+
         rule = find_temperature_interpretation("stored cold")
         assert rule is not None
         assert rule.value == 4.0
@@ -522,21 +548,25 @@ class TestNewTemperatureRules:
     def test_kept_cold_wins_over_cold(self):
         """'kept cold' must resolve to 4°C, not 10°C."""
         from app.config.rules import find_temperature_interpretation
+
         rule = find_temperature_interpretation("kept cold")
         assert rule is not None
         assert rule.value == 4.0
         assert rule.pattern == "kept cold"
 
-    @pytest.mark.parametrize("phrase,expected_value", [
-        ("home refrigerator",            4.0),
-        ("typical retail refrigeration", 4.0),
-        ("stored cold",                  4.0),
-        ("household freezer",           -18.0),
-        # home fridge / home freezer are closest substring-collision neighbours in the sort;
-        # included to catch any future collision with the shorter "fridge" / "freezer" rules.
-        ("home fridge",                  4.0),
-        ("home freezer",                -18.0),
-    ])
+    @pytest.mark.parametrize(
+        "phrase,expected_value",
+        [
+            ("home refrigerator", 4.0),
+            ("typical retail refrigeration", 4.0),
+            ("stored cold", 4.0),
+            ("household freezer", -18.0),
+            # home fridge / home freezer are closest substring-collision neighbours in the sort;
+            # included to catch any future collision with the shorter "fridge" / "freezer" rules.
+            ("home fridge", 4.0),
+            ("home freezer", -18.0),
+        ],
+    )
     def test_grounding_provenance_is_user_inferred_rule_match(
         self, grounding_service, phrase, expected_value
     ):
@@ -558,12 +588,12 @@ class TestNewTemperatureRules:
 
 class TestGroundDuration:
     """Tests for duration grounding."""
-    
+
     def test_ground_explicit_duration(self, grounding_service):
         """Should ground explicit duration value."""
         service, _, _ = grounding_service
         grounded = GroundedValues()
-        
+
         scenario = ExtractedScenario(
             single_step_temperature=ExtractedTemperature(value_celsius=25.0),
             single_step_duration=ExtractedDuration(value_minutes=180.0),
@@ -571,8 +601,10 @@ class TestGroundDuration:
         service._ground_duration(scenario, grounded)
 
         assert grounded.get("duration_minutes") == 180.0
-        assert grounded.provenance["duration_minutes"].source == ValueSource.USER_EXPLICIT
-    
+        assert (
+            grounded.provenance["duration_minutes"].source == ValueSource.USER_EXPLICIT
+        )
+
     def test_ground_duration_range_stores_pending(self, grounding_service):
         """Range duration stores lower bound with range_pending=True; bound selection
         happens in StandardizationService, not here."""
@@ -593,12 +625,12 @@ class TestGroundDuration:
         assert prov.source == ValueSource.USER_EXPLICIT
         assert prov.range_pending is True
         assert prov.parsed_range == [60.0, 120.0]
-    
+
     def test_ground_duration_description(self, grounding_service):
         """Should interpret duration description."""
         service, _, _ = grounding_service
         grounded = GroundedValues()
-        
+
         scenario = ExtractedScenario(
             single_step_temperature=ExtractedTemperature(value_celsius=25.0),
             single_step_duration=ExtractedDuration(description="overnight"),
@@ -610,27 +642,33 @@ class TestGroundDuration:
 
 class TestGroundScenario:
     """Tests for full scenario grounding."""
-    
+
     @pytest.mark.asyncio
     async def test_user_explicit_takes_priority(self, grounding_service):
         """User explicit values should not be overwritten by RAG."""
         service, mock_retrieval, _ = grounding_service
-        
+
         # Setup RAG to return different values for food properties
         mock_food_response = MagicMock()
         mock_food_response.has_confident_result = True
-        mock_food_response.results = [MagicMock(
-            confidence=0.9,
-            content="pH 5.5, water activity 0.95",
-            source="doc_1",
-            doc_id="doc_1",
-        )]
+        mock_food_response.results = [
+            MagicMock(
+                confidence=0.9,
+                content="pH 5.5, water activity 0.95",
+                source="doc_1",
+                doc_id="doc_1",
+            )
+        ]
         mock_food_response.top_result = mock_food_response.results[0]
         mock_retrieval.query_food_properties.return_value = mock_food_response
-        
+
         # Tier 2 fallback for water_activity (not user-explicit) returns no result
-        mock_retrieval.query_food_ph.return_value = MagicMock(has_confident_result=False, results=[])
-        mock_retrieval.query_food_water_activity.return_value = MagicMock(has_confident_result=False, results=[])
+        mock_retrieval.query_food_ph.return_value = MagicMock(
+            has_confident_result=False, results=[]
+        )
+        mock_retrieval.query_food_water_activity.return_value = MagicMock(
+            has_confident_result=False, results=[]
+        )
 
         # Setup RAG for pathogen (won't be used since pathogen not needed)
         mock_pathogen_response = MagicMock()
@@ -646,18 +684,18 @@ class TestGroundScenario:
                 ph_value=6.5,  # User explicit
             ),
         )
-        
+
         grounded = await service.ground_scenario(scenario)
-        
+
         # User explicit pH should remain
         assert grounded.get("ph") == 6.5
         assert grounded.provenance["ph"].source == ValueSource.USER_EXPLICIT
-        
+
     @pytest.mark.asyncio
     async def test_rag_not_called_when_not_needed(self, grounding_service):
         """RAG should not be called when user provides all values."""
         service, mock_retrieval, _ = grounding_service
-        
+
         scenario = ExtractedScenario(
             food_description="chicken",
             pathogen_mentioned="Salmonella",
@@ -668,15 +706,15 @@ class TestGroundScenario:
                 water_activity=0.99,
             ),
         )
-        
+
         await service.ground_scenario(scenario)
 
         # RAG for food properties should not be called
         mock_retrieval.query_food_properties.assert_not_called()
-        
+
         # RAG for pathogen should not be called (user provided it)
         mock_retrieval.query_pathogen_hazards.assert_not_called()
-    
+
     @pytest.mark.asyncio
     async def test_explicit_pathogen_grounded(self, grounding_service):
         """Explicit pathogen mention should be grounded."""
@@ -723,13 +761,15 @@ class TestGroundScenario:
 class TestGroundFoodPropertiesTwoTier:
     """Tests for two-tier food property retrieval (Tier 1 primary + Tier 2 per-field fallback)."""
 
-    def _make_confident_response(self, content: str, query: str, doc_id: str = "doc_1") -> MagicMock:
+    def _make_confident_response(
+        self, content: str, query: str, doc_id: str = "doc_1"
+    ) -> MagicMock:
         """Build a mock RetrievalResponse with a confident top result."""
         top = MagicMock()
         top.doc_id = doc_id
         top.content = content
         top.source = "food_properties"
-        top.distance = None      # suppresses isinstance(dist, (int, float)) branch
+        top.distance = None  # suppresses isinstance(dist, (int, float)) branch
         top.rerank_score = None
         top.metadata = {}
 
@@ -750,7 +790,9 @@ class TestGroundFoodPropertiesTwoTier:
         return r
 
     @pytest.mark.asyncio
-    async def test_capture_a_aw_fallback_when_primary_doc_lacks_aw(self, grounding_service):
+    async def test_capture_a_aw_fallback_when_primary_doc_lacks_aw(
+        self, grounding_service
+    ):
         """Capture A: primary returns chicken pH doc (no aw) → Tier 2 aw query fires and grounds aw."""
         service, mock_retrieval, _ = grounding_service
 
@@ -778,7 +820,10 @@ class TestGroundFoodPropertiesTwoTier:
 
         # aw: grounded from fallback, RAG_RETRIEVAL_FALLBACK
         assert grounded.has("water_activity")
-        assert grounded.provenance["water_activity"].source == ValueSource.RAG_RETRIEVAL_FALLBACK
+        assert (
+            grounded.provenance["water_activity"].source
+            == ValueSource.RAG_RETRIEVAL_FALLBACK
+        )
         assert grounded.get("water_activity") == 0.99
 
         # Tier 2 pH query must NOT have fired (pH already grounded after Tier 1)
@@ -786,18 +831,21 @@ class TestGroundFoodPropertiesTwoTier:
 
         # Tier 2 aw retrieval must be tagged with attributed_field
         aw_retrieval = next(
-            (r for r in grounded.retrievals if r.attributed_field == "water_activity"), None
+            (r for r in grounded.retrievals if r.attributed_field == "water_activity"),
+            None,
         )
         assert aw_retrieval is not None
         assert aw_retrieval.query == aw_fallback_query
 
     @pytest.mark.asyncio
-    async def test_capture_b_both_fields_from_fallback_when_primary_misses(self, grounding_service):
+    async def test_capture_b_both_fields_from_fallback_when_primary_misses(
+        self, grounding_service
+    ):
         """Capture B: primary not confident → both Tier 2 fallback queries fire and ground both fields."""
         service, mock_retrieval, _ = grounding_service
 
-        mock_retrieval.query_food_properties.return_value = self._make_no_result_response(
-            "poultry pH water activity properties"
+        mock_retrieval.query_food_properties.return_value = (
+            self._make_no_result_response("poultry pH water activity properties")
         )
         ph_fallback_query = "poultry pH acidity"
         mock_retrieval.query_food_ph.return_value = self._make_confident_response(
@@ -816,11 +864,19 @@ class TestGroundFoodPropertiesTwoTier:
         assert grounded.has("ph")
         assert grounded.provenance["ph"].source == ValueSource.RAG_RETRIEVAL_FALLBACK
         assert grounded.has("water_activity")
-        assert grounded.provenance["water_activity"].source == ValueSource.RAG_RETRIEVAL_FALLBACK
+        assert (
+            grounded.provenance["water_activity"].source
+            == ValueSource.RAG_RETRIEVAL_FALLBACK
+        )
 
         # Both fallback retrievals tagged with their respective fields
-        ph_retrieval = next((r for r in grounded.retrievals if r.attributed_field == "ph"), None)
-        aw_retrieval = next((r for r in grounded.retrievals if r.attributed_field == "water_activity"), None)
+        ph_retrieval = next(
+            (r for r in grounded.retrievals if r.attributed_field == "ph"), None
+        )
+        aw_retrieval = next(
+            (r for r in grounded.retrievals if r.attributed_field == "water_activity"),
+            None,
+        )
         assert ph_retrieval is not None and ph_retrieval.query == ph_fallback_query
         assert aw_retrieval is not None and aw_retrieval.query == aw_fallback_query
 
@@ -829,14 +885,14 @@ class TestGroundFoodPropertiesTwoTier:
         """Unmatchable food: both tiers below threshold → neither field grounded → defaults later."""
         service, mock_retrieval, _ = grounding_service
 
-        mock_retrieval.query_food_properties.return_value = self._make_no_result_response(
-            "zarflonite pH water activity properties"
+        mock_retrieval.query_food_properties.return_value = (
+            self._make_no_result_response("zarflonite pH water activity properties")
         )
         mock_retrieval.query_food_ph.return_value = self._make_no_result_response(
             "zarflonite pH acidity"
         )
-        mock_retrieval.query_food_water_activity.return_value = self._make_no_result_response(
-            "zarflonite water activity aw moisture"
+        mock_retrieval.query_food_water_activity.return_value = (
+            self._make_no_result_response("zarflonite water activity aw moisture")
         )
 
         grounded = GroundedValues()
@@ -870,7 +926,9 @@ class TestGroundFoodPropertiesTwoTier:
         mock_retrieval.query_food_water_activity.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_asymmetric_primary_supplies_aw_fallback_supplies_ph(self, grounding_service):
+    async def test_asymmetric_primary_supplies_aw_fallback_supplies_ph(
+        self, grounding_service
+    ):
         """Asymmetric: primary doc has aw only → aw=RAG_RETRIEVAL, pH fires Tier 2 fallback.
 
         Tightened assertion: attributed_field tags verify which retrieval the audit routing
@@ -904,22 +962,30 @@ class TestGroundFoodPropertiesTwoTier:
         mock_retrieval.query_food_water_activity.assert_not_called()
 
         # Audit routing: untagged primary covers aw, tagged fallback covers pH
-        ph_retrieval = next((r for r in grounded.retrievals if r.attributed_field == "ph"), None)
-        untagged = next((r for r in grounded.retrievals if r.attributed_field is None), None)
-        assert ph_retrieval is not None, "Tier 2 pH retrieval must be tagged attributed_field='ph'"
+        ph_retrieval = next(
+            (r for r in grounded.retrievals if r.attributed_field == "ph"), None
+        )
+        untagged = next(
+            (r for r in grounded.retrievals if r.attributed_field is None), None
+        )
+        assert (
+            ph_retrieval is not None
+        ), "Tier 2 pH retrieval must be tagged attributed_field='ph'"
         assert ph_retrieval.query == ph_fallback_query
-        assert untagged is not None, "Primary retrieval must be untagged (attributed_field=None)"
+        assert (
+            untagged is not None
+        ), "Primary retrieval must be untagged (attributed_field=None)"
         assert untagged.query == primary_query
 
 
 class TestExtractFoodProperties:
     """Tests for food properties extraction."""
-    
+
     @pytest.mark.asyncio
     async def test_regex_extraction(self, grounding_service):
         """Should extract properties using regex."""
         service, _, _ = grounding_service
-        
+
         props, _, _ = await service._extract_food_properties(
             "Raw chicken has pH 6.0 and water activity 0.99"
         )
@@ -927,12 +993,12 @@ class TestExtractFoodProperties:
         assert props.has_ph
         assert props.has_aw
         assert props.extraction_method == "regex"
-    
+
     @pytest.mark.asyncio
     async def test_regex_extraction_range(self, grounding_service):
         """Should extract range values."""
         service, _, _ = grounding_service
-        
+
         props, _, _ = await service._extract_food_properties(
             "Chicken has pH between 5.9 and 6.2"
         )
@@ -944,27 +1010,27 @@ class TestExtractFoodProperties:
 
 class TestExtractedFoodProperties:
     """Tests for ExtractedFoodProperties model."""
-    
+
     def test_has_ph_with_value(self):
         """Should detect pH presence with single value."""
         props = ExtractedFoodProperties(ph_value=6.0)
         assert props.has_ph is True
-    
+
     def test_has_ph_with_range(self):
         """Should detect pH presence with range."""
         props = ExtractedFoodProperties(ph_min=5.5, ph_max=6.0)
         assert props.has_ph is True
-    
+
     def test_has_ph_false_when_missing(self):
         """Should return False when pH not set."""
         props = ExtractedFoodProperties()
         assert props.has_ph is False
-    
+
     def test_has_aw_with_value(self):
         """Should detect aw presence with single value."""
         props = ExtractedFoodProperties(aw_value=0.99)
         assert props.has_aw is True
-    
+
     def test_has_aw_false_when_missing(self):
         """Should return False when aw not set."""
         props = ExtractedFoodProperties()
@@ -974,11 +1040,16 @@ class TestExtractedFoodProperties:
 class TestGroundPathogenFromRag:
     """Tests for two-stage pathogen grounding via RAG."""
 
-    def _make_stage1_response(self, food_name: str, doc_id: str = "doc_1", content: str = ""):
+    def _make_stage1_response(
+        self, food_name: str, doc_id: str = "doc_1", content: str = ""
+    ):
         """Build a mock Stage 1 RetrievalResponse with a confident top result."""
         top = MagicMock()
         top.doc_id = doc_id
-        top.content = content or f"Hazard for {food_name}: Salmonella spp. (238 annual US deaths)."
+        top.content = (
+            content
+            or f"Hazard for {food_name}: Salmonella spp. (238 annual US deaths)."
+        )
         top.metadata = {"food_name": food_name, "pathogen": "Salmonella spp."}
         top.source = None
         top.distance = None
@@ -991,7 +1062,9 @@ class TestGroundPathogenFromRag:
         response.query = food_name
         return response
 
-    def _make_hazard_dict(self, pathogen: str, deaths: int, food_name: str = "chicken raw") -> dict:
+    def _make_hazard_dict(
+        self, pathogen: str, deaths: int, food_name: str = "chicken raw"
+    ) -> dict:
         return {
             "id": f"{food_name}_{pathogen}",
             "document": f"Hazard for {food_name}: {pathogen} ({deaths} annual US deaths).",
@@ -1007,7 +1080,9 @@ class TestGroundPathogenFromRag:
         """Stage 2 sort must select Salmonella (238) over Listeria (172) and Staph (6)."""
         service, mock_retrieval, _ = grounding_service
 
-        mock_retrieval.query_pathogen_hazards.return_value = self._make_stage1_response("chicken raw")
+        mock_retrieval.query_pathogen_hazards.return_value = self._make_stage1_response(
+            "chicken raw"
+        )
         mock_retrieval.get_hazards_for_food.return_value = [
             self._make_hazard_dict("Salmonella spp.", 238),
             self._make_hazard_dict("Listeria monocytogenes", 172),
@@ -1019,14 +1094,19 @@ class TestGroundPathogenFromRag:
 
         assert grounded.has("organism")
         assert grounded.get("organism") == ComBaseOrganism.SALMONELLA
-        assert grounded.provenance["organism"].extraction_method == "ranked_by_annual_deaths"
+        assert (
+            grounded.provenance["organism"].extraction_method
+            == "ranked_by_annual_deaths"
+        )
 
     @pytest.mark.asyncio
     async def test_staphylococcus_does_not_outrank_salmonella(self, grounding_service):
         """Staphylococcus (6 deaths) must never be selected when Salmonella (238) is present."""
         service, mock_retrieval, _ = grounding_service
 
-        mock_retrieval.query_pathogen_hazards.return_value = self._make_stage1_response("chicken raw")
+        mock_retrieval.query_pathogen_hazards.return_value = self._make_stage1_response(
+            "chicken raw"
+        )
         # Return in "wrong" order as embedding would
         # Mock returns already sorted (as the real get_hazards_for_food would)
         mock_retrieval.get_hazards_for_food.return_value = [
@@ -1062,8 +1142,14 @@ class TestGroundPathogenFromRag:
 
         assert grounded.has("organism")
         assert grounded.get("organism") == ComBaseOrganism.SALMONELLA
-        assert grounded.provenance["organism"].source == ValueSource.RAG_PATHOGEN_CATEGORY_FALLBACK
-        assert grounded.provenance["organism"].extraction_method == "category_fallback_ranked_by_annual_deaths"
+        assert (
+            grounded.provenance["organism"].source
+            == ValueSource.RAG_PATHOGEN_CATEGORY_FALLBACK
+        )
+        assert (
+            grounded.provenance["organism"].extraction_method
+            == "category_fallback_ranked_by_annual_deaths"
+        )
 
     @pytest.mark.asyncio
     async def test_nothing_grounded_when_stage1_not_confident(self, grounding_service):
@@ -1085,7 +1171,9 @@ class TestGroundPathogenFromRag:
         """Stage 2 must be called with the food_name from Stage 1 metadata, not the raw description."""
         service, mock_retrieval, _ = grounding_service
 
-        mock_retrieval.query_pathogen_hazards.return_value = self._make_stage1_response("beef raw")
+        mock_retrieval.query_pathogen_hazards.return_value = self._make_stage1_response(
+            "beef raw"
+        )
         mock_retrieval.get_hazards_for_food.return_value = [
             self._make_hazard_dict("Salmonella spp.", 238, food_name="beef raw"),
         ]
@@ -1098,16 +1186,16 @@ class TestGroundPathogenFromRag:
 
 class TestSingleton:
     """Tests for singleton pattern."""
-    
+
     def test_get_grounding_service_returns_same_instance(self):
         """Should return same instance."""
         reset_grounding_service()
-        
+
         service1 = get_grounding_service()
         service2 = get_grounding_service()
-        
+
         assert service1 is service2
-    
+
     def test_reset_creates_new_instance(self):
         """Reset should create new instance."""
         reset_grounding_service()
@@ -1123,6 +1211,7 @@ class TestSingleton:
 # _build_retrieval_metadata
 # =============================================================================
 
+
 class TestBuildRetrievalMetadata:
     """
     Unit tests for _build_retrieval_metadata in grounding_service.py.
@@ -1132,12 +1221,21 @@ class TestBuildRetrievalMetadata:
     attempted_top are emitted, and how runners_up are deduplicated.
     """
 
-    def _rag_result(self, doc_id, distance, rerank_score=None, content="text", metadata=None):
-        from app.rag.retrieval import RetrievalResult as RagResult
+    def _rag_result(
+        self, doc_id, distance, rerank_score=None, content="text", metadata=None
+    ):
         from app.models.enums import RetrievalConfidenceLevel
+        from app.rag.retrieval import RetrievalResult as RagResult
+
         conf = max(0.0, 1.0 - distance)
-        level = RetrievalConfidenceLevel.HIGH if conf >= 0.85 else (
-            RetrievalConfidenceLevel.MEDIUM if conf >= 0.70 else RetrievalConfidenceLevel.LOW
+        level = (
+            RetrievalConfidenceLevel.HIGH
+            if conf >= 0.85
+            else (
+                RetrievalConfidenceLevel.MEDIUM
+                if conf >= 0.70
+                else RetrievalConfidenceLevel.LOW
+            )
         )
         return RagResult(
             content=content,
@@ -1152,6 +1250,7 @@ class TestBuildRetrievalMetadata:
 
     def _response(self, results, threshold=0.70):
         from app.rag.retrieval import RetrievalResponse
+
         top_result = next((r for r in results if r.confidence >= threshold), None)
         return RetrievalResponse(
             query="test query",
@@ -1165,8 +1264,12 @@ class TestBuildRetrievalMetadata:
         """When results[0] clears the threshold, reranker_top and attempted_top are absent."""
         from app.services.grounding.grounding_service import _build_retrieval_metadata
 
-        r1 = self._rag_result("doc_24", distance=0.25, rerank_score=0.90)  # conf=0.75 passes
-        r2 = self._rag_result("doc_26", distance=0.45, rerank_score=0.60)  # conf=0.55 fails
+        r1 = self._rag_result(
+            "doc_24", distance=0.25, rerank_score=0.90
+        )  # conf=0.75 passes
+        r2 = self._rag_result(
+            "doc_26", distance=0.45, rerank_score=0.60
+        )  # conf=0.55 fails
         result = _build_retrieval_metadata(self._response([r1, r2]))
 
         assert result.chunk_id == "doc_24"
@@ -1183,8 +1286,12 @@ class TestBuildRetrievalMetadata:
         """
         from app.services.grounding.grounding_service import _build_retrieval_metadata
 
-        r1 = self._rag_result("doc_26", distance=0.45, rerank_score=0.95)  # conf=0.55 fails
-        r2 = self._rag_result("doc_24", distance=0.25, rerank_score=0.80)  # conf=0.75 passes
+        r1 = self._rag_result(
+            "doc_26", distance=0.45, rerank_score=0.95
+        )  # conf=0.55 fails
+        r2 = self._rag_result(
+            "doc_24", distance=0.25, rerank_score=0.80
+        )  # conf=0.75 passes
         result = _build_retrieval_metadata(self._response([r1, r2]))
 
         assert result.chunk_id == "doc_24"
@@ -1201,8 +1308,12 @@ class TestBuildRetrievalMetadata:
         """When no result passes threshold, top_match is None and attempted_top is set."""
         from app.services.grounding.grounding_service import _build_retrieval_metadata
 
-        r1 = self._rag_result("doc_26", distance=0.45, rerank_score=0.90)  # conf=0.55 fails
-        r2 = self._rag_result("doc_24", distance=0.50, rerank_score=0.70)  # conf=0.50 fails
+        r1 = self._rag_result(
+            "doc_26", distance=0.45, rerank_score=0.90
+        )  # conf=0.55 fails
+        r2 = self._rag_result(
+            "doc_24", distance=0.50, rerank_score=0.70
+        )  # conf=0.50 fails
         result = _build_retrieval_metadata(self._response([r1, r2]))
 
         assert result.chunk_id is None
@@ -1213,8 +1324,8 @@ class TestBuildRetrievalMetadata:
 
     def test_empty_results_all_null(self):
         """Empty result list: all doc fields null, no skipped docs, no runners_up."""
-        from app.services.grounding.grounding_service import _build_retrieval_metadata
         from app.rag.retrieval import RetrievalResponse
+        from app.services.grounding.grounding_service import _build_retrieval_metadata
 
         response = RetrievalResponse(
             query="empty",
@@ -1234,9 +1345,13 @@ class TestBuildRetrievalMetadata:
         """With 3 results and divergence, runners_up excludes top_match and reranker_top."""
         from app.services.grounding.grounding_service import _build_retrieval_metadata
 
-        r1 = self._rag_result("doc_26", distance=0.45, rerank_score=0.95)  # reranker top, fails
+        r1 = self._rag_result(
+            "doc_26", distance=0.45, rerank_score=0.95
+        )  # reranker top, fails
         r2 = self._rag_result("doc_24", distance=0.25, rerank_score=0.80)  # top_match
-        r3 = self._rag_result("doc_22", distance=0.28, rerank_score=0.60)  # pure runner-up
+        r3 = self._rag_result(
+            "doc_22", distance=0.28, rerank_score=0.60
+        )  # pure runner-up
         result = _build_retrieval_metadata(self._response([r1, r2, r3]))
 
         assert result.chunk_id == "doc_24"
@@ -1248,8 +1363,12 @@ class TestBuildRetrievalMetadata:
         """skip_reason embeds the exact threshold used by the query."""
         from app.services.grounding.grounding_service import _build_retrieval_metadata
 
-        r1 = self._rag_result("doc_26", distance=0.45, rerank_score=0.9)  # conf=0.55 fails 0.62
-        r2 = self._rag_result("doc_24", distance=0.30, rerank_score=0.7)  # conf=0.70 passes 0.62
+        r1 = self._rag_result(
+            "doc_26", distance=0.45, rerank_score=0.9
+        )  # conf=0.55 fails 0.62
+        r2 = self._rag_result(
+            "doc_24", distance=0.30, rerank_score=0.7
+        )  # conf=0.70 passes 0.62
         result = _build_retrieval_metadata(self._response([r1, r2], threshold=0.62))
 
         assert result.reranker_top is not None
@@ -1260,17 +1379,22 @@ class TestBuildRetrievalMetadata:
 # extraction_method label contract
 # =============================================================================
 
+
 class TestExtractionMethodLabels:
     """Verify that extraction_method labels honestly describe the mechanism used."""
 
-    def test_llm_extracted_temperature_reports_llm_extraction_method(self, grounding_service):
+    def test_llm_extracted_temperature_reports_llm_extraction_method(
+        self, grounding_service
+    ):
         service, _, _ = grounding_service
         temp = ExtractedTemperature(value_celsius=4.0)
         value, prov = service._resolve_temperature_value(temp)
         assert prov.extraction_method == "llm_extraction"
         assert prov.source == ValueSource.USER_EXPLICIT
 
-    def test_llm_extracted_duration_reports_llm_extraction_method(self, grounding_service):
+    def test_llm_extracted_duration_reports_llm_extraction_method(
+        self, grounding_service
+    ):
         service, _, _ = grounding_service
         dur = ExtractedDuration(value_minutes=50400.0)
         value, prov = service._resolve_duration_value(dur)
@@ -1281,6 +1405,7 @@ class TestExtractionMethodLabels:
 # =============================================================================
 # Composite-food guard — orchestrator-level (lifted from TaxonomyBridge)
 # =============================================================================
+
 
 class TestCompositeFoodGuardHelper:
     """Unit tests for the _composite_keyword_match helper function."""
@@ -1463,7 +1588,9 @@ class TestCompositeFoodGuard:
 
     # New keyword tests (one per keyword added 2026-05-08)
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("food", ["chili", "custard", "chowder", "gumbo", "bisque", "lasagna", "lasagne"])
+    @pytest.mark.parametrize(
+        "food", ["chili", "custard", "chowder", "gumbo", "bisque", "lasagna", "lasagne"]
+    )
     async def test_new_keywords_block_retrieval(
         self, service_with_mock_retrieval: tuple[GroundingService, MagicMock], food: str
     ) -> None:

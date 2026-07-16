@@ -2,7 +2,7 @@
 Configuration package.
 """
 
-from app.config.settings import settings, Settings, LogLevel, PROJECT_ROOT
+from app.config.settings import PROJECT_ROOT, LogLevel, Settings, settings
 
 __all__ = [
     "settings",

@@ -4,10 +4,7 @@ from __future__ import annotations
 
 import sys
 
-import pytest
-
 from benchmarks.visualizations.lib import experiment_runner
-
 
 # ---------------------------------------------------------------------------
 # get_available_experiments
@@ -30,8 +27,12 @@ def test_get_available_experiments_returns_sorted_ids():
     assert ids == sorted(ids)
 
 
-def test_get_available_experiments_returns_empty_when_dir_missing(monkeypatch, tmp_path):
-    monkeypatch.setattr(experiment_runner, "EXPERIMENTS_DIR", tmp_path / "does_not_exist")
+def test_get_available_experiments_returns_empty_when_dir_missing(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setattr(
+        experiment_runner, "EXPERIMENTS_DIR", tmp_path / "does_not_exist"
+    )
     assert experiment_runner.get_available_experiments() == []
 
 
@@ -51,7 +52,9 @@ def test_humanize_experiment_id_formats_version_and_title():
         experiment_runner.humanize_experiment_id("exp_3_1_model_comparison")
         == "Exp 3.1 — Model Comparison"
     )
-    assert experiment_runner.humanize_experiment_id("exp_1_ph_test") == "Exp 1 — Ph Test"
+    assert (
+        experiment_runner.humanize_experiment_id("exp_1_ph_test") == "Exp 1 — Ph Test"
+    )
     # Version-only (no trailing name parts).
     assert experiment_runner.humanize_experiment_id("exp_4") == "Exp 4"
     # Unexpected shape falls back to the raw id rather than raising.
@@ -91,7 +94,9 @@ def test_check_model_availability_ollama_with_api_base(monkeypatch):
     assert enriched[0]["available"] is True
 
 
-def test_check_model_availability_ollama_unavailable_when_no_env_and_no_api_base(monkeypatch):
+def test_check_model_availability_ollama_unavailable_when_no_env_and_no_api_base(
+    monkeypatch,
+):
     """Local model with neither OLLAMA_HOST nor api_base is not available."""
     monkeypatch.delenv("OLLAMA_HOST", raising=False)
     models = [{"name": "Bare local", "api_key_env_var": None, "api_base": None}]

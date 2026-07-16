@@ -2,45 +2,40 @@
 Unit tests for extraction models.
 """
 
-import pytest
 from app.models.extraction import (
-    ExtractedTemperature,
     ExtractedDuration,
-    ExtractedTimeTemperatureStep,
     ExtractedEnvironmentalConditions,
-    ExtractedScenario,
     ExtractedIntent,
+    ExtractedScenario,
+    ExtractedTemperature,
+    ExtractedTimeTemperatureStep,
 )
-
-
 
 
 class TestExtractedTemperature:
     """Tests for ExtractedTemperature model."""
-    
+
     def test_default_values(self):
         """Should have sensible defaults."""
         temp = ExtractedTemperature()
-        
+
         assert temp.value_celsius is None
         assert temp.description is None
         assert temp.is_range is False
-    
+
     def test_explicit_value(self):
         """Should accept explicit temperature."""
         temp = ExtractedTemperature(value_celsius=25.0, description="room temperature")
-        
+
         assert temp.value_celsius == 25.0
         assert temp.description == "room temperature"
-    
+
     def test_range_values(self):
         """Should accept temperature ranges."""
         temp = ExtractedTemperature(
-            is_range=True,
-            range_min_celsius=20.0,
-            range_max_celsius=25.0
+            is_range=True, range_min_celsius=20.0, range_max_celsius=25.0
         )
-        
+
         assert temp.is_range is True
         assert temp.range_min_celsius == 20.0
         assert temp.range_max_celsius == 25.0
@@ -48,44 +43,41 @@ class TestExtractedTemperature:
 
 class TestExtractedDuration:
     """Tests for ExtractedDuration model."""
-    
+
     def test_default_values(self):
         """Should have sensible defaults."""
         duration = ExtractedDuration()
-        
+
         assert duration.value_minutes is None
         assert duration.is_ambiguous is False
-    
+
     def test_explicit_value(self):
         """Should accept explicit duration."""
         duration = ExtractedDuration(value_minutes=180.0, description="3 hours")
-        
+
         assert duration.value_minutes == 180.0
         assert duration.description == "3 hours"
-    
+
     def test_ambiguous_duration(self):
         """Should flag ambiguous durations."""
-        duration = ExtractedDuration(
-            description="a few hours",
-            is_ambiguous=True
-        )
-        
+        duration = ExtractedDuration(description="a few hours", is_ambiguous=True)
+
         assert duration.is_ambiguous is True
         assert duration.value_minutes is None
 
 
 class TestExtractedScenario:
     """Tests for ExtractedScenario model."""
-    
+
     def test_default_values(self):
         """Should have sensible defaults."""
         scenario = ExtractedScenario()
-        
+
         assert scenario.food_description is None
         assert scenario.pathogen_mentioned is None
         assert scenario.is_multi_step is False
         assert scenario.time_temperature_steps == []
-    
+
     def test_simple_scenario(self):
         """Should handle simple single-step scenario."""
         scenario = ExtractedScenario(
@@ -93,11 +85,11 @@ class TestExtractedScenario:
             single_step_temperature=ExtractedTemperature(value_celsius=25.0),
             single_step_duration=ExtractedDuration(value_minutes=180.0),
         )
-        
+
         assert scenario.food_description == "raw chicken"
         assert scenario.single_step_temperature.value_celsius == 25.0
         assert scenario.single_step_duration.value_minutes == 180.0
-    
+
     def test_multi_step_scenario(self):
         """Should handle multi-step scenario."""
         steps = [
@@ -114,17 +106,17 @@ class TestExtractedScenario:
                 sequence_order=2,
             ),
         ]
-        
+
         scenario = ExtractedScenario(
             food_description="salmon fillet",
             is_multi_step=True,
             time_temperature_steps=steps,
         )
-        
+
         assert scenario.is_multi_step is True
         assert len(scenario.time_temperature_steps) == 2
         assert scenario.time_temperature_steps[0].temperature.value_celsius == 20.0
-    
+
     def test_with_environmental_conditions(self):
         """Should handle environmental conditions."""
         scenario = ExtractedScenario(
@@ -135,7 +127,7 @@ class TestExtractedScenario:
                 nitrite_ppm=150.0,
             ),
         )
-        
+
         assert scenario.environmental_conditions.ph_value == 5.5
         assert scenario.environmental_conditions.salt_percent == 3.0
         assert scenario.environmental_conditions.nitrite_ppm == 150.0
@@ -143,7 +135,7 @@ class TestExtractedScenario:
 
 class TestExtractedIntent:
     """Tests for ExtractedIntent model."""
-    
+
     def test_prediction_request(self):
         """Should identify prediction requests."""
         intent = ExtractedIntent(

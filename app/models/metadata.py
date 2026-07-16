@@ -22,10 +22,10 @@ from app.models.enums import (
     SessionStatus,
 )
 
-
 # =============================================================================
 # VALUE SOURCES
 # =============================================================================
+
 
 class ValueSource(str, Enum):
     """Where a value came from.
@@ -40,10 +40,11 @@ class ValueSource(str, Enum):
     retrieval was deliberately skipped because the food is a composite dish whose
     properties cannot be reliably grounded from single-ingredient documents.
     """
-    USER_EXPLICIT = "user_explicit"           # User stated directly
-    USER_INFERRED = "user_inferred"           # Inferred from user input
-    FUZZY_MATCH = "fuzzy_match"               # Resolved via alias/fuzzy lookup
-    RAG_RETRIEVAL = "rag_retrieval"           # Retrieved from knowledge base (primary query, specific-food doc)
+
+    USER_EXPLICIT = "user_explicit"  # User stated directly
+    USER_INFERRED = "user_inferred"  # Inferred from user input
+    FUZZY_MATCH = "fuzzy_match"  # Resolved via alias/fuzzy lookup
+    RAG_RETRIEVAL = "rag_retrieval"  # Retrieved from knowledge base (primary query, specific-food doc)
     RAG_RETRIEVAL_FALLBACK = "rag_retrieval_fallback"  # Retrieved via per-field secondary query (category-level doc or lower threshold)
     RAG_RETRIEVAL_CATEGORY_BRIDGE = "rag_retrieval_category_bridge"  # Tier 3: food name resolved to FoodEx2 ptm_category via taxonomy bridge; food_properties row retrieved by category filter
     RAG_PATHOGEN_CATEGORY_FALLBACK = "rag_pathogen_category_fallback"  # Organism inferred from food category via IFT-2003-T1 associations ranked by CDC annual deaths; fires when food-specific hazard lookup (Stages 1+2) yields no confident result
@@ -51,17 +52,26 @@ class ValueSource(str, Enum):
     COMPOSITE_FOOD_DEFAULT = "composite_food_default"  # Retrieval deliberately skipped: food identified as composite dish; single-ingredient documents do not represent the mixture's properties reliably. Conservative default applied.
     LONG_WINDOW_DEFAULT = "long_window_default"  # Duration unspecified; long observation window assumed so prediction trajectory reaches cap. Epistemically distinct from CONSERVATIVE_DEFAULT: duration is a scenario dimension, not an environmental property with a safety-floor.
     CLARIFICATION_RESPONSE = "clarification_response"  # From user clarification
-    CLAMPED_TO_RANGE = "clamped_to_range"     # Adjusted to valid range
-    CALCULATED = "calculated"                  # Derived from other values
-    MISSING = "missing"                        # Field was required but neither user nor grounding supplied a value; appears in field_audit with final_value=null on validation failure
+    CLAMPED_TO_RANGE = "clamped_to_range"  # Adjusted to valid range
+    CALCULATED = "calculated"  # Derived from other values
+    MISSING = "missing"  # Field was required but neither user nor grounding supplied a value; appears in field_audit with final_value=null on validation failure
 
 
 class PathogenCandidate(BaseModel):
     """One entry in the ranked candidate list produced by the category-level pathogen fallback."""
-    pathogen: str = Field(description="Pathogen name as it appears in pathogen_food_associations.csv")
-    normalized_name: str = Field(description="Name after normalization to match pathogen_characteristics.csv")
-    annual_deaths_us: int = Field(description="Annual US deaths from pathogen_characteristics.csv; used as ranking signal")
-    source_id: str = Field(description="CDC source ID for the death count (e.g. CDC-2019-T1T2)")
+
+    pathogen: str = Field(
+        description="Pathogen name as it appears in pathogen_food_associations.csv"
+    )
+    normalized_name: str = Field(
+        description="Name after normalization to match pathogen_characteristics.csv"
+    )
+    annual_deaths_us: int = Field(
+        description="Annual US deaths from pathogen_characteristics.csv; used as ranking signal"
+    )
+    source_id: str = Field(
+        description="CDC source ID for the death count (e.g. CDC-2019-T1T2)"
+    )
 
 
 class PathogenCategoryFallbackInfo(BaseModel):
@@ -75,8 +85,13 @@ class PathogenCategoryFallbackInfo(BaseModel):
     Attached to ValueProvenance.pathogen_category_fallback when the fallback
     succeeds.
     """
-    ptm_category: str = Field(description="FoodEx2 ptm_category resolved by the taxonomy bridge")
-    ift_categories: list[str] = Field(description="IFT-2003-T1 categories the ptm_category mapped to")
+
+    ptm_category: str = Field(
+        description="FoodEx2 ptm_category resolved by the taxonomy bridge"
+    )
+    ift_categories: list[str] = Field(
+        description="IFT-2003-T1 categories the ptm_category mapped to"
+    )
     ift_source_id: str = Field(
         default="IFT-2003-T1",
         description="Source ID for the qualitative pathogen-category association table",
@@ -109,6 +124,7 @@ class OrganismGroundingFailure(BaseModel):
     Attached to GroundedValues.organism_failure. None when organism grounding
     succeeds via any path (user-explicit, RAG retrieval, or category fallback).
     """
+
     stage: OrganismGroundingFailureStage = Field(
         description="Which of the six early-return points in _category_pathogen_fallback() fired"
     )
@@ -117,11 +133,11 @@ class OrganismGroundingFailure(BaseModel):
     )
     resolved_category: str | None = Field(
         default=None,
-        description="ptm_category the taxonomy bridge resolved to; populated only for CATEGORY_HAS_NO_HAZARD_DATA"
+        description="ptm_category the taxonomy bridge resolved to; populated only for CATEGORY_HAS_NO_HAZARD_DATA",
     )
     match_score: float | None = Field(
         default=None,
-        description="Taxonomy bridge match_score (0-100) for the resolved category; populated only for CATEGORY_HAS_NO_HAZARD_DATA"
+        description="Taxonomy bridge match_score (0-100) for the resolved category; populated only for CATEGORY_HAS_NO_HAZARD_DATA",
     )
 
 
@@ -136,6 +152,7 @@ class CategoryBridgeInfo(BaseModel):
     'fresh poultry' for aw within the poultry category), so each field's
     category_bridge independently names its property_row_food_name.
     """
+
     species: str = Field(
         description="Food description that was looked up, e.g. 'turkey portions'"
     )
@@ -162,7 +179,7 @@ class CategoryBridgeInfo(BaseModel):
     )
     property_row_source_ids: list[str] = Field(
         default_factory=list,
-        description="Source ID(s) from the ph_source_id or aw_source_id column of the property row"
+        description="Source ID(s) from the ph_source_id or aw_source_id column of the property row",
     )
     query_state: str = Field(
         default="",
@@ -190,22 +207,18 @@ class RangeBoundSelection(BaseModel):
     this block.  It does NOT appear in bias_corrections or range_clamps — it is a
     deterministic, mechanical operation, not a safety-event-level correction.
     """
+
     rule: str = Field(
-        default="range_bound_selection",
-        description="Always 'range_bound_selection'"
+        default="range_bound_selection", description="Always 'range_bound_selection'"
     )
     direction: str = Field(
         description="'upper' for growth/survival models, 'lower' for thermal inactivation"
     )
-    reason: str = Field(
-        description="Plain-English rationale for end users"
-    )
+    reason: str = Field(description="Plain-English rationale for end users")
     before_value: list[float] = Field(
         description="[min, max] — the original range from grounding"
     )
-    after_value: float = Field(
-        description="The bound that was selected"
-    )
+    after_value: float = Field(description="The bound that was selected")
 
 
 class ValueProvenance(BaseModel):
@@ -214,58 +227,51 @@ class ValueProvenance(BaseModel):
 
     Attached to any value that flows through the pipeline.
     """
-    source: ValueSource = Field(
-        description="Where this value came from"
-    )
+
+    source: ValueSource = Field(description="Where this value came from")
     original_value: str | float | None = Field(
-        default=None,
-        description="Original value before any transformation"
+        default=None, description="Original value before any transformation"
     )
     original_text: str | None = Field(
-        default=None,
-        description="Original text from user input (if applicable)"
+        default=None, description="Original text from user input (if applicable)"
     )
     retrieval_source: str | None = Field(
-        default=None,
-        description="Document/chunk ID if from RAG retrieval"
+        default=None, description="Document/chunk ID if from RAG retrieval"
     )
     transformation_applied: str | None = Field(
-        default=None,
-        description="Description of any transformation applied"
+        default=None, description="Description of any transformation applied"
     )
     # Audit trail extensions
     # TODO: convert to Literal[...] for compile-time enforcement (separate refactor)
     extraction_method: str | None = Field(
         default=None,
-        description="How the value was extracted: 'regex', 'llm', 'regex+llm', 'rule_match', 'embedding_fallback', 'ranked_by_annual_deaths', 'direct', 'llm_extraction', 'fuzzy_match'"
+        description="How the value was extracted: 'regex', 'llm', 'regex+llm', 'rule_match', 'embedding_fallback', 'ranked_by_annual_deaths', 'direct', 'llm_extraction', 'fuzzy_match'",
     )
     raw_match: str | None = Field(
-        default=None,
-        description="Raw text matched before parsing (e.g. '0.94–0.97')"
+        default=None, description="Raw text matched before parsing (e.g. '0.94–0.97')"
     )
     parsed_range: list[float] | None = Field(
-        default=None,
-        description="[min, max] when value was extracted from a range"
+        default=None, description="[min, max] when value was extracted from a range"
     )
     # Range-pending pipeline signal — True when `value` is the range lower bound and
     # StandardizationService must still pick the correct conservative bound.
     # Always False in the final serialized audit output (cleared by standardization).
     range_pending: bool = Field(
         default=False,
-        description="Pipeline signal: True when value is a range lower bound awaiting bound selection"
+        description="Pipeline signal: True when value is a range lower bound awaiting bound selection",
     )
     # Populated by StandardizationService when it selects a bound from a pending range.
     # Lives alongside transformation_applied during the transition; this block is the
     # authoritative record for bound-selection events.
     standardization: RangeBoundSelection | None = Field(
         default=None,
-        description="Structured record of the bound selection applied by standardization"
+        description="Structured record of the bound selection applied by standardization",
     )
     # Populated by GroundingService when the value was resolved via Tier 3 taxonomy bridge.
     # None for all other source tiers (USER_EXPLICIT, RAG_RETRIEVAL, etc.).
     category_bridge: CategoryBridgeInfo | None = Field(
         default=None,
-        description="Taxonomy-bridge provenance when source=RAG_RETRIEVAL_CATEGORY_BRIDGE"
+        description="Taxonomy-bridge provenance when source=RAG_RETRIEVAL_CATEGORY_BRIDGE",
     )
     # Populated when the category-level pathogen fallback fires (RAG_PATHOGEN_CATEGORY_FALLBACK).
     # Carries the full ranking provenance: ptm_category, IFT categories, all candidates,
@@ -280,29 +286,29 @@ class ValueProvenance(BaseModel):
     # matches) the similarity score and the canonical phrase that was the closest match.
     matched_pattern: str | None = Field(
         default=None,
-        description="The rule pattern that matched (e.g. 'room temperature')"
+        description="The rule pattern that matched (e.g. 'room temperature')",
     )
     rule_conservative: bool | None = Field(
         default=None,
-        description="Whether the matched rule was flagged conservative by its author"
+        description="Whether the matched rule was flagged conservative by its author",
     )
     rule_notes: str | None = Field(
-        default=None,
-        description="The rule's notes field (human-readable rationale)"
+        default=None, description="The rule's notes field (human-readable rationale)"
     )
     embedding_similarity: float | None = Field(
         default=None,
-        description="Cosine similarity score when value was resolved via embedding fallback"
+        description="Cosine similarity score when value was resolved via embedding fallback",
     )
     canonical_phrase: str | None = Field(
         default=None,
-        description="The canonical phrase that scored highest in the embedding lookup"
+        description="The canonical phrase that scored highest in the embedding lookup",
     )
 
 
 # =============================================================================
 # DEFAULT IMPUTED
 # =============================================================================
+
 
 class DefaultImputed(BaseModel):
     """
@@ -313,12 +319,10 @@ class DefaultImputed(BaseModel):
     "correction" here — the value was simply absent; the default is the first
     and only value assigned.
     """
-    field_name: str = Field(
-        description="Which field received a default"
-    )
+
+    field_name: str = Field(description="Which field received a default")
     original_value: float | None = Field(
-        default=None,
-        description="Always None — no user-supplied value existed"
+        default=None, description="Always None — no user-supplied value existed"
     )
     imputed_value: float | str = Field(
         description="The conservative default that was substituted"
@@ -342,61 +346,47 @@ class RangeClamp(BaseModel):
     """
     Record of a value being clamped to valid range.
     """
-    field_name: str = Field(
-        description="Which field was clamped"
-    )
-    original_value: float = Field(
-        description="Value before clamping"
-    )
-    clamped_value: float = Field(
-        description="Value after clamping"
-    )
-    valid_min: float = Field(
-        description="Minimum valid value"
-    )
-    valid_max: float = Field(
-        description="Maximum valid value"
-    )
-    reason: str = Field(
-        description="Why this range applies (e.g., model constraint)"
-    )
+
+    field_name: str = Field(description="Which field was clamped")
+    original_value: float = Field(description="Value before clamping")
+    clamped_value: float = Field(description="Value after clamping")
+    valid_min: float = Field(description="Minimum valid value")
+    valid_max: float = Field(description="Maximum valid value")
+    reason: str = Field(description="Why this range applies (e.g., model constraint)")
 
 
 # =============================================================================
 # RETRIEVAL METADATA
 # =============================================================================
 
+
 class RunnerUpResult(BaseModel):
     """A non-winning retrieval candidate kept for audit traceability."""
+
     doc_id: str | None = Field(default=None, description="Document ID")
     content_preview: str | None = Field(
-        default=None,
-        description="First ~120 characters of retrieved text"
+        default=None, description="First ~120 characters of retrieved text"
     )
     embedding_score: float | None = Field(
-        default=None,
-        description="Cosine similarity score (1 − ChromaDB distance)"
+        default=None, description="Cosine similarity score (1 − ChromaDB distance)"
     )
     rerank_score: float | None = Field(
-        default=None,
-        description="Reranker score if a reranker was applied"
+        default=None, description="Reranker score if a reranker was applied"
     )
 
 
 class SkippedDocInfo(BaseModel):
     """A doc ranked first by the reranker but not used because it failed the embedding threshold gate."""
+
     doc_id: str | None = Field(default=None, description="Document ID")
     content_preview: str | None = Field(
-        default=None,
-        description="First ~120 characters of retrieved text"
+        default=None, description="First ~120 characters of retrieved text"
     )
     embedding_score: float | None = Field(
-        default=None,
-        description="Cosine similarity score (1 − ChromaDB distance)"
+        default=None, description="Cosine similarity score (1 − ChromaDB distance)"
     )
     rerank_score: float | None = Field(
-        default=None,
-        description="Reranker score if a reranker was applied"
+        default=None, description="Reranker score if a reranker was applied"
     )
     skip_reason: str = Field(
         description="Machine-readable reason for skipping, e.g. 'failed_embedding_threshold:0.70'"
@@ -407,61 +397,55 @@ class RetrievalResult(BaseModel):
     """
     Metadata about a RAG retrieval operation.
     """
-    query: str = Field(
-        description="The query used for retrieval"
-    )
+
+    query: str = Field(description="The query used for retrieval")
     source_document: str | None = Field(
-        default=None,
-        description="Source document identifier"
+        default=None, description="Source document identifier"
     )
-    chunk_id: str | None = Field(
-        default=None,
-        description="Specific chunk identifier"
-    )
+    chunk_id: str | None = Field(default=None, description="Specific chunk identifier")
     retrieved_text: str | None = Field(
-        default=None,
-        description="The text that was retrieved"
+        default=None, description="The text that was retrieved"
     )
     fallback_used: bool = Field(
         default=False,
-        description="Whether a fallback/default was used due to low confidence"
+        description="Whether a fallback/default was used due to low confidence",
     )
     # Audit trail extensions
     embedding_score: float | None = Field(
         default=None,
-        description="Cosine similarity of the top result (1 − ChromaDB distance)"
+        description="Cosine similarity of the top result (1 − ChromaDB distance)",
     )
     rerank_score: float | None = Field(
         default=None,
-        description="Reranker score of the top result (distinct from embedding_score)"
+        description="Reranker score of the top result (distinct from embedding_score)",
     )
     source_ids: list[str] = Field(
         default_factory=list,
-        description="Source IDs extracted from the retrieved document metadata"
+        description="Source IDs extracted from the retrieved document metadata",
     )
     full_citations: dict[str, str] = Field(
         default_factory=dict,
-        description="Formatted bibliographic citations keyed by source_id"
+        description="Formatted bibliographic citations keyed by source_id",
     )
     runners_up: list[RunnerUpResult] = Field(
         default_factory=list,
-        description="Top non-winning retrieval candidates (up to 3)"
+        description="Top non-winning retrieval candidates (up to 3)",
     )
     reranker_used: str | None = Field(
         default=None,
-        description="Reranker model name if reranking was applied, None otherwise"
+        description="Reranker model name if reranking was applied, None otherwise",
     )
     attributed_field: str | None = Field(
         default=None,
-        description="Field this retrieval result is attributed to (set on per-field fallback queries; None for primary queries that may cover multiple fields)"
+        description="Field this retrieval result is attributed to (set on per-field fallback queries; None for primary queries that may cover multiple fields)",
     )
     reranker_top: SkippedDocInfo | None = Field(
         default=None,
-        description="Present when the reranker's top-ranked doc was skipped because it failed the embedding threshold; the next qualifying doc became top_match"
+        description="Present when the reranker's top-ranked doc was skipped because it failed the embedding threshold; the next qualifying doc became top_match",
     )
     attempted_top: SkippedDocInfo | None = Field(
         default=None,
-        description="Present when no doc passed the threshold; shows what the system would have used, with skip_reason explaining the gate failure"
+        description="Present when no doc passed the threshold; shows what the system would have used, with skip_reason explaining the gate failure",
     )
 
 
@@ -469,35 +453,26 @@ class RetrievalResult(BaseModel):
 # CLARIFICATION TRACKING
 # =============================================================================
 
+
 class ClarificationRecord(BaseModel):
     """
     Record of a clarification exchange with the user.
     """
-    turn_number: int = Field(
-        ge=1,
-        description="Which clarification turn (1, 2, 3...)"
-    )
-    reason: ClarificationReason = Field(
-        description="Why clarification was needed"
-    )
-    question_asked: str = Field(
-        description="The question that was asked"
-    )
+
+    turn_number: int = Field(ge=1, description="Which clarification turn (1, 2, 3...)")
+    reason: ClarificationReason = Field(description="Why clarification was needed")
+    question_asked: str = Field(description="The question that was asked")
     user_response: str | None = Field(
-        default=None,
-        description="User's response (None if skipped/timed out)"
+        default=None, description="User's response (None if skipped/timed out)"
     )
     extracted_value: str | float | None = Field(
-        default=None,
-        description="Value extracted from response"
+        default=None, description="Value extracted from response"
     )
     default_used: bool = Field(
-        default=False,
-        description="Whether default was used instead of user response"
+        default=False, description="Whether default was used instead of user response"
     )
     timestamp: datetime = Field(
-        default_factory=datetime.utcnow,
-        description="When this clarification occurred"
+        default_factory=datetime.utcnow, description="When this clarification occurred"
     )
 
 
@@ -505,39 +480,53 @@ class ClarificationRecord(BaseModel):
 # COMBASE MODEL AUDIT
 # =============================================================================
 
+
 class ComBaseModelAudit(BaseModel):
     """
     Records which ComBase model was selected and why, for regulatory traceability.
     """
-    organism: str = Field(description="Enum name of the organism (e.g. 'BACILLUS_CEREUS')")
+
+    organism: str = Field(
+        description="Enum name of the organism (e.g. 'BACILLUS_CEREUS')"
+    )
     organism_id: str | None = Field(
         default=None,
-        description="ComBase short code (e.g. 'bc') — cross-reference to combase_models.csv"
+        description="ComBase short code (e.g. 'bc') — cross-reference to combase_models.csv",
     )
     organism_display_name: str | None = Field(
         default=None,
-        description="Human-readable canonical name from combase_models.csv Org column (e.g. 'Bacillus cereus')"
+        description="Human-readable canonical name from combase_models.csv Org column (e.g. 'Bacillus cereus')",
     )
-    model_type: str = Field(description="Model type selected (growth / thermal_inactivation / non_thermal_survival)")
-    model_id: int | None = Field(default=None, description="ComBase ModelID (1=Growth, 2=Thermal, 3=Non-thermal)")
+    model_type: str = Field(
+        description="Model type selected (growth / thermal_inactivation / non_thermal_survival)"
+    )
+    model_id: int | None = Field(
+        default=None, description="ComBase ModelID (1=Growth, 2=Thermal, 3=Non-thermal)"
+    )
     coefficients_str: str | None = Field(
         default=None,
-        description="Semicolon-separated polynomial coefficients for the selected model"
+        description="Semicolon-separated polynomial coefficients for the selected model",
     )
     valid_ranges: dict[str, tuple[float, float]] | None = Field(
         default=None,
-        description="Valid input ranges for the model: {field: (min, max)}"
+        description="Valid input ranges for the model: {field: (min, max)}",
     )
     selection_reason: str = Field(
         description="One-line explanation of why this model type was chosen"
     )
-    y_max: float | None = Field(default=None, description="Maximum population density (Baranyi model parameter)")
-    h0: float | None = Field(default=None, description="Initial physiological state (Baranyi model parameter)")
+    y_max: float | None = Field(
+        default=None, description="Maximum population density (Baranyi model parameter)"
+    )
+    h0: float | None = Field(
+        default=None,
+        description="Initial physiological state (Baranyi model parameter)",
+    )
 
 
 # =============================================================================
 # SYSTEM AUDIT
 # =============================================================================
+
 
 class SystemAudit(BaseModel):
     """
@@ -546,25 +535,24 @@ class SystemAudit(BaseModel):
     Allows a regulator to reconstruct the exact software + data state
     without re-running the system.
     """
+
     rag_store_hash: str | None = Field(
         default=None,
-        description="SHA-256 prefix of sorted ChromaDB document IDs at ingestion time"
+        description="SHA-256 prefix of sorted ChromaDB document IDs at ingestion time",
     )
     rag_ingested_at: str | None = Field(
         default=None,
-        description="ISO-8601 timestamp when the RAG store was last ingested"
+        description="ISO-8601 timestamp when the RAG store was last ingested",
     )
     source_csv_audit_date: str | None = Field(
         default=None,
-        description="Modification date of data/rag/rag_audit_changelog.md at ingestion time"
+        description="Modification date of data/rag/rag_audit_changelog.md at ingestion time",
     )
     ptm_version: str | None = Field(
-        default=None,
-        description="Git SHA (short) of the running PTM codebase"
+        default=None, description="Git SHA (short) of the running PTM codebase"
     )
     combase_model_table_hash: str | None = Field(
-        default=None,
-        description="SHA-256 prefix of data/combase_models.csv"
+        default=None, description="SHA-256 prefix of data/combase_models.csv"
     )
 
 
@@ -572,50 +560,44 @@ class SystemAudit(BaseModel):
 # SESSION METADATA
 # =============================================================================
 
+
 class InterpretationMetadata(BaseModel):
     """
     Complete metadata for an interpretation session.
-    
+
     Aggregates all provenance, corrections, and confidence information.
     """
+
     # Session info
-    session_id: str = Field(
-        description="Unique session identifier"
-    )
+    session_id: str = Field(description="Unique session identifier")
     status: SessionStatus = Field(
-        default=SessionStatus.PENDING,
-        description="Current session status"
+        default=SessionStatus.PENDING, description="Current session status"
     )
     created_at: datetime = Field(
-        default_factory=datetime.utcnow,
-        description="When the session started"
+        default_factory=datetime.utcnow, description="When the session started"
     )
     completed_at: datetime | None = Field(
-        default=None,
-        description="When the session completed"
+        default=None, description="When the session completed"
     )
-    
+
     # Original input
-    original_input: str = Field(
-        description="The user's original input text"
-    )
-    
+    original_input: str = Field(description="The user's original input text")
+
     # Provenance for key fields
     provenance: dict[str, ValueProvenance] = Field(
         default_factory=dict,
-        description="Provenance for each field (field_name -> provenance)"
+        description="Provenance for each field (field_name -> provenance)",
     )
-    
+
     # Conservative defaults substituted for missing fields
     defaults_imputed: list[DefaultImputed] = Field(
         default_factory=list,
-        description="Conservative defaults applied when a required value was absent"
+        description="Conservative defaults applied when a required value was absent",
     )
     range_clamps: list[RangeClamp] = Field(
-        default_factory=list,
-        description="Range clamps that were applied"
+        default_factory=list, description="Range clamps that were applied"
     )
-    
+
     # Composite-food skip events: field_name → matched keyword.
     # Populated by the orchestrator from GroundedValues.composite_skip when the
     # orchestrator-level composite-food guard fires and skips retrieval for a field.
@@ -623,45 +605,39 @@ class InterpretationMetadata(BaseModel):
     # of CONSERVATIVE_DEFAULT for these fields.
     composite_skip: dict[str, str] = Field(
         default_factory=dict,
-        description="Fields whose retrieval was deliberately skipped due to composite-food guard: {field_name: matched_keyword}"
+        description="Fields whose retrieval was deliberately skipped due to composite-food guard: {field_name: matched_keyword}",
     )
 
     # Retrievals performed
     retrievals: list[RetrievalResult] = Field(
-        default_factory=list,
-        description="RAG retrievals that were performed"
+        default_factory=list, description="RAG retrievals that were performed"
     )
-    
+
     # Clarifications
     clarifications: list[ClarificationRecord] = Field(
-        default_factory=list,
-        description="Clarification exchanges with user"
+        default_factory=list, description="Clarification exchanges with user"
     )
-    
+
     # Warnings and notes
     warnings: list[str] = Field(
-        default_factory=list,
-        description="Warnings generated during interpretation"
+        default_factory=list, description="Warnings generated during interpretation"
     )
     notes: list[str] = Field(
-        default_factory=list,
-        description="Additional notes for transparency"
+        default_factory=list, description="Additional notes for transparency"
     )
 
     # Top-level audit blocks (populated by orchestrator)
     combase_model: ComBaseModelAudit | None = Field(
-        default=None,
-        description="Which ComBase model was selected and why"
+        default=None, description="Which ComBase model was selected and why"
     )
     system: SystemAudit | None = Field(
-        default=None,
-        description="PTM software and data state at time of prediction"
+        default=None, description="PTM software and data state at time of prediction"
     )
 
     def add_provenance(self, field_name: str, provenance: ValueProvenance) -> None:
         """Add provenance for a field."""
         self.provenance[field_name] = provenance
-    
+
     def add_default_imputed(self, default: DefaultImputed) -> None:
         """Record a conservative default that was substituted for a missing field."""
         self.defaults_imputed.append(default)
@@ -669,15 +645,15 @@ class InterpretationMetadata(BaseModel):
     def add_range_clamp(self, clamp: RangeClamp) -> None:
         """Record a range clamp."""
         self.range_clamps.append(clamp)
-    
+
     def add_retrieval(self, retrieval: RetrievalResult) -> None:
         """Record a retrieval operation."""
         self.retrievals.append(retrieval)
-    
+
     def add_clarification(self, clarification: ClarificationRecord) -> None:
         """Record a clarification exchange."""
         self.clarifications.append(clarification)
-    
+
     def add_warning(self, warning: str) -> None:
         """Add a warning."""
         self.warnings.append(warning)

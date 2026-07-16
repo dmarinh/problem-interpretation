@@ -7,20 +7,19 @@ into semantic documents for vector store ingestion.
 Distinct from app/rag/loaders/ which contains generic format parsers (CSV, PDF, etc).
 """
 
+from .citations import (
+    format_citation,
+    load_source_references,
+)
 from .food_safety import (
+    load_all_sources,
+    load_food_pathogen_hazards,
     load_food_properties,
     load_pathogen_aw_limits,
     load_pathogen_characteristics,
-    load_pathogen_transmission,
     load_pathogen_food_associations,
-    load_food_pathogen_hazards,
+    load_pathogen_transmission,
     load_tcs_classification,
-    load_all_sources,
-)
-
-from .citations import (
-    load_source_references,
-    format_citation,
 )
 
 __all__ = [

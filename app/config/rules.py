@@ -23,7 +23,7 @@ user-supplied values.
 
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from sentence_transformers import SentenceTransformer
@@ -32,6 +32,7 @@ if TYPE_CHECKING:
 @dataclass
 class InterpretationRule:
     """Rule for interpreting ambiguous linguistic terms."""
+
     pattern: str
     value: Any
     conservative: bool = False
@@ -423,6 +424,7 @@ DURATION_INTERPRETATIONS: list[InterpretationRule] = [
 # LOOKUP UTILITIES
 # =============================================================================
 
+
 def find_temperature_interpretation(description: str) -> InterpretationRule | None:
     """Find matching temperature interpretation rule."""
     if not description:
@@ -525,6 +527,7 @@ EMBEDDING_SIMILARITY_THRESHOLD = 0.5
 def _get_embedding_model() -> "SentenceTransformer":
     """Lazy-load embedding model for similarity matching."""
     from sentence_transformers import SentenceTransformer
+
     return SentenceTransformer("all-MiniLM-L6-v2")
 
 
@@ -567,8 +570,8 @@ def find_temperature_by_similarity(
             phrases = TEMPERATURE_CANONICAL_PHRASES[temp]
             for phrase, phrase_emb in zip(phrases, phrase_embeddings):
                 similarity = float(
-                    np.dot(query_embedding, phrase_emb) /
-                    (np.linalg.norm(query_embedding) * np.linalg.norm(phrase_emb))
+                    np.dot(query_embedding, phrase_emb)
+                    / (np.linalg.norm(query_embedding) * np.linalg.norm(phrase_emb))
                 )
                 if similarity > best_score:
                     best_score = similarity
@@ -600,7 +603,9 @@ def find_temperature_interpretation_with_fallback(
     if rule is not None:
         return rule
 
-    temp_value, similarity, canonical_phrase = find_temperature_by_similarity(description)
+    temp_value, similarity, canonical_phrase = find_temperature_by_similarity(
+        description
+    )
 
     if temp_value is not None:
         return InterpretationRule(

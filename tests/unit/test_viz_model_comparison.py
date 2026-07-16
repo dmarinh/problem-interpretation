@@ -26,7 +26,6 @@ The expression from pages/2_model_comparison.py (authoritative):
 
 from __future__ import annotations
 
-
 # ---------------------------------------------------------------------------
 # Mirror of the pure expression from pages/2_model_comparison.py
 # ---------------------------------------------------------------------------
@@ -50,7 +49,9 @@ def any_model_type_failure(results: list[dict]) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def _query(query_id: str, model_type_in_truth: bool, model_type_ok: bool | None = None) -> dict:
+def _query(
+    query_id: str, model_type_in_truth: bool, model_type_ok: bool | None = None
+) -> dict:
     """Build a minimal query dict for test fixtures."""
     field_scores = {}
     if model_type_in_truth:
@@ -88,7 +89,11 @@ class TestAnyModelTypeFailure:
         The banner reflects misclassification only for queries where model_type
         was part of the ground truth benchmark.
         """
-        q = {"query_id": "Q1", "field_scores": {"pathogen": True}, "model_type_ok": False}
+        q = {
+            "query_id": "Q1",
+            "field_scores": {"pathogen": True},
+            "model_type_ok": False,
+        }
         results = [_result("M1", [q])]
         assert any_model_type_failure(results) is False
 
@@ -117,14 +122,20 @@ class TestAnyModelTypeFailure:
     def test_one_failure_among_passing_models_triggers_banner(self):
         """Even a single failure in one model flags the banner."""
         results = [
-            _result("Good", [
-                _query("Q1", True, True),
-                _query("Q2", True, True),
-            ]),
-            _result("Bad", [
-                _query("Q1", True, True),
-                _query("Q2", True, False),  # one failure
-            ]),
+            _result(
+                "Good",
+                [
+                    _query("Q1", True, True),
+                    _query("Q2", True, True),
+                ],
+            ),
+            _result(
+                "Bad",
+                [
+                    _query("Q1", True, True),
+                    _query("Q2", True, False),  # one failure
+                ],
+            ),
         ]
         assert any_model_type_failure(results) is True
 
@@ -147,11 +158,16 @@ class TestAnyModelTypeFailure:
         regardless of model_type_ok value.
         """
         results = [
-            _result("M1", [
-                _query("Q_scored", model_type_in_truth=True, model_type_ok=True),
-                # Q_unscored has model_type_ok=False but no ground truth for model_type
-                _query("Q_unscored", model_type_in_truth=False, model_type_ok=False),
-            ])
+            _result(
+                "M1",
+                [
+                    _query("Q_scored", model_type_in_truth=True, model_type_ok=True),
+                    # Q_unscored has model_type_ok=False but no ground truth for model_type
+                    _query(
+                        "Q_unscored", model_type_in_truth=False, model_type_ok=False
+                    ),
+                ],
+            )
         ]
         assert any_model_type_failure(results) is False
 

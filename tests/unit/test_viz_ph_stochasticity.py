@@ -46,13 +46,9 @@ def generate_key_finding(results: list[dict], log_threshold: float) -> dict:
 
     n_total = len(food_stats)
     crossing = {
-        name: s for name, s in food_stats.items()
-        if s["lo"] < log_threshold <= s["hi"]
+        name: s for name, s in food_stats.items() if s["lo"] < log_threshold <= s["hi"]
     }
-    above = {
-        name: s for name, s in food_stats.items()
-        if s["lo"] >= log_threshold
-    }
+    above = {name: s for name, s in food_stats.items() if s["lo"] >= log_threshold}
 
     n_crossing = len(crossing)
     n_above = len(above)
@@ -410,9 +406,9 @@ class TestFindFoodByName:
         """
         food_no_key = {"food_id": "F99"}  # no food_name key → .get() returns None
         result = find_food_by_name([food_no_key, _FOOD_CHICKEN], None)
-        assert result is None, (
-            "None food_name arg must not match a food with a missing food_name key"
-        )
+        assert (
+            result is None
+        ), "None food_name arg must not match a food with a missing food_name key"
 
 
 # ---------------------------------------------------------------------------
@@ -420,6 +416,7 @@ class TestFindFoodByName:
 # ---------------------------------------------------------------------------
 
 _THRESHOLD = 1.0
+
 
 # Food helpers: GP data as nested dicts for generate_key_finding tests.
 def _food(name: str, hi: float, lo: float, rng: float | None = None) -> dict:
@@ -547,9 +544,9 @@ class TestGenerateKeyFinding:
         """Three foods: one crossing, one above, one safe."""
         r = _result(
             "M",
-            _food("chicken", hi=1.5, lo=0.8),   # crossing
-            _food("milk", hi=1.8, lo=1.5),       # above
-            _food("pickle", hi=0.4, lo=0.1),     # below
+            _food("chicken", hi=1.5, lo=0.8),  # crossing
+            _food("milk", hi=1.8, lo=1.5),  # above
+            _food("pickle", hi=0.4, lo=0.1),  # below
         )
         finding = generate_key_finding([r], _THRESHOLD)
         assert finding["n_crossing"] == 1

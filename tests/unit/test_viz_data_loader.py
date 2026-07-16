@@ -14,7 +14,6 @@ import pytest
 from benchmarks.config import RESULTS_DIR as REAL_RESULTS_DIR
 from benchmarks.visualizations.lib import data_loader
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -27,10 +26,7 @@ FAKE_RESULTS = [
     }
 ]
 
-FAKE_CSV_CONTENT = (
-    "model,accuracy,cost_per_call_usd\n"
-    "FakeModel,0.95,0.001\n"
-)
+FAKE_CSV_CONTENT = "model,accuracy,cost_per_call_usd\n" "FakeModel,0.95,0.001\n"
 
 
 @pytest.fixture()
@@ -180,7 +176,9 @@ class TestListAvailableRuns:
         assert runs[0]["filepath"].name == "results_20260410_113632.json"
 
     def test_ignores_non_timestamp_filenames(self, results_dir):
-        exp_dir = _create_experiment(results_dir, "exp_test", timestamps=["20260410_113632"])
+        exp_dir = _create_experiment(
+            results_dir, "exp_test", timestamps=["20260410_113632"]
+        )
         (exp_dir / "results_badname.json").write_text("{}")
         (exp_dir / "results_.json").write_text("{}")
 
@@ -302,6 +300,8 @@ class TestRealExp33Results:
         experiments = data_loader.list_experiments_with_results()
         ids = [e["experiment_id"] for e in experiments]
         assert "exp_3_1_model_comparison" in ids
-        exp = next(e for e in experiments if e["experiment_id"] == "exp_3_1_model_comparison")
+        exp = next(
+            e for e in experiments if e["experiment_id"] == "exp_3_1_model_comparison"
+        )
         assert exp["has_results"] is True
         assert exp["latest_timestamp"] is not None

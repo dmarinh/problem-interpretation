@@ -7,10 +7,10 @@ Loads from environment variables and .env files.
 
 from enum import Enum
 from pathlib import Path
-from typing import Optional
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
 
 # Find project root by looking for .env or pyproject.toml
 def find_project_root() -> Path:
@@ -20,6 +20,7 @@ def find_project_root() -> Path:
             return current
         current = current.parent
     return Path.cwd()
+
 
 PROJECT_ROOT = find_project_root()
 
@@ -32,8 +33,10 @@ PROJECT_ROOT = find_project_root()
 # ENUMS
 # =============================================================================
 
+
 class LogLevel(str, Enum):
     """Logging levels."""
+
     DEBUG = "DEBUG"
     INFO = "INFO"
     WARNING = "WARNING"
@@ -45,59 +48,56 @@ class LogLevel(str, Enum):
 # SETTINGS
 # =============================================================================
 
+
 class Settings(BaseSettings):
     """
     Application settings loaded from environment variables.
     """
-    
+
     model_config = SettingsConfigDict(
         env_file=PROJECT_ROOT / ".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
     )
-    
+
     # -------------------------------------------------------------------------
     # Application
     # -------------------------------------------------------------------------
     app_name: str = "Problem Interpretation Module"
     debug: bool = False
     log_level: LogLevel = LogLevel.INFO
-    
+
     # -------------------------------------------------------------------------
     # API Server
     # -------------------------------------------------------------------------
     host: str = "0.0.0.0"
     port: int = 8000
-    
+
     # -------------------------------------------------------------------------
     # LLM Configuration (model-agnostic via LiteLLM)
     # -------------------------------------------------------------------------
     llm_model: str = Field(
         default="gpt-4o",
-        description="Model identifier (e.g., gpt-4o, claude-3-sonnet, ollama/llama2)"
+        description="Model identifier (e.g., gpt-4o, claude-3-sonnet, ollama/llama2)",
     )
-    llm_api_key: Optional[str] = Field(
-        default=None,
-        description="API key for LLM provider"
+    llm_api_key: str | None = Field(
+        default=None, description="API key for LLM provider"
     )
-    llm_api_base: Optional[str] = Field(
+    llm_api_base: str | None = Field(
         default=None,
-        description="Optional base URL override (for proxies or local models)"
+        description="Optional base URL override (for proxies or local models)",
     )
     llm_temperature: float = Field(
         default=0.1,
         ge=0.0,
         le=2.0,
-        description="Generation temperature (lower = more deterministic)"
+        description="Generation temperature (lower = more deterministic)",
     )
     llm_max_tokens: int = Field(
-        default=4096,
-        ge=100,
-        le=32000,
-        description="Maximum tokens in response"
+        default=4096, ge=100, le=32000, description="Maximum tokens in response"
     )
-    llm_instructor_mode: Optional[str] = Field(
+    llm_instructor_mode: str | None = Field(
         default=None,
         description=(
             "Instructor extraction mode. "
@@ -111,31 +111,25 @@ class Settings(BaseSettings):
     # -------------------------------------------------------------------------
     embedding_model: str = Field(
         default="all-MiniLM-L6-v2",
-        description="Sentence-transformers model for embeddings"
+        description="Sentence-transformers model for embeddings",
     )
     vector_store_path: Path = Field(
         default=Path("./data/vector_store"),
-        description="Path to ChromaDB persistent storage"
+        description="Path to ChromaDB persistent storage",
     )
     chunk_size: int = Field(
-        default=512,
-        ge=100,
-        le=2000,
-        description="Document chunk size for ingestion"
+        default=512, ge=100, le=2000, description="Document chunk size for ingestion"
     )
     chunk_overlap: int = Field(
-        default=50,
-        ge=0,
-        le=500,
-        description="Overlap between chunks"
+        default=50, ge=0, le=500, description="Overlap between chunks"
     )
     reranker_enabled: bool = Field(
         default=True,
-        description="Enable cross-encoder reranking after initial vector search"
+        description="Enable cross-encoder reranking after initial vector search",
     )
     reranker_model: str = Field(
         default="cross-encoder/ms-marco-MiniLM-L-6-v2",
-        description="Sentence-transformers cross-encoder model for reranking"
+        description="Sentence-transformers cross-encoder model for reranking",
     )
 
     # -------------------------------------------------------------------------
@@ -145,13 +139,13 @@ class Settings(BaseSettings):
         default=0.65,
         ge=0.0,
         le=1.0,
-        description="Global minimum retrieval confidence threshold"
+        description="Global minimum retrieval confidence threshold",
     )
     food_properties_confidence: float = Field(
         default=0.70,
         ge=0.0,
         le=1.0,
-        description="Confidence threshold for food properties retrieval"
+        description="Confidence threshold for food properties retrieval",
     )
     food_properties_fallback_confidence: float = Field(
         default=0.62,
@@ -171,9 +165,9 @@ class Settings(BaseSettings):
         default=0.75,
         ge=0.0,
         le=1.0,
-        description="Confidence threshold for pathogen hazards retrieval"
+        description="Confidence threshold for pathogen hazards retrieval",
     )
-    
+
     # -------------------------------------------------------------------------
     # Clarification Loop
     # -------------------------------------------------------------------------
@@ -181,15 +175,14 @@ class Settings(BaseSettings):
         default=3,
         ge=1,
         le=10,
-        description="Maximum clarification requests before applying defaults"
+        description="Maximum clarification requests before applying defaults",
     )
-    
+
     # -------------------------------------------------------------------------
     # Conservative Defaults (Safety-Critical)
     # -------------------------------------------------------------------------
     default_temperature_abuse_c: float = Field(
-        default=25.0,
-        description="Conservative ambient temperature assumption (°C)"
+        default=25.0, description="Conservative ambient temperature assumption (°C)"
     )
     default_temperature_inactivation_conservative_c: float = Field(
         default=60.0,
@@ -199,16 +192,13 @@ class Settings(BaseSettings):
         ),
     )
     default_ph_neutral: float = Field(
-        default=7.0,
-        ge=0.0,
-        le=14.0,
-        description="Default pH when unknown"
+        default=7.0, ge=0.0, le=14.0, description="Default pH when unknown"
     )
     default_water_activity: float = Field(
         default=0.99,
         ge=0.0,
         le=1.0,
-        description="Default water activity when unknown (conservative = high)"
+        description="Default water activity when unknown (conservative = high)",
     )
     default_long_window_minutes: float = Field(
         default=10080.0,
@@ -223,30 +213,26 @@ class Settings(BaseSettings):
     # -------------------------------------------------------------------------
     # Engine Configuration (connection settings only, NOT constraints)
     # -------------------------------------------------------------------------
-    combase_api_url: Optional[str] = Field(
-        default=None,
-        description="ComBase API endpoint URL"
+    combase_api_url: str | None = Field(
+        default=None, description="ComBase API endpoint URL"
     )
     combase_timeout_seconds: int = Field(
-        default=30,
-        ge=5,
-        le=120,
-        description="Timeout for ComBase API calls"
+        default=30, ge=5, le=120, description="Timeout for ComBase API calls"
     )
-    
+
     # -------------------------------------------------------------------------
     # Constraint Cache Settings
     # -------------------------------------------------------------------------
     constraint_cache_ttl_seconds: int = Field(
         default=86400,
         ge=0,
-        description="Time-to-live for cached engine constraints (0 = no expiry)"
+        description="Time-to-live for cached engine constraints (0 = no expiry)",
     )
-    constraint_cache_path: Optional[Path] = Field(
+    constraint_cache_path: Path | None = Field(
         default=Path("./data/cache/constraints"),
-        description="Path for persistent constraint cache (None = memory only)"
+        description="Path for persistent constraint cache (None = memory only)",
     )
-    
+
     # -------------------------------------------------------------------------
     # Validators
     # -------------------------------------------------------------------------

@@ -43,9 +43,11 @@ class TestApplyStateDefault:
     def test_cooked_is_unchanged(self) -> None:
         assert _apply_state_default("cooked") == "cooked"
 
-    @pytest.mark.parametrize("state", ["unspecified", "", "fresh", "cured", "dried", "cooked"])
+    @pytest.mark.parametrize(
+        "state", ["unspecified", "", "fresh", "cured", "dried", "cooked"]
+    )
     def test_return_type_is_always_str(self, state: str) -> None:
         result = _apply_state_default(state)
-        assert isinstance(result, str), (
-            f"_apply_state_default({state!r}) returned {type(result).__name__}, expected str"
-        )
+        assert isinstance(
+            result, str
+        ), f"_apply_state_default({state!r}) returned {type(result).__name__}, expected str"

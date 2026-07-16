@@ -6,8 +6,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from app.rag.retrieval import RetrievalService
 from app.rag.reranker import BaseReranker, RerankResult
+from app.rag.retrieval import RetrievalService
 from app.rag.vector_store import VectorStore
 
 
@@ -85,7 +85,11 @@ class TestGetHazardsForFood:
             {
                 "id": "a",
                 "document": "Hazard for fish: Unknown pathogen.",
-                "metadata": {"food_name": "fish", "pathogen": "Unknown", "type": VectorStore.TYPE_PATHOGEN_HAZARDS},
+                "metadata": {
+                    "food_name": "fish",
+                    "pathogen": "Unknown",
+                    "type": VectorStore.TYPE_PATHOGEN_HAZARDS,
+                },
             },
             _make_hazard("fish", "Salmonella spp.", 238),
         ]
@@ -99,7 +103,12 @@ class TestPerFieldFallbackMethods:
     """Tests for query_food_ph() and query_food_water_activity() (Tier 2 fallback methods)."""
 
     def _make_raw_result(self, document: str, distance: float) -> dict:
-        return {"document": document, "distance": distance, "id": "doc_1", "metadata": {}}
+        return {
+            "document": document,
+            "distance": distance,
+            "id": "doc_1",
+            "metadata": {},
+        }
 
     @pytest.fixture
     def service_with_store(self):
@@ -120,7 +129,9 @@ class TestPerFieldFallbackMethods:
         # Must NOT be the combined primary query
         assert "water activity" not in query_text.lower()
 
-    def test_query_food_water_activity_uses_aw_focused_query_text(self, service_with_store):
+    def test_query_food_water_activity_uses_aw_focused_query_text(
+        self, service_with_store
+    ):
         """query_food_water_activity must embed a water-activity-specific query."""
         service, mock_store = service_with_store
         mock_store.query.return_value = []
@@ -134,7 +145,9 @@ class TestPerFieldFallbackMethods:
         # Must NOT be the pH-specific query (which uses "acidity") or the combined primary
         assert "acidity" not in query_text.lower()
 
-    def test_query_food_ph_filters_to_food_properties_doc_type(self, service_with_store):
+    def test_query_food_ph_filters_to_food_properties_doc_type(
+        self, service_with_store
+    ):
         """Fallback pH query must stay scoped to TYPE_FOOD_PROPERTIES."""
         service, mock_store = service_with_store
         mock_store.query.return_value = []
@@ -145,7 +158,9 @@ class TestPerFieldFallbackMethods:
         doc_type = call_args.kwargs.get("doc_type") or call_args.args[2]
         assert doc_type == VectorStore.TYPE_FOOD_PROPERTIES
 
-    def test_query_food_water_activity_filters_to_food_properties_doc_type(self, service_with_store):
+    def test_query_food_water_activity_filters_to_food_properties_doc_type(
+        self, service_with_store
+    ):
         """Fallback aw query must stay scoped to TYPE_FOOD_PROPERTIES."""
         service, mock_store = service_with_store
         mock_store.query.return_value = []
@@ -170,22 +185,30 @@ class TestPerFieldFallbackMethods:
     #
     #     assert settings.food_properties_fallback_confidence < settings.food_properties_confidence
 
-    def test_query_food_ph_has_confident_result_when_above_threshold(self, service_with_store):
+    def test_query_food_ph_has_confident_result_when_above_threshold(
+        self, service_with_store
+    ):
         """has_confident_result=True when top doc scores above fallback threshold."""
         service, mock_store = service_with_store
         # Distance 0.35 → confidence 0.65 > fallback threshold 0.62
-        mock_store.query.return_value = [self._make_raw_result("chicken pH 6.2", distance=0.35)]
+        mock_store.query.return_value = [
+            self._make_raw_result("chicken pH 6.2", distance=0.35)
+        ]
 
         response = service.query_food_ph("chicken")
 
         assert response.has_confident_result is True
         assert response.top_result is not None
 
-    def test_query_food_water_activity_no_confident_result_when_below_threshold(self, service_with_store):
+    def test_query_food_water_activity_no_confident_result_when_below_threshold(
+        self, service_with_store
+    ):
         """has_confident_result=False when top doc scores below fallback threshold."""
         service, mock_store = service_with_store
         # Distance 0.45 → confidence 0.55 < fallback threshold 0.62
-        mock_store.query.return_value = [self._make_raw_result("watercress pH 6.0", distance=0.45)]
+        mock_store.query.return_value = [
+            self._make_raw_result("watercress pH 6.0", distance=0.45)
+        ]
 
         response = service.query_food_water_activity("zarflonite")
 
@@ -204,7 +227,9 @@ class _MockReranker(BaseReranker):
     def model_name(self) -> str:
         return "mock-reranker"
 
-    def rerank(self, _query: str, documents: list[str], top_k: int | None = None) -> list[RerankResult]:
+    def rerank(
+        self, _query: str, documents: list[str], top_k: int | None = None
+    ) -> list[RerankResult]:
         results = [
             RerankResult(index=i, score=float(i + 1), text=doc)
             for i, doc in enumerate(documents)
@@ -219,12 +244,20 @@ class TestReranking:
     """Verify reranker wiring: scores surface in results and ordering is authoritative."""
 
     def _make_raw(self, document: str, distance: float) -> dict:
-        return {"document": document, "distance": distance, "id": f"doc_{document[:8]}", "metadata": {}}
+        return {
+            "document": document,
+            "distance": distance,
+            "id": f"doc_{document[:8]}",
+            "metadata": {},
+        }
 
     @pytest.fixture
     def service_with_reranker(self):
         mock_store = MagicMock()
-        return RetrievalService(vector_store=mock_store, reranker=_MockReranker()), mock_store
+        return (
+            RetrievalService(vector_store=mock_store, reranker=_MockReranker()),
+            mock_store,
+        )
 
     @pytest.fixture
     def service_no_reranker(self):
@@ -247,7 +280,9 @@ class TestReranking:
     def test_rerank_score_null_when_no_reranker(self, service_no_reranker):
         """rerank_score must be null when no reranker is injected."""
         service, mock_store = service_no_reranker
-        mock_store.query.return_value = [self._make_raw("chicken pH 6.2", distance=0.30)]
+        mock_store.query.return_value = [
+            self._make_raw("chicken pH 6.2", distance=0.30)
+        ]
 
         response = service.query("chicken pH", n_results=1)
 
@@ -257,7 +292,9 @@ class TestReranking:
     def test_reranker_used_populated_when_reranker_active(self, service_with_reranker):
         """reranker_used must report the model name when reranking fires."""
         service, mock_store = service_with_reranker
-        mock_store.query.return_value = [self._make_raw("chicken pH 6.2", distance=0.30)]
+        mock_store.query.return_value = [
+            self._make_raw("chicken pH 6.2", distance=0.30)
+        ]
 
         response = service.query("chicken pH", n_results=1)
 
@@ -266,7 +303,9 @@ class TestReranking:
     def test_reranker_used_null_when_no_reranker(self, service_no_reranker):
         """reranker_used must be null when no reranker is injected."""
         service, mock_store = service_no_reranker
-        mock_store.query.return_value = [self._make_raw("chicken pH 6.2", distance=0.30)]
+        mock_store.query.return_value = [
+            self._make_raw("chicken pH 6.2", distance=0.30)
+        ]
 
         response = service.query("chicken pH", n_results=1)
 
@@ -281,8 +320,12 @@ class TestReranking:
         """
         service, mock_store = service_with_reranker
         mock_store.query.return_value = [
-            self._make_raw("doc_A content", distance=0.20),  # better embedding, loses rerank
-            self._make_raw("doc_B content", distance=0.35),  # worse embedding, wins rerank
+            self._make_raw(
+                "doc_A content", distance=0.20
+            ),  # better embedding, loses rerank
+            self._make_raw(
+                "doc_B content", distance=0.35
+            ),  # worse embedding, wins rerank
         ]
 
         response = service.query("query", n_results=2)
@@ -312,7 +355,9 @@ class TestReranking:
         branch never fires and the audit does not misleadingly report reranker activity.
         """
         mock_store = MagicMock()
-        mock_store.query.return_value = [self._make_raw("chicken pH 6.2", distance=0.30)]
+        mock_store.query.return_value = [
+            self._make_raw("chicken pH 6.2", distance=0.30)
+        ]
         service = RetrievalService(vector_store=mock_store, reranker=None)
 
         response = service.query("chicken pH", n_results=1)
@@ -321,7 +366,9 @@ class TestReranking:
         assert response.top_result is not None
         assert response.top_result.rerank_score is None
 
-    def test_threshold_gate_skips_reranker_top_pick_when_below_threshold(self, service_with_reranker):
+    def test_threshold_gate_skips_reranker_top_pick_when_below_threshold(
+        self, service_with_reranker
+    ):
         """Threshold gate walks the reranked list for the first result above threshold.
 
         _MockReranker gives doc_B (index 1, distance 0.42, confidence 0.58) the higher
@@ -330,8 +377,12 @@ class TestReranking:
         """
         service, mock_store = service_with_reranker
         mock_store.query.return_value = [
-            self._make_raw("doc_A content", distance=0.25),  # confidence 0.75 — above threshold
-            self._make_raw("doc_B content", distance=0.42),  # confidence 0.58 — below threshold, wins rerank
+            self._make_raw(
+                "doc_A content", distance=0.25
+            ),  # confidence 0.75 — above threshold
+            self._make_raw(
+                "doc_B content", distance=0.42
+            ),  # confidence 0.58 — below threshold, wins rerank
         ]
 
         response = service.query("query", n_results=2, threshold=0.65)

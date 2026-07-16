@@ -10,10 +10,9 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.config import settings
-from app.core.log_config import setup_logging, get_logger
 from app.api.routes import health, translation
-
+from app.config import settings
+from app.core.log_config import get_logger, setup_logging
 
 # Setup logging before anything else
 setup_logging()
@@ -24,17 +23,18 @@ logger = get_logger(__name__)
 async def lifespan(app: FastAPI):
     """
     Application lifespan manager.
-    
+
     Handles startup and shutdown events.
     """
     # Startup
     logger.info(f"Starting {settings.app_name}")
-    
+
     # Initialize ComBase engine
     try:
         from app.engines.combase.engine import get_combase_engine
+
         engine = get_combase_engine()
-        
+
         csv_path = Path("data/combase_models.csv")
         if csv_path.exists():
             count = engine.load_models(csv_path)
@@ -43,10 +43,11 @@ async def lifespan(app: FastAPI):
             logger.warning(f"ComBase models not found at {csv_path}")
     except Exception as e:
         logger.error(f"Failed to initialize ComBase engine: {e}")
-    
+
     # Initialize Vector Store
     try:
         from app.rag.vector_store import get_vector_store
+
         store = get_vector_store()
         store.initialize()
         doc_count = store.get_count()
@@ -61,20 +62,30 @@ async def lifespan(app: FastAPI):
     # Done at startup so the first request does not block on a ~100 MB model download.
     try:
         from app.rag.retrieval import get_retrieval_service
+
         get_retrieval_service()
         logger.info("Retrieval service initialized")
     except Exception as e:
         logger.error(f"Failed to initialize retrieval service: {e}")
 
     # Validate taxonomy bridge CSV files — fail fast rather than on first request.
-    from app.services.grounding.taxonomy_bridge import (
-        _TAXONOMY_CSV, _FOOD_PROPERTIES_CSV, _ALIASES_CSV, _CATEGORY_LEVEL_ROWS_CSV,
-    )
     from app.services.grounding.grounding_service import _parse_bridge_enabled_env
+    from app.services.grounding.taxonomy_bridge import (
+        _ALIASES_CSV,
+        _CATEGORY_LEVEL_ROWS_CSV,
+        _FOOD_PROPERTIES_CSV,
+        _TAXONOMY_CSV,
+    )
+
     # All four CSV files are always required, even when PTM_TAXONOMY_BRIDGE_ENABLED=false.
     # The env var disables Tier 3 at runtime but does not waive the file-presence requirement —
     # missing files indicate a misconfigured deployment that should fail fast.
-    for bridge_csv in (_TAXONOMY_CSV, _FOOD_PROPERTIES_CSV, _ALIASES_CSV, _CATEGORY_LEVEL_ROWS_CSV):
+    for bridge_csv in (
+        _TAXONOMY_CSV,
+        _FOOD_PROPERTIES_CSV,
+        _ALIASES_CSV,
+        _CATEGORY_LEVEL_ROWS_CSV,
+    ):
         if not bridge_csv.exists():
             logger.error(f"Taxonomy bridge data file missing at startup: {bridge_csv}")
             raise FileNotFoundError(
@@ -84,9 +95,9 @@ async def lifespan(app: FastAPI):
     logger.info(f"Taxonomy bridge CSV files verified (Tier 3 bridge: {bridge_state})")
 
     logger.info("Application startup complete")
-    
+
     yield
-    
+
     # Shutdown
     logger.info("Application shutting down")
 
@@ -115,7 +126,7 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
         debug=settings.debug,
     )
-    
+
     # CORS middleware
     app.add_middleware(
         CORSMiddleware,
@@ -124,11 +135,11 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    
+
     # Include routers
     app.include_router(health.router)
     app.include_router(translation.router, prefix="/api/v1")
-    
+
     return app
 
 
@@ -138,6 +149,7 @@ app = create_app()
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(
         "app.main:app",
         host=settings.host,

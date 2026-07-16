@@ -50,17 +50,24 @@ range_clamps — it is a deterministic, mechanical step that fires on every
 range-typed value.
 """
 
+from pydantic import ValidationError
+
 from app.config import settings
+from app.engines.combase.models import (
+    ComBaseModel,
+    ComBaseModelConstraints,
+    ComBaseModelRegistry,
+)
 from app.models.enums import (
-    ModelType,
     ComBaseOrganism,
     Factor4Type,
+    ModelType,
 )
-from app.models.execution.base import TimeTemperatureStep, TimeTemperatureProfile
+from app.models.execution.base import TimeTemperatureProfile, TimeTemperatureStep
 from app.models.execution.combase import (
-    ComBaseParameters,
-    ComBaseModelSelection,
     ComBaseExecutionPayload,
+    ComBaseModelSelection,
+    ComBaseParameters,
 )
 from app.models.metadata import (
     CategoryBridgeInfo,
@@ -70,8 +77,7 @@ from app.models.metadata import (
     ValueSource,
 )
 from app.services.grounding.grounding_service import GroundedValues
-from app.engines.combase.models import ComBaseModel, ComBaseModelConstraints, ComBaseModelRegistry
-from pydantic import ValidationError
+
 
 # Imported at the bottom of this module to break the circular-import chain:
 #   standardization_service → engine (ok) → models (ok)
@@ -79,6 +85,7 @@ from pydantic import ValidationError
 # module load time, so the deferred import is safe.
 def _get_engine_registry() -> "ComBaseModelRegistry":
     from app.engines.combase.engine import get_combase_engine  # noqa: PLC0415
+
     return get_combase_engine().registry
 
 
@@ -160,14 +167,18 @@ class StandardizationService:
 
         if grounded.has_steps:
             # Multi-step path: build profile from per-step grounded data
-            profile = self._build_multi_step_profile(grounded, result, constraints, model_type)
+            profile = self._build_multi_step_profile(
+                grounded, result, constraints, model_type
+            )
             if profile is None:
                 return result  # missing_required already populated
             # Use first step's temperature for ComBaseParameters scalar summary.
             representative_temp = profile.steps[0].temperature_celsius
         else:
             # Single-step path
-            temperature = self._get_temperature(grounded, result, constraints, model_type)
+            temperature = self._get_temperature(
+                grounded, result, constraints, model_type
+            )
             if temperature is None:
                 result.missing_required.append("temperature")
                 return result
@@ -337,37 +348,43 @@ class StandardizationService:
         if temp is None:
             if self._is_inactivation_model(model_type):
                 temp = settings.default_temperature_inactivation_conservative_c
-                result.defaults_imputed.append(DefaultImputed(
-                    field_name="temperature_celsius",
-                    imputed_value=temp,
-                    reason=(
-                        "No cooking temperature specified. Using conservative "
-                        f"{temp}°C (may not achieve full pasteurization)."
-                    ),
-                ))
+                result.defaults_imputed.append(
+                    DefaultImputed(
+                        field_name="temperature_celsius",
+                        imputed_value=temp,
+                        reason=(
+                            "No cooking temperature specified. Using conservative "
+                            f"{temp}°C (may not achieve full pasteurization)."
+                        ),
+                    )
+                )
             else:
                 temp = settings.default_temperature_abuse_c
-                result.defaults_imputed.append(DefaultImputed(
-                    field_name="temperature_celsius",
-                    imputed_value=temp,
-                    reason=(
-                        "No temperature specified. Using conservative abuse "
-                        f"temperature ({temp}°C) for growth prediction."
-                    ),
-                ))
+                result.defaults_imputed.append(
+                    DefaultImputed(
+                        field_name="temperature_celsius",
+                        imputed_value=temp,
+                        reason=(
+                            "No temperature specified. Using conservative abuse "
+                            f"temperature ({temp}°C) for growth prediction."
+                        ),
+                    )
+                )
 
         # Clamp to valid range if constraints available
         if constraints and not constraints.is_temperature_valid(temp):
             original = temp
             temp = constraints.clamp_temperature(temp)
-            result.range_clamps.append(RangeClamp(
-                field_name="temperature_celsius",
-                original_value=original,
-                clamped_value=temp,
-                valid_min=constraints.temp_min,
-                valid_max=constraints.temp_max,
-                reason=f"Model constraint for {model_type.value}",
-            ))
+            result.range_clamps.append(
+                RangeClamp(
+                    field_name="temperature_celsius",
+                    original_value=original,
+                    clamped_value=temp,
+                    valid_min=constraints.temp_min,
+                    valid_max=constraints.temp_max,
+                    reason=f"Model constraint for {model_type.value}",
+                )
+            )
             result.warnings.append(
                 f"Temperature {original}°C is outside the model's valid range "
                 f"[{constraints.temp_min}, {constraints.temp_max}]°C; "
@@ -408,17 +425,19 @@ class StandardizationService:
 
         if duration is None:
             duration = float(settings.default_long_window_minutes)
-            result.defaults_imputed.append(DefaultImputed(
-                field_name="duration_minutes",
-                imputed_value=duration,
-                reason=(
-                    f"No duration specified. Using long-window default "
-                    f"({int(duration / 60)} hours / {int(duration / 1440)} days) to ensure "
-                    "the prediction trajectory reaches the physical growth cap. "
-                    "The Result Interpretation Module will identify actionable sub-windows."
-                ),
-                source=ValueSource.LONG_WINDOW_DEFAULT,
-            ))
+            result.defaults_imputed.append(
+                DefaultImputed(
+                    field_name="duration_minutes",
+                    imputed_value=duration,
+                    reason=(
+                        f"No duration specified. Using long-window default "
+                        f"({int(duration / 60)} hours / {int(duration / 1440)} days) to ensure "
+                        "the prediction trajectory reaches the physical growth cap. "
+                        "The Result Interpretation Module will identify actionable sub-windows."
+                    ),
+                    source=ValueSource.LONG_WINDOW_DEFAULT,
+                )
+            )
             result.warnings.append(
                 f"Duration not specified — long-window default applied "
                 f"({int(duration / 60)} hours / {int(duration / 1440)} days). "
@@ -463,7 +482,9 @@ class StandardizationService:
 
         if ph is None:
             ph = settings.default_ph_neutral
-            bridge_attempt: CategoryBridgeInfo | None = grounded.bridge_attempts.get("ph")
+            bridge_attempt: CategoryBridgeInfo | None = grounded.bridge_attempts.get(
+                "ph"
+            )
             composite_keyword = grounded.composite_skip.get("ph")
             if composite_keyword is not None:
                 reason = (
@@ -474,7 +495,8 @@ class StandardizationService:
             elif bridge_attempt:
                 state_clause = (
                     f" (state: '{bridge_attempt.query_state}')"
-                    if bridge_attempt.query_state else ""
+                    if bridge_attempt.query_state
+                    else ""
                 )
                 reason = (
                     f"No pH specified. Bridge resolved food to category "
@@ -492,24 +514,28 @@ class StandardizationService:
                     "No pH specified. Using neutral default which is near-optimal "
                     "for pathogen growth (conservative)."
                 )
-            result.defaults_imputed.append(DefaultImputed(
-                field_name="ph",
-                imputed_value=ph,
-                reason=reason,
-            ))
+            result.defaults_imputed.append(
+                DefaultImputed(
+                    field_name="ph",
+                    imputed_value=ph,
+                    reason=reason,
+                )
+            )
 
         # Clamp to valid range
         if constraints and not constraints.is_ph_valid(ph):
             original = ph
             ph = constraints.clamp_ph(ph)
-            result.range_clamps.append(RangeClamp(
-                field_name="ph",
-                original_value=original,
-                clamped_value=ph,
-                valid_min=constraints.ph_min,
-                valid_max=constraints.ph_max,
-                reason="Model constraint",
-            ))
+            result.range_clamps.append(
+                RangeClamp(
+                    field_name="ph",
+                    original_value=original,
+                    clamped_value=ph,
+                    valid_min=constraints.ph_min,
+                    valid_max=constraints.ph_max,
+                    reason="Model constraint",
+                )
+            )
             result.warnings.append(
                 f"pH {original} is outside the model's valid range "
                 f"[{constraints.ph_min}, {constraints.ph_max}]; "
@@ -565,7 +591,8 @@ class StandardizationService:
             elif bridge_attempt:
                 state_clause = (
                     f" (state: '{bridge_attempt.query_state}')"
-                    if bridge_attempt.query_state else ""
+                    if bridge_attempt.query_state
+                    else ""
                 )
                 reason = (
                     f"No water activity specified. Bridge resolved food to category "
@@ -583,24 +610,28 @@ class StandardizationService:
                     "No water activity specified. Using conservative high "
                     "default (0.99) which maximizes predicted growth."
                 )
-            result.defaults_imputed.append(DefaultImputed(
-                field_name="water_activity",
-                imputed_value=aw,
-                reason=reason,
-            ))
+            result.defaults_imputed.append(
+                DefaultImputed(
+                    field_name="water_activity",
+                    imputed_value=aw,
+                    reason=reason,
+                )
+            )
 
         # Clamp to valid range
         if constraints and not constraints.is_aw_valid(aw):
             original = aw
             aw = constraints.clamp_aw(aw)
-            result.range_clamps.append(RangeClamp(
-                field_name="water_activity",
-                original_value=original,
-                clamped_value=aw,
-                valid_min=constraints.aw_min,
-                valid_max=constraints.aw_max,
-                reason="Model constraint",
-            ))
+            result.range_clamps.append(
+                RangeClamp(
+                    field_name="water_activity",
+                    original_value=original,
+                    clamped_value=aw,
+                    valid_min=constraints.aw_min,
+                    valid_max=constraints.aw_max,
+                    reason="Model constraint",
+                )
+            )
             result.warnings.append(
                 f"Water activity {original} is outside the model's valid range "
                 f"[{constraints.aw_min}, {constraints.aw_max}]; "
@@ -637,16 +668,18 @@ class StandardizationService:
             return value
 
         inoculum = model.defaults.inoculum if model is not None else 3.0
-        result.defaults_imputed.append(DefaultImputed(
-            field_name="initial_inoculum_log_cfu",
-            imputed_value=inoculum,
-            reason=(
-                f"No initial inoculum specified. Using model default "
-                f"({inoculum} log CFU/g) from ComBase DefaultInoc."
-                if model is not None else
-                "No initial inoculum specified. Using fallback default (3.0 log CFU/g)."
-            ),
-        ))
+        result.defaults_imputed.append(
+            DefaultImputed(
+                field_name="initial_inoculum_log_cfu",
+                imputed_value=inoculum,
+                reason=(
+                    f"No initial inoculum specified. Using model default "
+                    f"({inoculum} log CFU/g) from ComBase DefaultInoc."
+                    if model is not None
+                    else "No initial inoculum specified. Using fallback default (3.0 log CFU/g)."
+                ),
+            )
+        )
         return inoculum
 
     def _build_multi_step_profile(
@@ -696,26 +729,30 @@ class StandardizationService:
                     temp = settings.default_temperature_inactivation_conservative_c
                 else:
                     temp = settings.default_temperature_abuse_c
-                result.defaults_imputed.append(DefaultImputed(
-                    field_name=f"temperature_celsius (step {gs.step_order})",
-                    imputed_value=temp,
-                    reason=(
-                        f"Step {gs.step_order}: no temperature specified. "
-                        f"Using conservative default {temp}°C."
-                    ),
-                ))
+                result.defaults_imputed.append(
+                    DefaultImputed(
+                        field_name=f"temperature_celsius (step {gs.step_order})",
+                        imputed_value=temp,
+                        reason=(
+                            f"Step {gs.step_order}: no temperature specified. "
+                            f"Using conservative default {temp}°C."
+                        ),
+                    )
+                )
 
             if constraints and not constraints.is_temperature_valid(temp):
                 original = temp
                 temp = constraints.clamp_temperature(temp)
-                result.range_clamps.append(RangeClamp(
-                    field_name=f"temperature_celsius (step {gs.step_order})",
-                    original_value=original,
-                    clamped_value=temp,
-                    valid_min=constraints.temp_min,
-                    valid_max=constraints.temp_max,
-                    reason=f"Model constraint for {model_type.value}",
-                ))
+                result.range_clamps.append(
+                    RangeClamp(
+                        field_name=f"temperature_celsius (step {gs.step_order})",
+                        original_value=original,
+                        clamped_value=temp,
+                        valid_min=constraints.temp_min,
+                        valid_max=constraints.temp_max,
+                        reason=f"Model constraint for {model_type.value}",
+                    )
+                )
                 result.warnings.append(
                     f"Step {gs.step_order}: temperature {original}°C is outside the "
                     f"model's valid range [{constraints.temp_min}, {constraints.temp_max}]°C; "
@@ -743,11 +780,13 @@ class StandardizationService:
                 return None
 
             total_duration += dur
-            built_steps.append(TimeTemperatureStep(
-                temperature_celsius=temp,
-                duration_minutes=dur,
-                step_order=new_order,
-            ))
+            built_steps.append(
+                TimeTemperatureStep(
+                    temperature_celsius=temp,
+                    duration_minutes=dur,
+                    step_order=new_order,
+                )
+            )
 
         return TimeTemperatureProfile(
             is_multi_step=True,

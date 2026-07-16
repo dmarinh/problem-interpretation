@@ -18,26 +18,25 @@ from app.api.schemas.translation import (
     FieldAuditEntry,
     PathogenCandidateInfo,
     PathogenCategoryFallbackAuditInfo,
+    PredictionResult,
+    ProvenanceInfo,
     RangeClampInfo,
     RerankerSkippedDocInfo,
     RetrievalAuditInfo,
     RetrievalTopMatchInfo,
     RunnerUpInfo,
     StandardizationAuditInfo,
+    StepInput,
+    StepPrediction,
     SystemAuditInfo,
     TranslationRequest,
     TranslationResponse,
-    PredictionResult,
-    ProvenanceInfo,
-    StepInput,
-    StepPrediction,
     WarningInfo,
 )
-from app.core.orchestrator import get_orchestrator, TranslationResult
+from app.core.orchestrator import TranslationResult, get_orchestrator
 from app.models.enums import SessionStatus
 from app.models.metadata import InterpretationMetadata, RangeClamp, ValueSource
 from app.services.llm.exceptions import LLMProviderError
-
 
 router = APIRouter(prefix="/translate", tags=["translation"])
 
@@ -57,10 +56,10 @@ def _format_growth_description(log_increase: float) -> str:
     elif log_increase < 0.3:
         return f"Minimal growth: {log_increase:.2f} log increase (<2x population)"
     elif log_increase < 1.0:
-        fold = 10 ** log_increase
+        fold = 10**log_increase
         return f"Moderate growth: {log_increase:.1f} log increase (~{fold:.0f}x population)"
     elif log_increase < 3.0:
-        fold = 10 ** log_increase
+        fold = 10**log_increase
         return f"Significant growth: {log_increase:.1f} log increase (~{fold:.0f}x population)"
     else:
         return f"Extensive growth: {log_increase:.1f} log increase (>1000x population)"
@@ -97,7 +96,9 @@ def _build_field_audit(result: TranslationResult) -> dict[str, FieldAuditEntry]:
     # ── Fields that have grounding provenance ──────────────────────────────────
     for field_name, prov in (metadata.provenance or {}).items():
         source_str = (
-            prov.source.value if isinstance(prov.source, ValueSource) else str(prov.source)
+            prov.source.value
+            if isinstance(prov.source, ValueSource)
+            else str(prov.source)
         )
 
         # ── final_value: post-standardization priority chain ──────────────────
@@ -116,11 +117,18 @@ def _build_field_audit(result: TranslationResult) -> dict[str, FieldAuditEntry]:
         ):
             final_value = metadata.combase_model.organism_display_name
         else:
-            final_value = result.state.grounded_values.get(field_name) if result.state.grounded_values else None
+            final_value = (
+                result.state.grounded_values.get(field_name)
+                if result.state.grounded_values
+                else None
+            )
 
         # ── Retrieval block (RAG-sourced fields only) ─────────────────────────
         retrieval_info: RetrievalAuditInfo | None = None
-        is_rag_source = prov.source in (ValueSource.RAG_RETRIEVAL, ValueSource.RAG_RETRIEVAL_FALLBACK)
+        is_rag_source = prov.source in (
+            ValueSource.RAG_RETRIEVAL,
+            ValueSource.RAG_RETRIEVAL_FALLBACK,
+        )
         if is_rag_source and rag_retrievals:
             # Priority 1: exact attributed_field match (Tier 2 per-field fallback retrievals
             # are tagged at creation time; collision-safe even when query strings overlap).
@@ -138,17 +146,25 @@ def _build_field_audit(result: TranslationResult) -> dict[str, FieldAuditEntry]:
                     )
                 elif field_name in ("ph", "water_activity"):
                     r = next(
-                        (v for v in rag_retrievals if "ph" in v.query.lower() or "water" in v.query.lower()),
+                        (
+                            v
+                            for v in rag_retrievals
+                            if "ph" in v.query.lower() or "water" in v.query.lower()
+                        ),
                         r,
                     )
-            top_match = RetrievalTopMatchInfo(
-                doc_id=r.chunk_id,
-                embedding_score=r.embedding_score,
-                rerank_score=r.rerank_score,
-                retrieved_text=r.retrieved_text,
-                source_ids=r.source_ids,
-                full_citations=r.full_citations,
-            ) if (r and r.chunk_id is not None) else None
+            top_match = (
+                RetrievalTopMatchInfo(
+                    doc_id=r.chunk_id,
+                    embedding_score=r.embedding_score,
+                    rerank_score=r.rerank_score,
+                    retrieved_text=r.retrieved_text,
+                    source_ids=r.source_ids,
+                    full_citations=r.full_citations,
+                )
+                if (r and r.chunk_id is not None)
+                else None
+            )
             runners_up = [
                 RunnerUpInfo(
                     doc_id=ru.doc_id,
@@ -158,20 +174,28 @@ def _build_field_audit(result: TranslationResult) -> dict[str, FieldAuditEntry]:
                 )
                 for ru in (r.runners_up if r else [])
             ]
-            reranker_top = RerankerSkippedDocInfo(
-                doc_id=r.reranker_top.doc_id,
-                content_preview=r.reranker_top.content_preview,
-                embedding_score=r.reranker_top.embedding_score,
-                rerank_score=r.reranker_top.rerank_score,
-                skip_reason=r.reranker_top.skip_reason,
-            ) if (r and r.reranker_top) else None
-            attempted_top = RerankerSkippedDocInfo(
-                doc_id=r.attempted_top.doc_id,
-                content_preview=r.attempted_top.content_preview,
-                embedding_score=r.attempted_top.embedding_score,
-                rerank_score=r.attempted_top.rerank_score,
-                skip_reason=r.attempted_top.skip_reason,
-            ) if (r and r.attempted_top) else None
+            reranker_top = (
+                RerankerSkippedDocInfo(
+                    doc_id=r.reranker_top.doc_id,
+                    content_preview=r.reranker_top.content_preview,
+                    embedding_score=r.reranker_top.embedding_score,
+                    rerank_score=r.reranker_top.rerank_score,
+                    skip_reason=r.reranker_top.skip_reason,
+                )
+                if (r and r.reranker_top)
+                else None
+            )
+            attempted_top = (
+                RerankerSkippedDocInfo(
+                    doc_id=r.attempted_top.doc_id,
+                    content_preview=r.attempted_top.content_preview,
+                    embedding_score=r.attempted_top.embedding_score,
+                    rerank_score=r.attempted_top.rerank_score,
+                    skip_reason=r.attempted_top.skip_reason,
+                )
+                if (r and r.attempted_top)
+                else None
+            )
             retrieval_info = RetrievalAuditInfo(
                 query=r.query if r else "",
                 top_match=top_match,
@@ -262,7 +286,7 @@ def _build_field_audit(result: TranslationResult) -> dict[str, FieldAuditEntry]:
     # the model used, regardless of whether the value came from the user or
     # from conservative defaults.
     composite_skip = metadata.composite_skip if metadata else {}
-    for d in (metadata.defaults_imputed or []):
+    for d in metadata.defaults_imputed or []:
         if d.field_name not in field_audit:
             # Attach retrieval metadata when RAG was attempted for this field
             # before defaulting — distinguished from "retrieval not needed" by
@@ -273,14 +297,18 @@ def _build_field_audit(result: TranslationResult) -> dict[str, FieldAuditEntry]:
                 None,
             )
             if r is not None:
-                top_match = RetrievalTopMatchInfo(
-                    doc_id=r.chunk_id,
-                    embedding_score=r.embedding_score,
-                    rerank_score=r.rerank_score,
-                    retrieved_text=r.retrieved_text,
-                    source_ids=r.source_ids,
-                    full_citations=r.full_citations,
-                ) if r.chunk_id is not None else None
+                top_match = (
+                    RetrievalTopMatchInfo(
+                        doc_id=r.chunk_id,
+                        embedding_score=r.embedding_score,
+                        rerank_score=r.rerank_score,
+                        retrieved_text=r.retrieved_text,
+                        source_ids=r.source_ids,
+                        full_citations=r.full_citations,
+                    )
+                    if r.chunk_id is not None
+                    else None
+                )
                 runners_up = [
                     RunnerUpInfo(
                         doc_id=ru.doc_id,
@@ -290,20 +318,28 @@ def _build_field_audit(result: TranslationResult) -> dict[str, FieldAuditEntry]:
                     )
                     for ru in r.runners_up
                 ]
-                reranker_top = RerankerSkippedDocInfo(
-                    doc_id=r.reranker_top.doc_id,
-                    content_preview=r.reranker_top.content_preview,
-                    embedding_score=r.reranker_top.embedding_score,
-                    rerank_score=r.reranker_top.rerank_score,
-                    skip_reason=r.reranker_top.skip_reason,
-                ) if r.reranker_top else None
-                attempted_top = RerankerSkippedDocInfo(
-                    doc_id=r.attempted_top.doc_id,
-                    content_preview=r.attempted_top.content_preview,
-                    embedding_score=r.attempted_top.embedding_score,
-                    rerank_score=r.attempted_top.rerank_score,
-                    skip_reason=r.attempted_top.skip_reason,
-                ) if r.attempted_top else None
+                reranker_top = (
+                    RerankerSkippedDocInfo(
+                        doc_id=r.reranker_top.doc_id,
+                        content_preview=r.reranker_top.content_preview,
+                        embedding_score=r.reranker_top.embedding_score,
+                        rerank_score=r.reranker_top.rerank_score,
+                        skip_reason=r.reranker_top.skip_reason,
+                    )
+                    if r.reranker_top
+                    else None
+                )
+                attempted_top = (
+                    RerankerSkippedDocInfo(
+                        doc_id=r.attempted_top.doc_id,
+                        content_preview=r.attempted_top.content_preview,
+                        embedding_score=r.attempted_top.embedding_score,
+                        rerank_score=r.attempted_top.rerank_score,
+                        skip_reason=r.attempted_top.skip_reason,
+                    )
+                    if r.attempted_top
+                    else None
+                )
                 retrieval_info = RetrievalAuditInfo(
                     query=r.query,
                     top_match=top_match,
@@ -367,12 +403,14 @@ def _build_provenance_list(
         elif entry.extraction is not None and entry.extraction.method:
             notes = f"Extracted via {entry.extraction.method}"
 
-        provenance.append(ProvenanceInfo(
-            field=field,
-            value=value_str,
-            source=entry.source,
-            notes=notes,
-        ))
+        provenance.append(
+            ProvenanceInfo(
+                field=field,
+                value=value_str,
+                source=entry.source,
+                notes=notes,
+            )
+        )
 
     return provenance
 
@@ -384,18 +422,22 @@ def _build_warnings_list(result: TranslationResult) -> list[WarningInfo]:
     if result.metadata:
         # Add range clamps as warnings
         for clamp in result.metadata.range_clamps:
-            warnings.append(WarningInfo(
-                type="range_clamp",
-                message=f"Value {clamp.original_value} clamped to {clamp.clamped_value} (valid range: {clamp.valid_min}-{clamp.valid_max})",
-                field=clamp.field_name,
-            ))
+            warnings.append(
+                WarningInfo(
+                    type="range_clamp",
+                    message=f"Value {clamp.original_value} clamped to {clamp.clamped_value} (valid range: {clamp.valid_min}-{clamp.valid_max})",
+                    field=clamp.field_name,
+                )
+            )
 
         # Add general warnings
         for warning in result.metadata.warnings:
-            warnings.append(WarningInfo(
-                type="warning",
-                message=warning,
-            ))
+            warnings.append(
+                WarningInfo(
+                    type="warning",
+                    message=warning,
+                )
+            )
 
     return warnings
 
@@ -497,14 +539,16 @@ def _build_audit_detail(
 )
 async def translate_query(
     request: TranslationRequest,
-    verbose: bool = Query(default=False, description="Include full audit trail in response"),
+    verbose: bool = Query(
+        default=False, description="Include full audit trail in response"
+    ),
 ) -> TranslationResponse:
     """
     Translate a natural language food safety query.
     """
     orchestrator = get_orchestrator()
     completed_at = datetime.utcnow()
-    
+
     try:
         # Run translation
         result = await orchestrator.translate(
@@ -512,18 +556,32 @@ async def translate_query(
             model_type=request.model_type,
         )
         completed_at = datetime.utcnow()
-        
+
         # Build response
         prediction = None
-        if result.success and result.execution_result and result.state.execution_payload:
+        if (
+            result.success
+            and result.execution_result
+            and result.state.execution_payload
+        ):
             exec_result = result.execution_result
             model_result = exec_result.model_result
             profile = result.state.execution_payload.time_temperature_profile
 
             prediction = PredictionResult(
-                organism=model_result.organism.name if model_result.organism else "Unknown",
-                model_type=model_result.model_type.value if model_result.model_type else "growth",
-                engine=model_result.engine_type.value if model_result.engine_type else "unknown",
+                organism=(
+                    model_result.organism.name if model_result.organism else "Unknown"
+                ),
+                model_type=(
+                    model_result.model_type.value
+                    if model_result.model_type
+                    else "growth"
+                ),
+                engine=(
+                    model_result.engine_type.value
+                    if model_result.engine_type
+                    else "unknown"
+                ),
                 temperature_celsius=model_result.temperature_used,
                 duration_minutes=profile.total_duration_minutes,
                 ph=model_result.ph_used,
@@ -554,9 +612,11 @@ async def translate_query(
                     )
                     for sp in exec_result.step_predictions
                 ],
-                growth_description=_format_growth_description(exec_result.total_log_increase),
+                growth_description=_format_growth_description(
+                    exec_result.total_log_increase
+                ),
             )
-        
+
         # Build field_audit once; both provenance list and verbose audit derive from it.
         field_audit = _build_field_audit(result)
 
@@ -573,7 +633,7 @@ async def translate_query(
             error=result.error if not result.success else None,
             audit=_build_audit_detail(result, field_audit) if verbose else None,
         )
-        
+
     except LLMProviderError as e:
         raise HTTPException(status_code=e.http_status, detail=e.user_message)
     except Exception as e:

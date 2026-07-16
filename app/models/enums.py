@@ -13,24 +13,25 @@ Design Principles:
 
 from enum import Enum
 
-
 # =============================================================================
 # MODEL TYPES
 # =============================================================================
 
+
 class ModelType(str, Enum):
     """
     Types of predictive models available.
-    
+
     Maps to ComBase ModelID:
     - 1 = Growth
     - 2 = Thermal Inactivation
     - 3 = Non-thermal Survival
     """
+
     GROWTH = "growth"
     THERMAL_INACTIVATION = "thermal_inactivation"
     NON_THERMAL_SURVIVAL = "non_thermal_survival"
-    
+
     @classmethod
     def from_model_id(cls, model_id: int) -> "ModelType":
         """Convert ComBase ModelID to ModelType."""
@@ -46,12 +47,14 @@ class ModelType(str, Enum):
 # COMBASE ORGANISMS
 # =============================================================================
 
+
 class ComBaseOrganism(str, Enum):
     """
     ComBase organism identifiers.
-    
+
     Values match the OrganismID column in ComBase models CSV.
     """
+
     AEROMONAS_HYDROPHILA = "ah"
     BACILLUS_CEREUS = "bc"
     BROCHOTHRIX_THERMOSPHACTA = "bt"
@@ -67,7 +70,7 @@ class ComBaseOrganism(str, Enum):
     SHIGELLA_FLEXNERI = "sf"
     STAPHYLOCOCCUS_AUREUS = "sa"
     YERSINIA_ENTEROCOLITICA = "ye"
-    
+
     @classmethod
     def _get_fuzzy_map(cls) -> dict[str, "ComBaseOrganism"]:
         """Get mapping of common names/aliases to organisms."""
@@ -143,82 +146,85 @@ class ComBaseOrganism(str, Enum):
             "y. enterocolitica": cls.YERSINIA_ENTEROCOLITICA,
             "ye": cls.YERSINIA_ENTEROCOLITICA,
         }
-    
+
     @classmethod
     def from_string(cls, value: str) -> "ComBaseOrganism | None":
         """
         Fuzzy match organism from string.
-        
+
         Args:
             value: Organism name or code
-            
+
         Returns:
             Matching organism or None
         """
         if not value:
             return None
-        
+
         value_lower = value.lower().strip()
         return cls._get_fuzzy_map().get(value_lower)
-    
+
     @classmethod
     def from_text(cls, text: str) -> "ComBaseOrganism | None":
         """
         Find first matching organism mentioned in text.
-        
+
         Searches for any known organism name/alias within the text.
         Excludes short codes (2 letters) to avoid false positives.
         Longer patterns are checked first to avoid partial matches.
-        
+
         Args:
             text: Text that may contain organism names
-            
+
         Returns:
             First matching organism or None
         """
         if not text:
             return None
-        
+
         text_lower = text.lower()
-        
+
         # Filter out short codes (2 chars) to avoid false matches like "safe" → "sa"
         fuzzy_map = cls._get_fuzzy_map()
         patterns = [p for p in fuzzy_map.keys() if len(p) > 2]
-        
+
         # Sort by length (longest first)
         sorted_patterns = sorted(patterns, key=len, reverse=True)
-        
+
         for pattern in sorted_patterns:
             if pattern in text_lower:
                 return fuzzy_map[pattern]
-        
+
         return None
+
 
 # =============================================================================
 # FOURTH FACTOR (OPTIONAL PARAMETER)
 # =============================================================================
 
+
 class Factor4Type(str, Enum):
     """
     Optional fourth factor for ComBase models.
-    
+
     Some models accept an additional environmental parameter
     beyond temperature, pH, and water activity.
     """
+
     NONE = "none"
     CO2 = "co2"
     NITRITE = "nitrite"
     LACTIC_ACID = "lactic_acid"
     ACETIC_ACID = "acetic_acid"
-    
+
     @classmethod
     def from_string(cls, value: str | None) -> "Factor4Type":
         """Convert string to Factor4Type."""
         if value is None or value.upper() == "NULL" or value == "":
             return cls.NONE
-        
+
         normalized = value.lower().strip()
-        
+
         mappings = {
             "co2": cls.CO2,
             "carbon_dioxide": cls.CO2,
@@ -228,7 +234,7 @@ class Factor4Type(str, Enum):
             "acetic_acid": cls.ACETIC_ACID,
             "acetic": cls.ACETIC_ACID,
         }
-        
+
         return mappings.get(normalized, cls.NONE)
 
 
@@ -236,8 +242,10 @@ class Factor4Type(str, Enum):
 # ENGINE TYPES
 # =============================================================================
 
+
 class EngineType(str, Enum):
     """Supported predictive model engines."""
+
     COMBASE_LOCAL = "combase_local"
     COMBASE_API = "combase_api"
 
@@ -246,8 +254,10 @@ class EngineType(str, Enum):
 # WORKFLOW & STATUS
 # =============================================================================
 
+
 class IntentType(str, Enum):
     """User intent classification."""
+
     PREDICTION_REQUEST = "prediction_request"
     INFORMATION_QUERY = "information_query"
     CLARIFICATION_RESPONSE = "clarification_response"
@@ -256,6 +266,7 @@ class IntentType(str, Enum):
 
 class ClarificationReason(str, Enum):
     """Reasons for requesting user clarification."""
+
     AMBIGUOUS_DURATION = "ambiguous_duration"
     AMBIGUOUS_TEMPERATURE = "ambiguous_temperature"
     AMBIGUOUS_FOOD = "ambiguous_food"
@@ -274,6 +285,7 @@ class OrganismGroundingFailureStage(str, Enum):
     six early-return points. Purely additive — the existing mark_ungrounded()
     warning string is unchanged; this is a structured parallel record.
     """
+
     BRIDGE_DISABLED = "bridge_disabled"
     FOOD_UNRECOGNISED = "food_unrecognised"
     CATEGORY_HAS_NO_HAZARD_DATA = "category_has_no_hazard_data"
@@ -282,6 +294,7 @@ class OrganismGroundingFailureStage(str, Enum):
 
 class SessionStatus(str, Enum):
     """Status of an interpretation session."""
+
     PENDING = "pending"
     EXTRACTING = "extracting"
     AWAITING_CLARIFICATION = "awaiting_clarification"
@@ -294,9 +307,8 @@ class SessionStatus(str, Enum):
 
 class RetrievalConfidenceLevel(str, Enum):
     """Classification of retrieval confidence."""
+
     HIGH = "high"
     MEDIUM = "medium"
     LOW = "low"
     FAILED = "failed"
-
-

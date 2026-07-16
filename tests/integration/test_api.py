@@ -2,9 +2,10 @@
 Integration tests for API endpoints.
 """
 
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 from httpx import AsyncClient
-from unittest.mock import AsyncMock, MagicMock
 
 from app.core.orchestrator import TranslationResult
 from app.core.state import SessionState
@@ -33,7 +34,9 @@ class TestAPIIntegration:
     """Integration tests for the full API."""
 
     @pytest.mark.asyncio
-    async def test_full_health_check_flow(self, async_client: AsyncClient, patch_llm_client):
+    async def test_full_health_check_flow(
+        self, async_client: AsyncClient, patch_llm_client
+    ):
         """Test complete health check flow."""
         # Check liveness
         live_response = await async_client.get("/health/live")
@@ -68,7 +71,9 @@ class TestAPIIntegration:
         assert response.status_code == 200
 
 
-def _build_translation_result(steps_data: list[tuple[float, float]]) -> TranslationResult:
+def _build_translation_result(
+    steps_data: list[tuple[float, float]],
+) -> TranslationResult:
     """
     Build a successful TranslationResult with the given (temperature, duration) steps.
 
@@ -108,7 +113,9 @@ def _build_translation_result(steps_data: list[tuple[float, float]]) -> Translat
         model_type=ModelType.GROWTH,
         engine_type=EngineType.COMBASE_LOCAL,
         mu_max=first_pred.mu_max,
-        doubling_time_hours=0.693 / first_pred.mu_max if first_pred.mu_max > 0 else None,
+        doubling_time_hours=(
+            0.693 / first_pred.mu_max if first_pred.mu_max > 0 else None
+        ),
         y_max=10.0,
         h0=0.1,
         organism=ComBaseOrganism.SALMONELLA,
@@ -161,10 +168,12 @@ def patch_orchestrator_factory(monkeypatch: pytest.MonkeyPatch):
     Return a helper that patches get_orchestrator in the translation route
     to return a fake orchestrator whose .translate() yields the given TranslationResult.
     """
+
     def _patch(result: TranslationResult):
         fake = MagicMock()
         fake.translate = AsyncMock(return_value=result)
         import app.api.routes.translation as route_module
+
         monkeypatch.setattr(route_module, "get_orchestrator", lambda: fake)
         return fake
 

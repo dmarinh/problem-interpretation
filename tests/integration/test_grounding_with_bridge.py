@@ -35,25 +35,26 @@ Audit-honesty — bridge attempted, field data absent
      Verified with a synthetic scenario (shellfish category has pH rows but no aw).
 """
 
-import pytest
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
-from app.services.grounding.grounding_service import GroundingService, GroundedValues
-from app.services.grounding.taxonomy_bridge import TaxonomyBridge
-from app.services.standardization.standardization_service import StandardizationService
+import pytest
+
 from app.models.enums import ComBaseOrganism, ModelType
-from app.models.metadata import ValueSource, InterpretationMetadata
 from app.models.extraction import (
-    ExtractedScenario,
-    ExtractedTemperature,
     ExtractedDuration,
     ExtractedEnvironmentalConditions,
+    ExtractedScenario,
+    ExtractedTemperature,
 )
-
+from app.models.metadata import ValueSource
+from app.services.grounding.grounding_service import GroundedValues, GroundingService
+from app.services.grounding.taxonomy_bridge import TaxonomyBridge
+from app.services.standardization.standardization_service import StandardizationService
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def make_scenario(food_description: str) -> ExtractedScenario:
     """Minimal ExtractedScenario with only food_description set.
@@ -91,13 +92,15 @@ def make_no_hit_response(query: str = "") -> MagicMock:
     return r
 
 
-def make_confident_response(content: str, query: str, doc_id: str, source_id: str = "") -> MagicMock:
+def make_confident_response(
+    content: str, query: str, doc_id: str, source_id: str = ""
+) -> MagicMock:
     """RetrievalResponse with one confident result — simulates a Tier 2 hit."""
     top = MagicMock()
     top.doc_id = doc_id
     top.content = content
     top.source = "food_properties"
-    top.distance = None       # suppresses isinstance checks in _build_retrieval_metadata
+    top.distance = None  # suppresses isinstance checks in _build_retrieval_metadata
     top.rerank_score = None
     top.metadata = {"source_id": source_id}
 
@@ -130,7 +133,9 @@ def mock_retrieval() -> MagicMock:
 
 
 @pytest.fixture
-def grounding_service(mock_retrieval: MagicMock, real_bridge: TaxonomyBridge) -> GroundingService:
+def grounding_service(
+    mock_retrieval: MagicMock, real_bridge: TaxonomyBridge
+) -> GroundingService:
     """GroundingService wired with mock retrieval and real TaxonomyBridge."""
     return GroundingService(
         retrieval_service=mock_retrieval,
@@ -143,6 +148,7 @@ def grounding_service(mock_retrieval: MagicMock, real_bridge: TaxonomyBridge) ->
 # ---------------------------------------------------------------------------
 # C1-like: turkey → bridge fires → split property rows
 # ---------------------------------------------------------------------------
+
 
 class TestTurkeyBridgeResolution:
     """C1-like scenario: 'turkey portions' with both Tier 1 and Tier 2 missing.
@@ -161,7 +167,10 @@ class TestTurkeyBridgeResolution:
         await grounding_service._ground_food_properties("turkey portions", grounded)
 
         assert grounded.has("water_activity")
-        assert grounded.provenance["water_activity"].source == ValueSource.RAG_RETRIEVAL_CATEGORY_BRIDGE
+        assert (
+            grounded.provenance["water_activity"].source
+            == ValueSource.RAG_RETRIEVAL_CATEGORY_BRIDGE
+        )
 
     @pytest.mark.asyncio
     async def test_aw_category_bridge_points_to_fresh_poultry_row(
@@ -206,6 +215,7 @@ class TestTurkeyBridgeResolution:
 # B1-like: fresh chicken portions → Tier 2 hits → bridge does NOT fire
 # ---------------------------------------------------------------------------
 
+
 class TestChickenTier2NoBridge:
     """B1 regression-coupling check.
 
@@ -240,7 +250,9 @@ class TestChickenTier2NoBridge:
     ) -> None:
         """pH must come from Tier 2 (RAG_RETRIEVAL_FALLBACK), not from the bridge."""
         grounded = GroundedValues()
-        await grounding_service._ground_food_properties("fresh chicken portions", grounded)
+        await grounding_service._ground_food_properties(
+            "fresh chicken portions", grounded
+        )
 
         assert grounded.has("ph")
         assert grounded.provenance["ph"].source == ValueSource.RAG_RETRIEVAL_FALLBACK
@@ -251,7 +263,9 @@ class TestChickenTier2NoBridge:
     ) -> None:
         """category_bridge must be None when Tier 2 succeeded — bridge never ran for ph."""
         grounded = GroundedValues()
-        await grounding_service._ground_food_properties("fresh chicken portions", grounded)
+        await grounding_service._ground_food_properties(
+            "fresh chicken portions", grounded
+        )
 
         assert grounded.provenance["ph"].category_bridge is None
 
@@ -261,10 +275,15 @@ class TestChickenTier2NoBridge:
     ) -> None:
         """aw must come from Tier 2 (RAG_RETRIEVAL_FALLBACK), not from the bridge."""
         grounded = GroundedValues()
-        await grounding_service._ground_food_properties("fresh chicken portions", grounded)
+        await grounding_service._ground_food_properties(
+            "fresh chicken portions", grounded
+        )
 
         assert grounded.has("water_activity")
-        assert grounded.provenance["water_activity"].source == ValueSource.RAG_RETRIEVAL_FALLBACK
+        assert (
+            grounded.provenance["water_activity"].source
+            == ValueSource.RAG_RETRIEVAL_FALLBACK
+        )
 
     @pytest.mark.asyncio
     async def test_aw_category_bridge_is_none(
@@ -272,7 +291,9 @@ class TestChickenTier2NoBridge:
     ) -> None:
         """category_bridge must be None when Tier 2 succeeded — bridge never ran for aw."""
         grounded = GroundedValues()
-        await grounding_service._ground_food_properties("fresh chicken portions", grounded)
+        await grounding_service._ground_food_properties(
+            "fresh chicken portions", grounded
+        )
 
         assert grounded.provenance["water_activity"].category_bridge is None
 
@@ -280,6 +301,7 @@ class TestChickenTier2NoBridge:
 # ---------------------------------------------------------------------------
 # B2-like: chicken soup → composite blocklist → fields remain ungrounded
 # ---------------------------------------------------------------------------
+
 
 class TestChickenSoupCompositeMiss:
     """B2-like scenario: 'chicken soup' is blocked before bridge matching runs.
@@ -310,6 +332,7 @@ class TestChickenSoupCompositeMiss:
 # Beef → alias resolution through the full grounding path
 # ---------------------------------------------------------------------------
 
+
 class TestBeefAliasResolution:
     """'beef' resolves via alias (beef → bovine) → meat category, state='fresh'.
 
@@ -328,7 +351,10 @@ class TestBeefAliasResolution:
         await grounding_service._ground_food_properties("beef", grounded)
 
         assert grounded.has("water_activity")
-        assert grounded.provenance["water_activity"].source == ValueSource.RAG_RETRIEVAL_CATEGORY_BRIDGE
+        assert (
+            grounded.provenance["water_activity"].source
+            == ValueSource.RAG_RETRIEVAL_CATEGORY_BRIDGE
+        )
 
     @pytest.mark.asyncio
     async def test_aw_category_bridge_records_category_meat(
@@ -368,6 +394,7 @@ class TestBeefAliasResolution:
 # ---------------------------------------------------------------------------
 # Audit-honesty: bridge attempted but category has no data for that field
 # ---------------------------------------------------------------------------
+
 
 class TestBridgeAttemptedNoData:
     """When the bridge resolves a category that has no rows supplying a particular
@@ -423,6 +450,7 @@ class TestBridgeAttemptedNoData:
 # Turkey pH — bridge fires but no curated pH row for poultry
 # ---------------------------------------------------------------------------
 
+
 class TestTurkeyPhNoCuratedRow:
     """The curated rows include fresh-poultry aw but no poultry pH row.
 
@@ -441,9 +469,9 @@ class TestTurkeyPhNoCuratedRow:
         grounded = GroundedValues()
         await grounding_service._ground_food_properties("turkey portions", grounded)
 
-        assert not grounded.has("ph"), (
-            "pH must NOT be grounded via bridge: no curated pH row exists for poultry"
-        )
+        assert not grounded.has(
+            "ph"
+        ), "pH must NOT be grounded via bridge: no curated pH row exists for poultry"
 
     @pytest.mark.asyncio
     async def test_turkey_ph_bridge_attempt_recorded(
@@ -473,6 +501,7 @@ class TestTurkeyPhNoCuratedRow:
 # ---------------------------------------------------------------------------
 # Broccoli — vegetable category has no curated rows at all
 # ---------------------------------------------------------------------------
+
 
 class TestBroccoliNoCuratedRows:
     """'broccoli' resolves to vegetable (state=unspecified → assumed fresh).
@@ -518,12 +547,15 @@ class TestBroccoliNoCuratedRows:
         await grounding_service._ground_food_properties("broccoli", grounded)
 
         assert "water_activity" in grounded.bridge_attempts
-        assert grounded.bridge_attempts["water_activity"].resolved_category == "vegetable"
+        assert (
+            grounded.bridge_attempts["water_activity"].resolved_category == "vegetable"
+        )
 
 
 # ---------------------------------------------------------------------------
 # Env-var disabled bridge — Tier 3 does not fire at all
 # ---------------------------------------------------------------------------
+
 
 class TestEnvVarDisabledBridge:
     """When PTM_TAXONOMY_BRIDGE_ENABLED=false the bridge is None; Tier 3 is skipped.
@@ -534,9 +566,7 @@ class TestEnvVarDisabledBridge:
     """
 
     @pytest.fixture
-    def disabled_service(
-        self, mock_retrieval: MagicMock
-    ) -> GroundingService:
+    def disabled_service(self, mock_retrieval: MagicMock) -> GroundingService:
         """GroundingService with bridge explicitly disabled."""
         return GroundingService(
             retrieval_service=mock_retrieval,
@@ -570,6 +600,7 @@ class TestEnvVarDisabledBridge:
 # B3: "chili" composite-food rejection — full grounding + standardization path
 # ---------------------------------------------------------------------------
 
+
 class TestChiliCompositeRejection:
     """B3 scenario: 'chili' triggers the orchestrator-level composite-food guard.
 
@@ -591,11 +622,10 @@ class TestChiliCompositeRejection:
     """
 
     @pytest.fixture
-    def chili_grounded(
-        self, grounding_service: GroundingService
-    ) -> GroundedValues:
+    def chili_grounded(self, grounding_service: GroundingService) -> GroundedValues:
         """GroundedValues after grounding 'chili' (synchronous helper via pytest-asyncio)."""
         import asyncio
+
         grounded = GroundedValues()
         asyncio.get_event_loop().run_until_complete(
             grounding_service._ground_food_properties("chili", grounded)
@@ -629,9 +659,15 @@ class TestChiliCompositeRejection:
         await grounding_service._ground_food_properties("chili", grounded)
 
         ph_attributed = [r for r in grounded.retrievals if r.attributed_field == "ph"]
-        aw_attributed = [r for r in grounded.retrievals if r.attributed_field == "water_activity"]
-        assert ph_attributed == [], "No retrieval should be attributed to ph for a composite food"
-        assert aw_attributed == [], "No retrieval should be attributed to water_activity for a composite food"
+        aw_attributed = [
+            r for r in grounded.retrievals if r.attributed_field == "water_activity"
+        ]
+        assert (
+            ph_attributed == []
+        ), "No retrieval should be attributed to ph for a composite food"
+        assert (
+            aw_attributed == []
+        ), "No retrieval should be attributed to water_activity for a composite food"
 
     @pytest.mark.asyncio
     async def test_field_audit_ph_source_is_composite_food_default(
@@ -671,16 +707,19 @@ class TestChiliCompositeRejection:
         field_audit = _build_field_audit(result)
 
         assert "ph" in field_audit
-        assert field_audit["ph"].source == ValueSource.COMPOSITE_FOOD_DEFAULT.value, (
-            f"Expected composite_food_default, got {field_audit['ph'].source}"
-        )
+        assert (
+            field_audit["ph"].source == ValueSource.COMPOSITE_FOOD_DEFAULT.value
+        ), f"Expected composite_food_default, got {field_audit['ph'].source}"
 
     @pytest.mark.asyncio
     async def test_provenance_list_agrees_with_field_audit_on_ph_source(
         self, grounding_service: GroundingService
     ) -> None:
         """4. provenance[] must show composite_food_default for ph — consistent with field_audit."""
-        from app.api.routes.translation import _build_field_audit, _build_provenance_list
+        from app.api.routes.translation import (
+            _build_field_audit,
+            _build_provenance_list,
+        )
         from app.core.orchestrator import TranslationResult
         from app.core.state import SessionState
         from app.models.enums import SessionStatus
@@ -736,11 +775,15 @@ class TestChiliCompositeRejection:
         std_svc = StandardizationService(model_registry=None)
         std_result = std_svc.standardize(grounded, ModelType.GROWTH)
 
-        ph_default = next((d for d in std_result.defaults_imputed if d.field_name == "ph"), None)
-        assert ph_default is not None, "pH must be in defaults_imputed for a composite food"
-        assert "chili" in ph_default.reason, (
-            f"Reason must name matched keyword 'chili'; got: {ph_default.reason!r}"
+        ph_default = next(
+            (d for d in std_result.defaults_imputed if d.field_name == "ph"), None
         )
+        assert (
+            ph_default is not None
+        ), "pH must be in defaults_imputed for a composite food"
+        assert (
+            "chili" in ph_default.reason
+        ), f"Reason must name matched keyword 'chili'; got: {ph_default.reason!r}"
 
     @pytest.mark.asyncio
     async def test_default_imputed_rule_is_default_imputed(
@@ -798,6 +841,6 @@ class TestChiliCompositeRejection:
         std_svc = StandardizationService(model_registry=None)
         std_result = std_svc.standardize(grounded, ModelType.GROWTH)
 
-        assert std_result.missing_required == [], (
-            f"Composite food must not block prediction; missing_required={std_result.missing_required}"
-        )
+        assert (
+            std_result.missing_required == []
+        ), f"Composite food must not block prediction; missing_required={std_result.missing_required}"

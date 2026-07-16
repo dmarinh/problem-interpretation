@@ -102,7 +102,9 @@ def test_cost_vs_accuracy_scatter_axes_and_thresholds(summary_df):
     # Threshold lines: one horizontal at 90%, one vertical at $0.001.
     shapes = fig.layout.shapes
     assert any(s.type == "line" and s.y0 == s.y1 == 90 for s in shapes)
-    assert any(s.type == "line" and s.x0 == s.x1 == charts.COST_THRESHOLD for s in shapes)
+    assert any(
+        s.type == "line" and s.x0 == s.x1 == charts.COST_THRESHOLD for s in shapes
+    )
 
 
 def test_cost_vs_accuracy_scatter_points_are_labeled(summary_df):
@@ -259,7 +261,12 @@ def test_field_accuracy_heatmap_dimensions(results_list):
     heatmap = fig.data[0]
     assert list(heatmap.y) == ["GPT-4o", "Qwen 2.5 14B"]
     # Union of fields across both models.
-    assert set(heatmap.x) == {"food_description", "model_type", "pathogen", "temperature"}
+    assert set(heatmap.x) == {
+        "food_description",
+        "model_type",
+        "pathogen",
+        "temperature",
+    }
 
 
 def test_field_accuracy_heatmap_missing_cells_are_none(results_list):
@@ -293,7 +300,7 @@ def test_field_accuracy_heatmap_colorscale_step_thresholds():
     colorscale = list(fig.data[0].colorscale)
 
     # Endpoints stay anchored (PTM brand palette — see ui/style.py).
-    assert colorscale[0][1].lower() == "#b84a2e"   # 0% → terracotta
+    assert colorscale[0][1].lower() == "#b84a2e"  # 0% → terracotta
     assert colorscale[-1][1].lower() == "#2a6347"  # 100% → forest green
 
     # Amber step: a breakpoint at exactly 0.7 must exist and be amber.
@@ -327,9 +334,9 @@ def test_field_accuracy_heatmap_colorscale_below_amber_is_red():
     # The colorscale must include a red entry at 0.6999 (the "close" side of the
     # amber boundary) — this is what makes the step hard rather than a gradient.
     red_at_6999 = next((s for s in colorscale if s[0] == 0.6999), None)
-    assert red_at_6999 is not None, (
-        "Expected a red breakpoint at 0.6999 to create a hard step at 70%"
-    )
+    assert (
+        red_at_6999 is not None
+    ), "Expected a red breakpoint at 0.6999 to create a hard step at 70%"
     assert red_at_6999[1].lower() == "#b84a2e"
 
 
@@ -350,9 +357,9 @@ def test_field_accuracy_heatmap_colorscale_below_green_is_amber():
     colorscale = list(fig.data[0].colorscale)
 
     amber_at_8999 = next((s for s in colorscale if s[0] == 0.8999), None)
-    assert amber_at_8999 is not None, (
-        "Expected an amber breakpoint at 0.8999 to create a hard step at 90%"
-    )
+    assert (
+        amber_at_8999 is not None
+    ), "Expected an amber breakpoint at 0.8999 to create a hard step at 90%"
     assert amber_at_8999[1].lower() == "#a67b12"
 
 
@@ -390,9 +397,9 @@ def test_field_accuracy_heatmap_colorscale_has_exactly_six_stops():
     ]
     fig = charts.field_accuracy_heatmap(results)
     colorscale = list(fig.data[0].colorscale)
-    assert len(colorscale) == 6, (
-        f"Expected 6 colorscale stops for a two-threshold step function, got {len(colorscale)}"
-    )
+    assert (
+        len(colorscale) == 6
+    ), f"Expected 6 colorscale stops for a two-threshold step function, got {len(colorscale)}"
 
 
 def test_model_type_matrix_failure_flags_title(results_list):
@@ -539,7 +546,10 @@ def test_token_usage_has_stacked_bars_and_cost_line(summary_df):
     output_trace = next(t for t in fig.data if t.name == "Output tokens")
     for i, model in enumerate(summary_df["model"]):
         row = summary_df[summary_df["model"] == model].iloc[0]
-        assert input_trace.y[i] + output_trace.y[i] == row["input_tokens"] + row["output_tokens"]
+        assert (
+            input_trace.y[i] + output_trace.y[i]
+            == row["input_tokens"] + row["output_tokens"]
+        )
 
 
 def test_token_usage_cost_line_on_secondary_axis(summary_df):
@@ -637,9 +647,9 @@ def test_ph_violin_chart_reference_ph_scatter_present(all_foods):
     ref_trace = scatter_traces[0]
     # y-values in stdev-ascending order: tomato → salsa → chicken.
     expected_refs = [
-        _FOOD_LOW_STDEV["reference_ph"],      # tomato — lowest stdev
+        _FOOD_LOW_STDEV["reference_ph"],  # tomato — lowest stdev
         _FOOD_NEAR_BOUNDARY["reference_ph"],  # salsa
-        _FOOD_HIGH_STDEV["reference_ph"],     # chicken — highest stdev
+        _FOOD_HIGH_STDEV["reference_ph"],  # chicken — highest stdev
     ]
     assert list(ref_trace.y) == expected_refs
     # x-values must align with y-values so each marker is over the correct violin.
@@ -651,7 +661,8 @@ def test_ph_violin_chart_no_ph_46_boundary_line(all_foods):
     fig = charts.ph_violin_chart(all_foods)
     shapes = fig.layout.shapes
     boundary_shapes = [
-        s for s in shapes
+        s
+        for s in shapes
         if s.type == "line" and s.y0 == s.y1 == charts.PH_SAFETY_BOUNDARY
     ]
     assert not boundary_shapes, "pH 4.6 boundary line must not be present"
@@ -667,12 +678,18 @@ def test_ph_violin_chart_uniform_color_applied(all_foods):
 
 def test_ph_violin_chart_no_legend():
     """Violin traces must all have showlegend=False (no difficulty legend)."""
-    food_a = {**_copy.deepcopy(_FOOD_LOW_STDEV), "food_id": "X1",
-              "food_name": "apple",
-              "ph_stats": {"stdev": 0.1}}
-    food_b = {**_copy.deepcopy(_FOOD_LOW_STDEV), "food_id": "X2",
-              "food_name": "pear",
-              "ph_stats": {"stdev": 0.2}}
+    food_a = {
+        **_copy.deepcopy(_FOOD_LOW_STDEV),
+        "food_id": "X1",
+        "food_name": "apple",
+        "ph_stats": {"stdev": 0.1},
+    }
+    food_b = {
+        **_copy.deepcopy(_FOOD_LOW_STDEV),
+        "food_id": "X2",
+        "food_name": "pear",
+        "ph_stats": {"stdev": 0.2},
+    }
     fig = charts.ph_violin_chart([food_a, food_b])
     violin_traces = [t for t in fig.data if isinstance(t, go.Violin)]
     for trace in violin_traces:
@@ -790,12 +807,14 @@ def test_ph_violin_chart_all_foods_missing_reference_ph_renders_empty_scatter():
 # mae_by_food_chart (Exp 1.1 — Section 4)
 # ---------------------------------------------------------------------------
 
+
 def _make_results(foods_per_model: list[tuple[str, list[dict]]]) -> list[dict]:
     """Build a minimal results list for mae_by_food_chart tests.
 
     Deep-copies food dicts so tests cannot mutate shared module-level fixtures.
     """
     import copy
+
     return [
         {"model": model, "foods": copy.deepcopy(foods)}
         for model, foods in foods_per_model
@@ -861,7 +880,8 @@ class TestMaeByFoodChartSingleModel:
         fig = self._fig()
         shapes = fig.layout.shapes
         threshold_lines = [
-            s for s in shapes
+            s
+            for s in shapes
             if s.type == "line" and s.y0 == s.y1 == charts.MAE_SAFETY_THRESHOLD
         ]
         assert threshold_lines, "MAE=0.5 threshold line not found"
@@ -900,7 +920,11 @@ class TestMaeByFoodChartSingleModel:
 
     def test_food_with_unknown_difficulty_is_still_shown(self):
         """Foods with any difficulty value are shown (difficulty is ignored)."""
-        food_unknown = {"food_name": "mystery", "difficulty": None, "ph_stats": {"mae": 0.5}}
+        food_unknown = {
+            "food_name": "mystery",
+            "difficulty": None,
+            "ph_stats": {"mae": 0.5},
+        }
         fig = charts.mae_by_food_chart(_make_results([("M", [food_unknown])]))
         bar_traces = [t for t in fig.data if isinstance(t, go.Bar)]
         assert len(bar_traces) == 1
@@ -927,10 +951,12 @@ class TestMaeByFoodChartEmptyResults:
 
 class TestMaeByFoodChartMultiModel:
     def _fig(self):
-        results = _make_results([
-            ("ModelA", [_MAE_FOOD_EASY, _MAE_FOOD_MEDIUM]),
-            ("ModelB", [_MAE_FOOD_EASY, _MAE_FOOD_MEDIUM]),
-        ])
+        results = _make_results(
+            [
+                ("ModelA", [_MAE_FOOD_EASY, _MAE_FOOD_MEDIUM]),
+                ("ModelB", [_MAE_FOOD_EASY, _MAE_FOOD_MEDIUM]),
+            ]
+        )
         return charts.mae_by_food_chart(results)
 
     def test_one_trace_per_model(self):
@@ -955,7 +981,8 @@ class TestMaeByFoodChartMultiModel:
     def test_safety_threshold_line_present(self):
         fig = self._fig()
         threshold_lines = [
-            s for s in fig.layout.shapes
+            s
+            for s in fig.layout.shapes
             if s.type == "line" and s.y0 == s.y1 == charts.MAE_SAFETY_THRESHOLD
         ]
         assert threshold_lines
@@ -993,7 +1020,9 @@ class TestBoundaryCrossingHistogram:
         assert boundary[0].line.color == "#B84A2E"
 
     def test_reference_ph_line_present_when_provided(self):
-        fig = charts.boundary_crossing_histogram(_PH_SAMPLES_CROSSING, "salsa", reference_ph=4.5)
+        fig = charts.boundary_crossing_histogram(
+            _PH_SAMPLES_CROSSING, "salsa", reference_ph=4.5
+        )
         vlines = [s for s in fig.layout.shapes if s.type == "line" and s.x0 == s.x1]
         ref_line = next((s for s in vlines if s.x0 == 4.5), None)
         assert ref_line is not None, "Reference pH vertical line not found"
@@ -1013,7 +1042,9 @@ class TestBoundaryCrossingHistogram:
         fig = charts.boundary_crossing_histogram(_PH_SAMPLES_CROSSING, "salsa")
         annotation_texts = " ".join(a.text for a in fig.layout.annotations if a.text)
         assert "pH 4.6" in annotation_texts, "Boundary annotation must mention 'pH 4.6'"
-        assert "%" in annotation_texts, "Boundary annotation must contain percentage values"
+        assert (
+            "%" in annotation_texts
+        ), "Boundary annotation must contain percentage values"
 
     def test_fraction_values_are_correct(self):
         """4 of 7 samples ≤ 4.6 → 57%; 3 of 7 > 4.6 → 43%.
@@ -1027,13 +1058,13 @@ class TestBoundaryCrossingHistogram:
             a.text for a in fig.layout.annotations if a.text and "pH 4.6" in a.text
         )
         # 4 of 7 samples ≤ 4.6 (57%) must appear on the ≤ side.
-        assert "57% ≤" in boundary_annotation, (
-            f"Expected '57% ≤' on the safe side; got: {boundary_annotation!r}"
-        )
+        assert (
+            "57% ≤" in boundary_annotation
+        ), f"Expected '57% ≤' on the safe side; got: {boundary_annotation!r}"
         # 3 of 7 samples > 4.6 (43%) must appear on the > side.
-        assert "43% >" in boundary_annotation, (
-            f"Expected '43% >' on the risk side; got: {boundary_annotation!r}"
-        )
+        assert (
+            "43% >" in boundary_annotation
+        ), f"Expected '43% >' on the risk side; got: {boundary_annotation!r}"
 
     def test_title_contains_food_name(self):
         fig = charts.boundary_crossing_histogram(_PH_SAMPLES_CROSSING, "salsa")
@@ -1143,24 +1174,24 @@ class TestGrowthPropagationChart:
         }
         for bar in bars:
             for name, base in zip(bar.y, bar.base):
-                assert pytest.approx(base) == food_mins[name], (
-                    f"{name}: expected base={food_mins[name]}, got {base}"
-                )
+                assert (
+                    pytest.approx(base) == food_mins[name]
+                ), f"{name}: expected base={food_mins[name]}, got {base}"
 
     def test_bar_width_is_log_increase_range(self, gp_foods):
         """Bar x-width = log_increase_max - log_increase_min (non-negative)."""
         fig = charts.growth_propagation_chart(gp_foods, _LOG_THRESHOLD)
         bars = [t for t in fig.data if isinstance(t, go.Bar)]
         food_widths = {
-            "pickles": 0.3,   # 0.4 - 0.1
-            "chicken": 0.7,   # 1.5 - 0.8
-            "salsa": 0.3,     # 1.0 - 0.7
+            "pickles": 0.3,  # 0.4 - 0.1
+            "chicken": 0.7,  # 1.5 - 0.8
+            "salsa": 0.3,  # 1.0 - 0.7
         }
         for bar in bars:
             for name, width in zip(bar.y, bar.x):
-                assert pytest.approx(width, abs=1e-6) == food_widths[name], (
-                    f"{name}: expected width={food_widths[name]}, got {width}"
-                )
+                assert (
+                    pytest.approx(width, abs=1e-6) == food_widths[name]
+                ), f"{name}: expected width={food_widths[name]}, got {width}"
 
     def test_three_color_categories(self, gp_foods):
         """Bars use three colors: green (below), amber (crossing), red (above)."""
@@ -1171,11 +1202,17 @@ class TestGrowthPropagationChart:
             for name in bar.y:
                 color_by_food[name] = bar.marker.color
         # chicken: min=0.8 < 1.0 <= max=1.5 → crossing (amber)
-        assert color_by_food["chicken"] == charts._GP_COLOR_CROSSING, "chicken must be amber (crossing)"
+        assert (
+            color_by_food["chicken"] == charts._GP_COLOR_CROSSING
+        ), "chicken must be amber (crossing)"
         # salsa: min=0.7 < 1.0 <= max=1.0 → crossing (amber)
-        assert color_by_food["salsa"] == charts._GP_COLOR_CROSSING, "salsa must be amber (crossing)"
+        assert (
+            color_by_food["salsa"] == charts._GP_COLOR_CROSSING
+        ), "salsa must be amber (crossing)"
         # pickles: max=0.4 < 1.0 → below (green)
-        assert color_by_food["pickles"] == charts._GP_COLOR_BELOW, "pickles must be green (below)"
+        assert (
+            color_by_food["pickles"] == charts._GP_COLOR_BELOW
+        ), "pickles must be green (below)"
 
     def test_fully_above_threshold_is_red(self):
         """A food with min >= threshold must be red (fully above)."""
@@ -1198,7 +1235,9 @@ class TestGrowthPropagationChart:
         for bar in bars:
             for name in bar.y:
                 color_by_food[name] = bar.marker.color
-        assert color_by_food["pickles"] == charts._GP_COLOR_BELOW, "pickles must be green"
+        assert (
+            color_by_food["pickles"] == charts._GP_COLOR_BELOW
+        ), "pickles must be green"
 
     def test_threshold_line_is_present_and_red(self, gp_foods):
         """Vertical threshold line must appear at log_threshold in red.
@@ -1223,13 +1262,13 @@ class TestGrowthPropagationChart:
         fig = charts.growth_propagation_chart(gp_foods, _LOG_THRESHOLD)
         bars = [t for t in fig.data if isinstance(t, go.Bar)]
         food_order = [name for b in bars for name in b.y]
-        assert food_order[0] == "pickles", (
-            f"Safe food must be first (chart bottom); got order: {food_order}"
-        )
+        assert (
+            food_order[0] == "pickles"
+        ), f"Safe food must be first (chart bottom); got order: {food_order}"
         impacted = {"chicken", "salsa"}
-        assert set(food_order[1:]) == impacted, (
-            f"Impacted foods must be last; got: {food_order[1:]}"
-        )
+        assert (
+            set(food_order[1:]) == impacted
+        ), f"Impacted foods must be last; got: {food_order[1:]}"
 
     def test_exact_threshold_boundary_is_crossing(self):
         """A bar where log_increase_max == log_threshold and min < threshold
@@ -1248,9 +1287,9 @@ class TestGrowthPropagationChart:
         fig = charts.growth_propagation_chart([food_at_boundary], _LOG_THRESHOLD)
         bar = next(t for t in fig.data if isinstance(t, go.Bar))
         color = bar.marker.color
-        assert color == charts._GP_COLOR_CROSSING, (
-            f"log_increase_max == log_threshold (min < threshold) must be amber; got {color!r}"
-        )
+        assert (
+            color == charts._GP_COLOR_CROSSING
+        ), f"log_increase_max == log_threshold (min < threshold) must be amber; got {color!r}"
 
     def test_changing_threshold_changes_colors(self):
         """Raising the threshold above all maxima makes all bars green."""
@@ -1277,9 +1316,9 @@ class TestGrowthPropagationChart:
         fig = charts.growth_propagation_chart([food_no_max], _LOG_THRESHOLD)
         # No bar should be rendered (food excluded).
         bar_traces = [t for t in fig.data if isinstance(t, go.Bar)]
-        assert not bar_traces or list(bar_traces[0].y) == [], (
-            "Food with missing log_increase_max must be excluded from the chart"
-        )
+        assert (
+            not bar_traces or list(bar_traces[0].y) == []
+        ), "Food with missing log_increase_max must be excluded from the chart"
 
     def test_food_with_only_max_no_min_is_skipped(self):
         """GP data with only log_increase_max (no min) must also be excluded."""
@@ -1289,9 +1328,9 @@ class TestGrowthPropagationChart:
         }
         fig = charts.growth_propagation_chart([food_no_min], _LOG_THRESHOLD)
         bar_traces = [t for t in fig.data if isinstance(t, go.Bar)]
-        assert not bar_traces or list(bar_traces[0].y) == [], (
-            "Food with missing log_increase_min must be excluded from the chart"
-        )
+        assert (
+            not bar_traces or list(bar_traces[0].y) == []
+        ), "Food with missing log_increase_min must be excluded from the chart"
 
     def test_food_with_inverted_range_is_skipped(self):
         """A food where log_increase_max < log_increase_min is corrupted data.
@@ -1308,9 +1347,9 @@ class TestGrowthPropagationChart:
         }
         fig = charts.growth_propagation_chart([food_inverted], _LOG_THRESHOLD)
         bar_traces = [t for t in fig.data if isinstance(t, go.Bar)]
-        assert not bar_traces or list(bar_traces[0].y) == [], (
-            "Food with inverted range (max < min) must be excluded from the chart"
-        )
+        assert (
+            not bar_traces or list(bar_traces[0].y) == []
+        ), "Food with inverted range (max < min) must be excluded from the chart"
 
     def test_all_foods_safe_no_red_bars(self):
         """When no bar reaches the threshold, all bars are green."""
@@ -1358,6 +1397,7 @@ class TestGrowthPropagationChart:
 # model_comparison_bars (Exp 1.1 — Section 7)
 # ---------------------------------------------------------------------------
 
+
 def _make_comparison_results(models: list[tuple[str, float, float]]) -> list[dict]:
     """Build a minimal results list for model_comparison_bars tests.
 
@@ -1377,42 +1417,56 @@ class TestModelComparisonBars:
         return _make_comparison_results([("ModelA", 0.4, 0.2), ("ModelB", 0.7, 0.5)])
 
     def test_returns_figure(self):
-        fig = charts.model_comparison_bars(self._two_model_results(), "overall_mae", "MAE")
+        fig = charts.model_comparison_bars(
+            self._two_model_results(), "overall_mae", "MAE"
+        )
         assert isinstance(fig, go.Figure)
 
     def test_one_bar_per_model(self):
         """One Bar trace with N x-values — one per model."""
-        fig = charts.model_comparison_bars(self._two_model_results(), "overall_mae", "MAE")
+        fig = charts.model_comparison_bars(
+            self._two_model_results(), "overall_mae", "MAE"
+        )
         bars = [t for t in fig.data if isinstance(t, go.Bar)]
         assert len(bars) == 1
         assert len(bars[0].x) == 2
 
     def test_bar_x_values_are_model_names(self):
-        fig = charts.model_comparison_bars(self._two_model_results(), "overall_mae", "MAE")
+        fig = charts.model_comparison_bars(
+            self._two_model_results(), "overall_mae", "MAE"
+        )
         bar = next(t for t in fig.data if isinstance(t, go.Bar))
         assert list(bar.x) == ["ModelA", "ModelB"]
 
     def test_bar_y_values_match_metric(self):
         """Y values must come from the specified summary metric."""
-        fig = charts.model_comparison_bars(self._two_model_results(), "overall_mae", "MAE")
+        fig = charts.model_comparison_bars(
+            self._two_model_results(), "overall_mae", "MAE"
+        )
         bar = next(t for t in fig.data if isinstance(t, go.Bar))
         assert list(bar.y) == pytest.approx([0.4, 0.7])
 
     def test_stdev_metric_reads_correct_field(self):
         """Requesting overall_stdev returns the stdev values, not MAE."""
-        fig = charts.model_comparison_bars(self._two_model_results(), "overall_stdev", "Stdev")
+        fig = charts.model_comparison_bars(
+            self._two_model_results(), "overall_stdev", "Stdev"
+        )
         bar = next(t for t in fig.data if isinstance(t, go.Bar))
         assert list(bar.y) == pytest.approx([0.2, 0.5])
 
     def test_models_get_distinct_colors(self):
         """All models in the same tier → qualitative palette → distinct colors."""
-        fig = charts.model_comparison_bars(self._two_model_results(), "overall_mae", "MAE")
+        fig = charts.model_comparison_bars(
+            self._two_model_results(), "overall_mae", "MAE"
+        )
         bar = next(t for t in fig.data if isinstance(t, go.Bar))
         colors = list(bar.marker.color)
         assert colors[0] != colors[1], "Each model must receive a distinct color"
 
     def test_title_includes_metric_label(self):
-        fig = charts.model_comparison_bars(self._two_model_results(), "overall_mae", "MAE")
+        fig = charts.model_comparison_bars(
+            self._two_model_results(), "overall_mae", "MAE"
+        )
         assert "MAE" in fig.layout.title.text
 
     def test_title_falls_back_to_metric_key_when_no_label(self):
@@ -1421,13 +1475,16 @@ class TestModelComparisonBars:
         assert "overall_mae" in fig.layout.title.text
 
     def test_axes_labelled(self):
-        fig = charts.model_comparison_bars(self._two_model_results(), "overall_mae", "MAE")
+        fig = charts.model_comparison_bars(
+            self._two_model_results(), "overall_mae", "MAE"
+        )
         assert "Model" in fig.layout.xaxis.title.text
         assert "MAE" in fig.layout.yaxis.title.text
 
     def test_missing_metric_defaults_to_nan(self):
         """A model whose summary lacks the requested metric gets NaN (not a crash)."""
         import math
+
         # Build a result with the metric key absent from the start rather than
         # mutating the dict in-place, to stay consistent with the defensive
         # deep-copy pattern used elsewhere in this file.
@@ -1443,6 +1500,7 @@ class TestModelComparisonBars:
         would be caught immediately.
         """
         import math
+
         results = [{"model": "ModelA"}]  # no "summary" key at all
         fig = charts.model_comparison_bars(results, "overall_mae", "MAE")
         bar = next(t for t in fig.data if isinstance(t, go.Bar))
@@ -1464,7 +1522,9 @@ class TestModelComparisonBars:
 
     def test_showlegend_is_false(self):
         """Model names appear on the X axis — the legend is intentionally hidden."""
-        fig = charts.model_comparison_bars(self._two_model_results(), "overall_mae", "MAE")
+        fig = charts.model_comparison_bars(
+            self._two_model_results(), "overall_mae", "MAE"
+        )
         bar = next(t for t in fig.data if isinstance(t, go.Bar))
         assert bar.showlegend is False
 

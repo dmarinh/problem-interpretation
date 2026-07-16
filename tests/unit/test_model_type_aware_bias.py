@@ -14,32 +14,33 @@ Test Naming Convention:
     test_<component>_<scenario>_<model_type>_<expected_behavior>
 """
 
-import pytest
 from unittest.mock import MagicMock
 
+import pytest
+
+from app.engines.combase.models import ComBaseModelConstraints
 from app.models.enums import (
-    ModelType,
     ComBaseOrganism,
+    ModelType,
 )
-from app.models.metadata import ValueSource
 from app.models.extraction import (
+    ExtractedDuration,
     ExtractedScenario,
     ExtractedTemperature,
-    ExtractedDuration,
+)
+from app.models.metadata import ValueSource
+from app.services.grounding.grounding_service import (
+    GroundedValues,
+    GroundingService,
 )
 from app.services.standardization.standardization_service import (
     StandardizationService,
 )
-from app.services.grounding.grounding_service import (
-    GroundingService,
-    GroundedValues,
-)
-from app.engines.combase.models import ComBaseModelConstraints
-
 
 # =============================================================================
 # FIXTURES
 # =============================================================================
+
 
 @pytest.fixture
 def standardization_service():
@@ -91,6 +92,7 @@ def grounded_with_inferred_duration():
 # =============================================================================
 # STANDARDIZATION SERVICE: USER_INFERRED DURATION PASSTHROUGH
 # =============================================================================
+
 
 class TestDurationPassthrough:
     """
@@ -152,16 +154,21 @@ class TestDurationPassthrough:
         grounded.set("duration_minutes", 8.0, ValueSource.USER_EXPLICIT)
 
         for model_type in [ModelType.GROWTH, ModelType.THERMAL_INACTIVATION]:
-            result = standardization_service.standardize(grounded, model_type=model_type)
+            result = standardization_service.standardize(
+                grounded, model_type=model_type
+            )
             assert result.payload.time_temperature_profile.total_duration_minutes == 8.0
             # No default should be imputed for duration — it was explicitly provided
-            duration_defaults = [d for d in result.defaults_imputed if "duration" in d.field_name]
+            duration_defaults = [
+                d for d in result.defaults_imputed if "duration" in d.field_name
+            ]
             assert duration_defaults == []
 
 
 # =============================================================================
 # GROUNDING SERVICE + STANDARDIZATION: RANGE BOUND SELECTION TESTS
 # =============================================================================
+
 
 class TestRangeBoundSelectionModelTypeAware:
     """
@@ -206,7 +213,9 @@ class TestRangeBoundSelectionModelTypeAware:
         assert sel.after_value == 30.0
 
     @pytest.mark.asyncio
-    async def test_temperature_range_inactivation_uses_lower_bound(self, grounding_service):
+    async def test_temperature_range_inactivation_uses_lower_bound(
+        self, grounding_service
+    ):
         """For inactivation models, temperature range should resolve to lower bound."""
         scenario = ExtractedScenario(
             original_text="chicken cooked between 65 and 75°C",
@@ -256,7 +265,9 @@ class TestRangeBoundSelectionModelTypeAware:
         assert sel.direction == "upper"
 
     @pytest.mark.asyncio
-    async def test_duration_range_inactivation_uses_lower_bound(self, grounding_service):
+    async def test_duration_range_inactivation_uses_lower_bound(
+        self, grounding_service
+    ):
         """For inactivation models, duration range should resolve to lower bound."""
         scenario = ExtractedScenario(
             original_text="chicken cooked for 5 to 10 minutes",
@@ -284,6 +295,7 @@ class TestRangeBoundSelectionModelTypeAware:
 # CHICKEN NUGGETS SCENARIO (Query C2)
 # =============================================================================
 
+
 class TestChickenNuggetsScenario:
     """
     Query C2: chicken nuggets reached 68°C instead of target 74°C, held for 8 min.
@@ -305,10 +317,18 @@ class TestChickenNuggetsScenario:
         """
         grounded = GroundedValues()
         grounded.set("organism", ComBaseOrganism.SALMONELLA, ValueSource.USER_EXPLICIT)
-        grounded.set("temperature_celsius", 68.0, ValueSource.USER_INFERRED,
-                     original_text="about 68°C")
-        grounded.set("duration_minutes", 8.0, ValueSource.USER_INFERRED,
-                     original_text="roughly 8 minutes")
+        grounded.set(
+            "temperature_celsius",
+            68.0,
+            ValueSource.USER_INFERRED,
+            original_text="about 68°C",
+        )
+        grounded.set(
+            "duration_minutes",
+            8.0,
+            ValueSource.USER_INFERRED,
+            original_text="roughly 8 minutes",
+        )
 
         result = standardization_service.standardize(
             grounded,
@@ -320,7 +340,8 @@ class TestChickenNuggetsScenario:
         assert result.payload.time_temperature_profile.total_duration_minutes == 8.0
         # Temperature and duration were supplied — neither should have a default imputed
         supplied_defaults = [
-            d for d in result.defaults_imputed
+            d
+            for d in result.defaults_imputed
             if d.field_name in ("temperature_celsius", "duration_minutes")
         ]
         assert supplied_defaults == []
@@ -344,7 +365,8 @@ class TestChickenNuggetsScenario:
         assert result.payload.parameters.temperature_celsius == 68.0
         assert result.payload.time_temperature_profile.total_duration_minutes == 8.0
         supplied_defaults = [
-            d for d in result.defaults_imputed
+            d
+            for d in result.defaults_imputed
             if d.field_name in ("temperature_celsius", "duration_minutes")
         ]
         assert supplied_defaults == []
@@ -353,6 +375,7 @@ class TestChickenNuggetsScenario:
 # =============================================================================
 # NON-THERMAL SURVIVAL MODEL TESTS
 # =============================================================================
+
 
 class TestNonThermalSurvivalModel:
     """
@@ -403,6 +426,7 @@ class TestNonThermalSurvivalModel:
 # DEFAULT VALUE TESTS
 # =============================================================================
 
+
 class TestDefaultValuesModelTypeAware:
     """Default values record DefaultImputed events with model-type-aware reasons."""
 
@@ -412,7 +436,9 @@ class TestDefaultValuesModelTypeAware:
         grounded.set("organism", ComBaseOrganism.SALMONELLA, ValueSource.USER_EXPLICIT)
         grounded.set("duration_minutes", 60.0, ValueSource.USER_EXPLICIT)
 
-        result = standardization_service.standardize(grounded, model_type=ModelType.GROWTH)
+        result = standardization_service.standardize(
+            grounded, model_type=ModelType.GROWTH
+        )
 
         assert result.payload is not None
         temp_defaults = [
@@ -450,23 +476,47 @@ class TestDefaultValuesModelTypeAware:
 # HELPER METHOD TESTS
 # =============================================================================
 
+
 class TestHelperMethods:
     """Test the helper methods for determining conservative direction."""
 
     def test_is_inactivation_model(self, standardization_service):
-        assert standardization_service._is_inactivation_model(ModelType.THERMAL_INACTIVATION) is True
+        assert (
+            standardization_service._is_inactivation_model(
+                ModelType.THERMAL_INACTIVATION
+            )
+            is True
+        )
         assert standardization_service._is_inactivation_model(ModelType.GROWTH) is False
-        assert standardization_service._is_inactivation_model(ModelType.NON_THERMAL_SURVIVAL) is False
+        assert (
+            standardization_service._is_inactivation_model(
+                ModelType.NON_THERMAL_SURVIVAL
+            )
+            is False
+        )
 
     def test_get_range_bound_to_use(self, standardization_service):
-        assert standardization_service._get_range_bound_to_use(ModelType.GROWTH) == "upper"
-        assert standardization_service._get_range_bound_to_use(ModelType.THERMAL_INACTIVATION) == "lower"
-        assert standardization_service._get_range_bound_to_use(ModelType.NON_THERMAL_SURVIVAL) == "upper"
+        assert (
+            standardization_service._get_range_bound_to_use(ModelType.GROWTH) == "upper"
+        )
+        assert (
+            standardization_service._get_range_bound_to_use(
+                ModelType.THERMAL_INACTIVATION
+            )
+            == "lower"
+        )
+        assert (
+            standardization_service._get_range_bound_to_use(
+                ModelType.NON_THERMAL_SURVIVAL
+            )
+            == "upper"
+        )
 
 
 # =============================================================================
 # INTEGRATION: COMBINED SCENARIO WITH DEFAULTS
 # =============================================================================
+
 
 class TestCombinedDefaults:
     """Test scenarios where multiple defaults are imputed."""
@@ -478,7 +528,9 @@ class TestCombinedDefaults:
         grounded.set("duration_minutes", 60.0, ValueSource.USER_EXPLICIT)
         # No temperature, pH, or aw
 
-        result = standardization_service.standardize(grounded, model_type=ModelType.GROWTH)
+        result = standardization_service.standardize(
+            grounded, model_type=ModelType.GROWTH
+        )
 
         default_fields = {d.field_name for d in result.defaults_imputed}
         assert "temperature_celsius" in default_fields
@@ -503,6 +555,7 @@ class TestCombinedDefaults:
 # EDGE CASES
 # =============================================================================
 
+
 class TestEdgeCases:
     """Test edge cases and boundary conditions."""
 
@@ -524,11 +577,14 @@ class TestEdgeCases:
 # STANDARDIZATION SERVICE: _select_range_bound UNIT TESTS
 # =============================================================================
 
+
 class TestSelectRangeBound:
     """Unit tests for StandardizationService._select_range_bound."""
 
     def test_growth_uses_upper_bound(self, standardization_service):
-        value, sel = standardization_service._select_range_bound(5.0, 6.2, ModelType.GROWTH)
+        value, sel = standardization_service._select_range_bound(
+            5.0, 6.2, ModelType.GROWTH
+        )
         assert value == 6.2
         assert sel.direction == "upper"
         assert sel.before_value == [5.0, 6.2]
@@ -536,14 +592,18 @@ class TestSelectRangeBound:
         assert sel.rule == "range_bound_selection"
 
     def test_thermal_inactivation_uses_lower_bound(self, standardization_service):
-        value, sel = standardization_service._select_range_bound(5.0, 6.2, ModelType.THERMAL_INACTIVATION)
+        value, sel = standardization_service._select_range_bound(
+            5.0, 6.2, ModelType.THERMAL_INACTIVATION
+        )
         assert value == 5.0
         assert sel.direction == "lower"
         assert sel.before_value == [5.0, 6.2]
         assert sel.after_value == 5.0
 
     def test_non_thermal_survival_uses_upper_bound(self, standardization_service):
-        value, sel = standardization_service._select_range_bound(0.94, 0.97, ModelType.NON_THERMAL_SURVIVAL)
+        value, sel = standardization_service._select_range_bound(
+            0.94, 0.97, ModelType.NON_THERMAL_SURVIVAL
+        )
         assert value == 0.97
         assert sel.direction == "upper"
 
@@ -551,6 +611,7 @@ class TestSelectRangeBound:
 # =============================================================================
 # END-TO-END: BREAD QUERY (GROWTH) — range-bound selection audit
 # =============================================================================
+
 
 class TestBreadQueryEndToEnd:
     """
@@ -608,8 +669,16 @@ class TestBreadQueryEndToEnd:
 
         # Range-bound selection must NOT appear in audit event lists
         # (inoculum default is expected when user does not supply one)
-        inoculum_defaults = [d for d in result.defaults_imputed if d.field_name == "initial_inoculum_log_cfu"]
-        non_inoculum_defaults = [d for d in result.defaults_imputed if d.field_name != "initial_inoculum_log_cfu"]
+        inoculum_defaults = [
+            d
+            for d in result.defaults_imputed
+            if d.field_name == "initial_inoculum_log_cfu"
+        ]
+        non_inoculum_defaults = [
+            d
+            for d in result.defaults_imputed
+            if d.field_name != "initial_inoculum_log_cfu"
+        ]
         assert len(inoculum_defaults) == 1
         assert non_inoculum_defaults == []
         assert result.range_clamps == []
@@ -630,8 +699,16 @@ class TestBreadQueryEndToEnd:
         assert aw_sel.direction == "lower"
         assert aw_sel.after_value == pytest.approx(0.94)
 
-        inoculum_defaults = [d for d in result.defaults_imputed if d.field_name == "initial_inoculum_log_cfu"]
-        non_inoculum_defaults = [d for d in result.defaults_imputed if d.field_name != "initial_inoculum_log_cfu"]
+        inoculum_defaults = [
+            d
+            for d in result.defaults_imputed
+            if d.field_name == "initial_inoculum_log_cfu"
+        ]
+        non_inoculum_defaults = [
+            d
+            for d in result.defaults_imputed
+            if d.field_name != "initial_inoculum_log_cfu"
+        ]
         assert len(inoculum_defaults) == 1
         assert non_inoculum_defaults == []
         assert result.range_clamps == []
@@ -642,16 +719,23 @@ class TestBreadQueryEndToEnd:
 # RANGE CLAMPING TESTS (B.1)
 # =============================================================================
 
+
 def _make_registry_with_constraints(
-    temp_min: float = 10.0, temp_max: float = 42.0,
-    ph_min: float = 4.5, ph_max: float = 7.5,
-    aw_min: float = 0.961, aw_max: float = 1.0,
+    temp_min: float = 10.0,
+    temp_max: float = 42.0,
+    ph_min: float = 4.5,
+    ph_max: float = 7.5,
+    aw_min: float = 0.961,
+    aw_max: float = 1.0,
 ) -> MagicMock:
     """Return a mock registry whose get_model() yields the given constraints."""
     constraints = ComBaseModelConstraints(
-        temp_min=temp_min, temp_max=temp_max,
-        ph_min=ph_min, ph_max=ph_max,
-        aw_min=aw_min, aw_max=aw_max,
+        temp_min=temp_min,
+        temp_max=temp_max,
+        ph_min=ph_min,
+        ph_max=ph_max,
+        aw_min=aw_min,
+        aw_max=aw_max,
     )
     mock_model = MagicMock()
     mock_model.constraints = constraints
@@ -679,7 +763,9 @@ class TestRangeClamping:
             model_registry=_make_registry_with_constraints(temp_min=10.0, temp_max=42.0)
         )
         grounded = GroundedValues()
-        grounded.set("organism", ComBaseOrganism.ESCHERICHIA_COLI, ValueSource.USER_EXPLICIT)
+        grounded.set(
+            "organism", ComBaseOrganism.ESCHERICHIA_COLI, ValueSource.USER_EXPLICIT
+        )
         grounded.set("temperature_celsius", 50.0, ValueSource.USER_EXPLICIT)
         grounded.set("duration_minutes", 360.0, ValueSource.USER_EXPLICIT)
 
@@ -688,7 +774,9 @@ class TestRangeClamping:
         assert result.payload is not None
         assert result.payload.parameters.temperature_celsius == pytest.approx(42.0)
 
-        temp_clamps = [c for c in result.range_clamps if c.field_name == "temperature_celsius"]
+        temp_clamps = [
+            c for c in result.range_clamps if c.field_name == "temperature_celsius"
+        ]
         assert len(temp_clamps) == 1
         c = temp_clamps[0]
         assert c.original_value == pytest.approx(50.0)
@@ -697,9 +785,9 @@ class TestRangeClamping:
         assert c.valid_max == pytest.approx(42.0)
 
         # Warning string references the original value and the clamped value
-        assert any("50" in w and "42" in w for w in result.warnings), (
-            f"Expected clamping notice mentioning 50 and 42; got: {result.warnings}"
-        )
+        assert any(
+            "50" in w and "42" in w for w in result.warnings
+        ), f"Expected clamping notice mentioning 50 and 42; got: {result.warnings}"
 
     def test_temperature_below_min_clamped(self):
         """2°C < min 10°C → clamped to 10°C."""
@@ -707,7 +795,9 @@ class TestRangeClamping:
             model_registry=_make_registry_with_constraints(temp_min=10.0, temp_max=42.0)
         )
         grounded = GroundedValues()
-        grounded.set("organism", ComBaseOrganism.ESCHERICHIA_COLI, ValueSource.USER_EXPLICIT)
+        grounded.set(
+            "organism", ComBaseOrganism.ESCHERICHIA_COLI, ValueSource.USER_EXPLICIT
+        )
         grounded.set("temperature_celsius", 2.0, ValueSource.USER_EXPLICIT)
         grounded.set("duration_minutes", 60.0, ValueSource.USER_EXPLICIT)
 
@@ -739,9 +829,9 @@ class TestRangeClamping:
         assert aw_clamps[0].original_value == pytest.approx(0.97)
         assert aw_clamps[0].clamped_value == pytest.approx(0.973)
 
-        assert any("0.97" in w for w in result.warnings), (
-            f"Expected aw clamping notice; got: {result.warnings}"
-        )
+        assert any(
+            "0.97" in w for w in result.warnings
+        ), f"Expected aw clamping notice; got: {result.warnings}"
 
     def test_in_range_value_no_clamp_no_warning(self):
         """Value inside valid range → no clamp, no range-related warning."""
@@ -749,22 +839,32 @@ class TestRangeClamping:
             model_registry=_make_registry_with_constraints(temp_min=10.0, temp_max=42.0)
         )
         grounded = GroundedValues()
-        grounded.set("organism", ComBaseOrganism.ESCHERICHIA_COLI, ValueSource.USER_EXPLICIT)
+        grounded.set(
+            "organism", ComBaseOrganism.ESCHERICHIA_COLI, ValueSource.USER_EXPLICIT
+        )
         grounded.set("temperature_celsius", 25.0, ValueSource.USER_EXPLICIT)
         grounded.set("duration_minutes", 60.0, ValueSource.USER_EXPLICIT)
 
         result = service.standardize(grounded, model_type=ModelType.GROWTH)
 
-        temp_clamps = [c for c in result.range_clamps if c.field_name == "temperature_celsius"]
+        temp_clamps = [
+            c for c in result.range_clamps if c.field_name == "temperature_celsius"
+        ]
         assert temp_clamps == []
-        range_warnings = [w for w in result.warnings if "range" in w.lower() and "temperature" in w.lower()]
+        range_warnings = [
+            w
+            for w in result.warnings
+            if "range" in w.lower() and "temperature" in w.lower()
+        ]
         assert range_warnings == []
 
     def test_no_registry_value_passes_through_unchanged(self):
         """Without a registry, out-of-range values pass through with no clamp."""
         service = StandardizationService(model_registry=None)
         grounded = GroundedValues()
-        grounded.set("organism", ComBaseOrganism.ESCHERICHIA_COLI, ValueSource.USER_EXPLICIT)
+        grounded.set(
+            "organism", ComBaseOrganism.ESCHERICHIA_COLI, ValueSource.USER_EXPLICIT
+        )
         grounded.set("temperature_celsius", 50.0, ValueSource.USER_EXPLICIT)
         grounded.set("duration_minutes", 60.0, ValueSource.USER_EXPLICIT)
 
@@ -778,6 +878,7 @@ class TestRangeClamping:
 # =============================================================================
 # ORGANISM DEFAULT IMPUTATION TESTS (B.2)
 # =============================================================================
+
 
 class TestOrganismDefaultImputation:
     """
@@ -807,7 +908,9 @@ class TestOrganismDefaultImputation:
 
         result = service.standardize(grounded, model_type=ModelType.GROWTH)
 
-        org_defaults = [d for d in result.defaults_imputed if d.field_name == "organism"]
+        org_defaults = [
+            d for d in result.defaults_imputed if d.field_name == "organism"
+        ]
         assert org_defaults == []
 
     def test_unset_organism_in_grounded_produces_failure(self):
@@ -831,19 +934,26 @@ class TestOrganismDefaultImputation:
         """Explicit organism → no DefaultImputed for organism field."""
         service = StandardizationService(model_registry=None)
         grounded = GroundedValues()
-        grounded.set("organism", ComBaseOrganism.LISTERIA_MONOCYTOGENES, ValueSource.USER_EXPLICIT)
+        grounded.set(
+            "organism",
+            ComBaseOrganism.LISTERIA_MONOCYTOGENES,
+            ValueSource.USER_EXPLICIT,
+        )
         grounded.set("temperature_celsius", 4.0, ValueSource.USER_EXPLICIT)
         grounded.set("duration_minutes", 1440.0, ValueSource.USER_EXPLICIT)
 
         result = service.standardize(grounded, model_type=ModelType.GROWTH)
 
-        org_defaults = [d for d in result.defaults_imputed if d.field_name == "organism"]
+        org_defaults = [
+            d for d in result.defaults_imputed if d.field_name == "organism"
+        ]
         assert org_defaults == []
 
 
 # =============================================================================
 # PHASE 9.7: LONG-WINDOW DEFAULT FOR MISSING SINGLE-STEP DURATION (NT-6)
 # =============================================================================
+
 
 class TestLongWindowDefault:
     """
@@ -864,7 +974,10 @@ class TestLongWindowDefault:
 
         assert result.missing_required == []
         assert result.payload is not None
-        assert result.payload.time_temperature_profile.total_duration_minutes == pytest.approx(10080.0)
+        assert (
+            result.payload.time_temperature_profile.total_duration_minutes
+            == pytest.approx(10080.0)
+        )
 
         duration_default = next(
             (d for d in result.defaults_imputed if d.field_name == "duration_minutes"),
@@ -888,9 +1001,9 @@ class TestLongWindowDefault:
 
     def test_field_audit_source_is_long_window_default(self, standardization_service):
         """field_audit entry for duration_minutes must carry source='long_window_default' and correct shape."""
-        from app.core.state import SessionState
-        from app.core.orchestrator import TranslationResult
         from app.api.routes.translation import _build_field_audit
+        from app.core.orchestrator import TranslationResult
+        from app.core.state import SessionState
         from app.models.enums import SessionStatus
         from app.models.metadata import InterpretationMetadata
 
@@ -922,6 +1035,7 @@ class TestLongWindowDefault:
 # PHASE 9.7: SETTINGS OVERRIDE FOR LONG-WINDOW DEFAULT (NT-7)
 # =============================================================================
 
+
 class TestLongWindowDefaultSettingsOverride:
     """
     Phase 9.7: default_long_window_minutes is configurable via environment variable.
@@ -946,4 +1060,6 @@ class TestLongWindowDefaultSettingsOverride:
         )
         assert duration_default is not None
         # Assert against the patched settings value — not the literal — per 2026-05-15 lesson
-        assert duration_default.imputed_value == pytest.approx(svc_module.settings.default_long_window_minutes)
+        assert duration_default.imputed_value == pytest.approx(
+            svc_module.settings.default_long_window_minutes
+        )

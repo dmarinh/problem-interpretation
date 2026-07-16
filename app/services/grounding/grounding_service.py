@@ -24,34 +24,39 @@ transformation that belongs alongside bias correction and clamping, not here.
 """
 
 import asyncio
-import csv
 import logging
 import os
 import re
 import string
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 from app.config.rules import (
-    find_temperature_interpretation_with_fallback,
     find_duration_interpretation,
+    find_temperature_interpretation_with_fallback,
 )
 from app.models.enums import ComBaseOrganism, OrganismGroundingFailureStage
 from app.models.extraction import (
-    ExtractedScenario,
+    ExtractedDuration,
     ExtractedEnvironmentalConditions,
     ExtractedFoodProperties,
+    ExtractedScenario,
     ExtractedTemperature,
-    ExtractedDuration,
 )
 from app.models.metadata import (
-    ValueProvenance, ValueSource, RetrievalResult, RunnerUpResult, SkippedDocInfo,
-    CategoryBridgeInfo, PathogenCategoryFallbackInfo, PathogenCandidate,
+    CategoryBridgeInfo,
     OrganismGroundingFailure,
+    PathogenCandidate,
+    PathogenCategoryFallbackInfo,
+    RetrievalResult,
+    RunnerUpResult,
+    SkippedDocInfo,
+    ValueProvenance,
+    ValueSource,
 )
-from app.rag.retrieval import RetrievalService, get_retrieval_service, RetrievalResponse
-from app.services.grounding.taxonomy_bridge import TaxonomyBridge
+from app.rag.retrieval import RetrievalResponse, RetrievalService, get_retrieval_service
 from app.services.audit.citations import get_full_citations
+from app.services.grounding.taxonomy_bridge import TaxonomyBridge
 from app.services.llm.client import LLMClient, get_llm_client
 
 logger = logging.getLogger(__name__)
@@ -95,11 +100,29 @@ _DEFAULT_PATHOGEN_CHARACTERISTICS_PATH = Path("data/rag/pathogen_characteristics
 #   Initial set (2026-05-07): soup, salad, stew, pie, sandwich, roll, wrap,
 #       casserole, curry, mixed, platter, dish
 #   2026-05-08: chili, custard, chowder, gumbo, bisque, lasagna, lasagne
-_COMPOSITE_KEYWORDS: frozenset[str] = frozenset({
-    "soup", "salad", "stew", "pie", "sandwich", "roll", "wrap",
-    "casserole", "curry", "mixed", "platter", "dish",
-    "chili", "custard", "chowder", "gumbo", "bisque", "lasagna", "lasagne",
-})
+_COMPOSITE_KEYWORDS: frozenset[str] = frozenset(
+    {
+        "soup",
+        "salad",
+        "stew",
+        "pie",
+        "sandwich",
+        "roll",
+        "wrap",
+        "casserole",
+        "curry",
+        "mixed",
+        "platter",
+        "dish",
+        "chili",
+        "custard",
+        "chowder",
+        "gumbo",
+        "bisque",
+        "lasagna",
+        "lasagne",
+    }
+)
 
 
 def _normalise_food_description(text: str) -> str:
@@ -171,6 +194,7 @@ Text:
 @dataclass
 class ExtractedNumericValue:
     """Result of numeric extraction from text."""
+
     value: float | None = None
     is_range: bool = False
     range_min: float | None = None
@@ -225,7 +249,9 @@ def _build_retrieval_metadata(response: RetrievalResponse) -> RetrievalResult:
     """
     # Structural invariant: top_result is None iff has_confident_result is False.
     top_result = response.top_result if response.has_confident_result else None
-    first_result = response.results[0] if response.results else None  # reranker's top pick
+    first_result = (
+        response.results[0] if response.results else None
+    )  # reranker's top pick
 
     # ── Metadata from the value-supplying doc ─────────────────────────────────
     embedding_score: float | None = None
@@ -266,10 +292,14 @@ def _build_retrieval_metadata(response: RetrievalResponse) -> RetrievalResult:
         surfaced.add(id(top_result))
     if first_result is not None:
         surfaced.add(id(first_result))
-    runners_up = [_to_runner_up(r) for r in response.results if id(r) not in surfaced][:3]
+    runners_up = [_to_runner_up(r) for r in response.results if id(r) not in surfaced][
+        :3
+    ]
 
     query = response.query if isinstance(response.query, str) else ""
-    reranker_used = response.reranker_used if isinstance(response.reranker_used, str) else None
+    reranker_used = (
+        response.reranker_used if isinstance(response.reranker_used, str) else None
+    )
 
     return RetrievalResult(
         query=query,
@@ -288,10 +318,10 @@ def _build_retrieval_metadata(response: RetrievalResponse) -> RetrievalResult:
     )
 
 
-
 @dataclass
 class GroundedStep:
     """A single grounded time-temperature step for multi-step scenarios."""
+
     step_order: int
     temperature_celsius: float | None
     duration_minutes: float | None
@@ -302,19 +332,19 @@ class GroundedStep:
 class GroundedValues:
     """
     Container for grounded values with provenance.
-    
+
     This class holds the resolved values along with metadata about where
     each value came from (source) and how confident we are (confidence).
-    
+
     Usage:
         grounded = GroundedValues()
         grounded.set("ph", 6.0, ValueSource.RAG_RETRIEVAL, confidence=0.85)
-        
+
         if grounded.has("ph"):
             ph_value = grounded.get("ph")
             ph_provenance = grounded.provenance["ph"]
     """
-    
+
     def __init__(self):
         self.values: dict[str, object] = {}
         self.provenance: dict[str, ValueProvenance] = {}
@@ -354,13 +384,15 @@ class GroundedValues:
         dur_provenance: ValueProvenance | None = None,
     ) -> None:
         """Append a grounded time-temperature step."""
-        self.steps.append(GroundedStep(
-            step_order=step_order,
-            temperature_celsius=temperature_celsius,
-            duration_minutes=duration_minutes,
-            temp_provenance=temp_provenance,
-            dur_provenance=dur_provenance,
-        ))
+        self.steps.append(
+            GroundedStep(
+                step_order=step_order,
+                temperature_celsius=temperature_celsius,
+                duration_minutes=duration_minutes,
+                temp_provenance=temp_provenance,
+                dur_provenance=dur_provenance,
+            )
+        )
 
     def set(
         self,
@@ -390,15 +422,15 @@ class GroundedValues:
         """
         self.values[field] = value
         self.provenance[field] = provenance
-    
+
     def get(self, field: str, default=None):
         """Get a grounded value."""
         return self.values.get(field, default)
-    
+
     def has(self, field: str) -> bool:
         """Check if a field is grounded."""
         return field in self.values
-    
+
     def mark_ungrounded(self, field: str, reason: str) -> None:
         """Mark a field as ungrounded with reason."""
         self.ungrounded_fields.append(field)
@@ -424,7 +456,7 @@ class GroundingService:
     range_pending=True and parsed_range=[min, max].  Choosing which bound to use
     (upper for growth, lower for thermal inactivation) is StandardizationService's job.
     """
-    
+
     def __init__(
         self,
         retrieval_service: RetrievalService | None = None,
@@ -448,16 +480,21 @@ class GroundingService:
         # When None, each is loaded from the default CSV path on first use.
         # Tests inject pre-built dicts to avoid filesystem reads.
         self._ift_alignment: dict[str, list[str]] = (
-            ift_alignment if ift_alignment is not None
+            ift_alignment
+            if ift_alignment is not None
             else self._load_ift_alignment(_DEFAULT_IFT_ALIGNMENT_PATH)
         )
         self._pathogen_associations: dict[str, list[str]] = (
-            pathogen_associations if pathogen_associations is not None
+            pathogen_associations
+            if pathogen_associations is not None
             else self._load_pathogen_associations(_DEFAULT_PATHOGEN_ASSOCIATIONS_PATH)
         )
         self._pathogen_characteristics: dict[str, tuple[int, str]] = (
-            pathogen_characteristics if pathogen_characteristics is not None
-            else self._load_pathogen_characteristics(_DEFAULT_PATHOGEN_CHARACTERISTICS_PATH)
+            pathogen_characteristics
+            if pathogen_characteristics is not None
+            else self._load_pathogen_characteristics(
+                _DEFAULT_PATHOGEN_CHARACTERISTICS_PATH
+            )
         )
 
     # ------------------------------------------------------------------
@@ -472,6 +509,7 @@ class GroundingService:
             logger.warning("ift_category_alignment.csv not found at %s", path)
             return result
         import csv as _csv
+
         with open(path, newline="", encoding="utf-8") as f:
             for row in _csv.DictReader(f):
                 ptm = row.get("ptm_category", "").strip()
@@ -490,6 +528,7 @@ class GroundingService:
             logger.warning("pathogen_food_associations.csv not found at %s", path)
             return result
         import csv as _csv
+
         with open(path, newline="", encoding="utf-8") as f:
             for row in _csv.DictReader(f):
                 cat = row.get("food_category", "").strip()
@@ -511,6 +550,7 @@ class GroundingService:
             logger.warning("pathogen_characteristics.csv not found at %s", path)
             return result
         import csv as _csv
+
         with open(path, newline="", encoding="utf-8") as f:
             for row in _csv.DictReader(f):
                 name = row.get("pathogen", "").strip().lower()
@@ -523,7 +563,7 @@ class GroundingService:
                 if name:
                     result[name] = (deaths, source_id)
         return result
-    
+
     async def ground_scenario(
         self,
         scenario: ExtractedScenario,
@@ -584,7 +624,7 @@ class GroundingService:
         if not grounded.has("organism"):
             grounded.mark_ungrounded(
                 "organism",
-                f"Could not determine pathogen for '{scenario.food_description or 'unknown food'}'"
+                f"Could not determine pathogen for '{scenario.food_description or 'unknown food'}'",
             )
 
         # Step 5 & 6: Temperature and duration
@@ -605,11 +645,11 @@ class GroundingService:
             )
 
         return grounded
-    
+
     # =========================================================================
     # USER EXPLICIT VALUES
     # =========================================================================
-    
+
     def _ground_environmental_conditions(
         self,
         conditions: ExtractedEnvironmentalConditions,
@@ -617,7 +657,7 @@ class GroundingService:
     ) -> None:
         """
         Ground explicitly provided environmental conditions.
-        
+
         These are values the user directly stated (e.g., "pH 6.5").
         They have the highest priority.
         """
@@ -653,15 +693,24 @@ class GroundingService:
                 )
 
         # Water activity — range takes priority over single value
-        if conditions.water_activity_min is not None and conditions.water_activity_max is not None:
-            if 0.0 <= conditions.water_activity_min <= 1.0 and 0.0 <= conditions.water_activity_max <= 1.0:
+        if (
+            conditions.water_activity_min is not None
+            and conditions.water_activity_max is not None
+        ):
+            if (
+                0.0 <= conditions.water_activity_min <= 1.0
+                and 0.0 <= conditions.water_activity_max <= 1.0
+            ):
                 grounded.set(
                     "water_activity",
                     conditions.water_activity_min,
                     source=ValueSource.USER_EXPLICIT,
                     extraction_method="llm_extraction",
                     raw_match=f"{conditions.water_activity_min}–{conditions.water_activity_max}",
-                    parsed_range=[conditions.water_activity_min, conditions.water_activity_max],
+                    parsed_range=[
+                        conditions.water_activity_min,
+                        conditions.water_activity_max,
+                    ],
                     range_pending=True,
                 )
             else:
@@ -685,22 +734,38 @@ class GroundingService:
 
         # Other conditions (these don't require range selection)
         if conditions.co2_percent is not None:
-            grounded.set("co2_percent", conditions.co2_percent, ValueSource.USER_EXPLICIT,
-                         extraction_method="llm_extraction")
+            grounded.set(
+                "co2_percent",
+                conditions.co2_percent,
+                ValueSource.USER_EXPLICIT,
+                extraction_method="llm_extraction",
+            )
         if conditions.nitrite_ppm is not None:
-            grounded.set("nitrite_ppm", conditions.nitrite_ppm, ValueSource.USER_EXPLICIT,
-                         extraction_method="llm_extraction")
+            grounded.set(
+                "nitrite_ppm",
+                conditions.nitrite_ppm,
+                ValueSource.USER_EXPLICIT,
+                extraction_method="llm_extraction",
+            )
         if conditions.lactic_acid_ppm is not None:
-            grounded.set("lactic_acid_ppm", conditions.lactic_acid_ppm, ValueSource.USER_EXPLICIT,
-                         extraction_method="llm_extraction")
+            grounded.set(
+                "lactic_acid_ppm",
+                conditions.lactic_acid_ppm,
+                ValueSource.USER_EXPLICIT,
+                extraction_method="llm_extraction",
+            )
         if conditions.acetic_acid_ppm is not None:
-            grounded.set("acetic_acid_ppm", conditions.acetic_acid_ppm, ValueSource.USER_EXPLICIT,
-                         extraction_method="llm_extraction")
+            grounded.set(
+                "acetic_acid_ppm",
+                conditions.acetic_acid_ppm,
+                ValueSource.USER_EXPLICIT,
+                extraction_method="llm_extraction",
+            )
 
     # =========================================================================
     # RAG RETRIEVAL WITH HYBRID EXTRACTION
     # =========================================================================
-    
+
     async def _ground_food_properties(
         self,
         food_description: str,
@@ -757,13 +822,29 @@ class GroundingService:
         if primary_response.has_confident_result:
             top = primary_response.top_result
             content = top.content
-            props, ph_raw_match, aw_raw_match = await self._extract_food_properties(content)
+            props, ph_raw_match, aw_raw_match = await self._extract_food_properties(
+                content
+            )
 
             if not grounded.has("ph") and props.has_ph:
-                self._set_ph_from_props(grounded, props, top, content, ph_raw_match, ValueSource.RAG_RETRIEVAL)
+                self._set_ph_from_props(
+                    grounded,
+                    props,
+                    top,
+                    content,
+                    ph_raw_match,
+                    ValueSource.RAG_RETRIEVAL,
+                )
 
             if not grounded.has("water_activity") and props.has_aw:
-                self._set_aw_from_props(grounded, props, top, content, aw_raw_match, ValueSource.RAG_RETRIEVAL)
+                self._set_aw_from_props(
+                    grounded,
+                    props,
+                    top,
+                    content,
+                    aw_raw_match,
+                    ValueSource.RAG_RETRIEVAL,
+                )
 
         # ── Tier 2: per-field fallback queries ───────────────────────────────
         # Fire for any field still ungrounded — regardless of whether Tier 1
@@ -772,7 +853,9 @@ class GroundingService:
             await self._ground_field_fallback(food_description, "ph", grounded)
 
         if not grounded.has("water_activity"):
-            await self._ground_field_fallback(food_description, "water_activity", grounded)
+            await self._ground_field_fallback(
+                food_description, "water_activity", grounded
+            )
 
         # ── Tier 3: taxonomy bridge ───────────────────────────────────────────
         # Fires only when at least one field is still ungrounded after both
@@ -821,9 +904,23 @@ class GroundingService:
         props, ph_raw_match, aw_raw_match = await self._extract_food_properties(content)
 
         if field == "ph" and props.has_ph:
-            self._set_ph_from_props(grounded, props, top, content, ph_raw_match, ValueSource.RAG_RETRIEVAL_FALLBACK)
+            self._set_ph_from_props(
+                grounded,
+                props,
+                top,
+                content,
+                ph_raw_match,
+                ValueSource.RAG_RETRIEVAL_FALLBACK,
+            )
         elif field == "water_activity" and props.has_aw:
-            self._set_aw_from_props(grounded, props, top, content, aw_raw_match, ValueSource.RAG_RETRIEVAL_FALLBACK)
+            self._set_aw_from_props(
+                grounded,
+                props,
+                top,
+                content,
+                aw_raw_match,
+                ValueSource.RAG_RETRIEVAL_FALLBACK,
+            )
         else:
             grounded.warnings.append(
                 f"Fallback retrieval for {field} returned a doc with no {field} data "
@@ -877,7 +974,9 @@ class GroundingService:
             fields_to_try.append(("water_activity", "aw_min", "aw_max"))
 
         for field_name, min_col, max_col in fields_to_try:
-            field_key = "ph" if field_name == "ph" else "aw"  # matches _index_category_level_rows key convention
+            field_key = (
+                "ph" if field_name == "ph" else "aw"
+            )  # matches _index_category_level_rows key convention
             curated_row = self._taxonomy_bridge.lookup_category_level_row(
                 resolution.ptm_category, query_state, field_key
             )
@@ -905,13 +1004,22 @@ class GroundingService:
                     logger.warning(
                         "Curated row for (%s, %s, %s) has min=%.4f > max=%.4f — "
                         "data may be transposed in category_level_rows.csv",
-                        resolution.ptm_category, query_state, field_key, val_min, val_max,
+                        resolution.ptm_category,
+                        query_state,
+                        field_key,
+                        val_min,
+                        val_max,
                     )
             except (ValueError, KeyError) as exc:
                 logger.warning(
                     "Taxonomy bridge: could not parse %s/%s in curated row for "
                     "(%s, %s, %s): %s",
-                    min_col, max_col, resolution.ptm_category, query_state, field_key, exc,
+                    min_col,
+                    max_col,
+                    resolution.ptm_category,
+                    query_state,
+                    field_key,
+                    exc,
                 )
                 continue
 
@@ -1018,7 +1126,7 @@ class GroundingService:
                 parsed_range=[props.aw_min, props.aw_max],
                 range_pending=True,
             )
-    
+
     async def _extract_food_properties(
         self, text: str
     ) -> tuple[ExtractedFoodProperties, str | None, str | None]:
@@ -1094,7 +1202,7 @@ class GroundingService:
                 )
 
         return props, ph_raw, aw_raw
-    
+
     async def _extract_food_properties_llm(self, text: str) -> ExtractedFoodProperties:
         """Extract food properties using LLM."""
         result = await self._llm.extract(
@@ -1105,11 +1213,11 @@ class GroundingService:
         )
         result.extraction_method = "llm"
         return result
-    
+
     # =========================================================================
     # REGEX EXTRACTION (kept as fast first pass)
     # =========================================================================
-    
+
     def _extract_numeric_value(
         self,
         text: str,
@@ -1117,17 +1225,17 @@ class GroundingService:
     ) -> ExtractedNumericValue:
         """
         Extract numeric value(s) near a keyword, handling ranges.
-        
+
         Handles multiple formats:
         - Single values: "pH 6.0", "pH: 6.5", "aw 0.98"
         - Ranges with hyphen: "pH 5.9-6.2"
         - Ranges with "to": "pH 5.5 to 6.0"
         - Ranges with "and": "pH between 5.5 and 6.0"
-        
+
         Args:
             text: The text to search
             keywords: List of keywords to look for (e.g., ["ph"], ["water activity", "aw"])
-            
+
         Returns:
             ExtractedNumericValue with the extracted value(s)
         """
@@ -1137,14 +1245,16 @@ class GroundingService:
             keyword_lower = keyword.lower()
             # Use word-boundary matching so short tokens like "aw" don't match
             # inside longer words (e.g. "raw", "thaw", "draw").
-            m = re.search(rf'\b{re.escape(keyword_lower)}\b', text_lower)
+            m = re.search(rf"\b{re.escape(keyword_lower)}\b", text_lower)
             if m is None:
                 continue
 
-            after_keyword = text_lower[m.end():]
+            after_keyword = text_lower[m.end() :]
 
             # Pattern 1: "between X and Y" or "from X to Y"
-            range_pattern1 = r'(?:between|from)?\s*(\d+\.?\d*)\s*(?:and|to|-)\s*(\d+\.?\d*)'
+            range_pattern1 = (
+                r"(?:between|from)?\s*(\d+\.?\d*)\s*(?:and|to|-)\s*(\d+\.?\d*)"
+            )
             match = re.search(range_pattern1, after_keyword[:50])
             if match:
                 val1 = float(match.group(1))
@@ -1158,7 +1268,7 @@ class GroundingService:
                 )
 
             # Pattern 2: "X-Y" or "X - Y"
-            range_pattern2 = r'[:\s]*(\d+\.?\d*)\s*[-–]\s*(\d+\.?\d*)'
+            range_pattern2 = r"[:\s]*(\d+\.?\d*)\s*[-–]\s*(\d+\.?\d*)"
             match = re.search(range_pattern2, after_keyword[:30])
             if match:
                 val1 = float(match.group(1))
@@ -1175,7 +1285,7 @@ class GroundingService:
             # (optional connector: colon, equals, whitespace, "is", "of").
             # Anchored with re.match so a number buried in unrelated text (e.g.
             # a citation year like "[FDA-PH-2007]") is never captured.
-            single_pattern = r'^[:\s=]*(?:(?:is|of)\s+)?(\d+\.?\d*)'
+            single_pattern = r"^[:\s=]*(?:(?:is|of)\s+)?(\d+\.?\d*)"
             match = re.match(single_pattern, after_keyword)
             if match and match.group(1):
                 return ExtractedNumericValue(
@@ -1185,11 +1295,11 @@ class GroundingService:
                 )
 
         return ExtractedNumericValue()
-    
+
     # =========================================================================
     # PATHOGEN GROUNDING
     # =========================================================================
-    
+
     async def _ground_pathogen_from_rag(
         self,
         food_description: str,
@@ -1314,17 +1424,21 @@ class GroundingService:
         # Pathogens present with annual_deaths=0 are ranked last (not excluded).
         ranked: list[PathogenCandidate] = []
         for pathogen in candidate_names:
-            norm_name = _PATHOGEN_NAME_NORMALIZATION.get(pathogen.lower(), pathogen.lower())
+            norm_name = _PATHOGEN_NAME_NORMALIZATION.get(
+                pathogen.lower(), pathogen.lower()
+            )
             entry = self._pathogen_characteristics.get(norm_name)
             if entry is None:
                 continue  # not in characteristics — exclude from ranking
             deaths, source_id = entry
-            ranked.append(PathogenCandidate(
-                pathogen=pathogen,          # associations CSV form e.g. "Salmonella spp."
-                normalized_name=norm_name,  # characteristics CSV form e.g. "salmonella nontyphoidal"
-                annual_deaths_us=deaths,
-                source_id=source_id,
-            ))
+            ranked.append(
+                PathogenCandidate(
+                    pathogen=pathogen,  # associations CSV form e.g. "Salmonella spp."
+                    normalized_name=norm_name,  # characteristics CSV form e.g. "salmonella nontyphoidal"
+                    annual_deaths_us=deaths,
+                    source_id=source_id,
+                )
+            )
 
         ranked.sort(key=lambda c: c.annual_deaths_us, reverse=True)
 
@@ -1345,7 +1459,12 @@ class GroundingService:
             # recognisable substrings like "Salmonella" that the alias dict matches.
             organism = ComBaseOrganism.from_text(candidate.pathogen)
             if organism is None:
-                skipped.append({"pathogen": candidate.pathogen, "reason": "no_combase_organism_mapping"})
+                skipped.append(
+                    {
+                        "pathogen": candidate.pathogen,
+                        "reason": "no_combase_organism_mapping",
+                    }
+                )
                 continue
             selected = candidate
             selected_organism = organism
@@ -1358,12 +1477,14 @@ class GroundingService:
             )
             return
 
-        _pcf_source_ids = list(dict.fromkeys(
-            ["IFT-2003-T1"] + [c.source_id for c in ranked]
-        ))
+        _pcf_source_ids = list(
+            dict.fromkeys(["IFT-2003-T1"] + [c.source_id for c in ranked])
+        )
         fallback_info = PathogenCategoryFallbackInfo(
             ptm_category=ptm_category,
-            ift_categories=list(ift_categories),  # defensive copy — ift_categories is a ref into _ift_alignment
+            ift_categories=list(
+                ift_categories
+            ),  # defensive copy — ift_categories is a ref into _ift_alignment
             ift_source_id="IFT-2003-T1",
             candidate_pathogens=ranked,
             selected_pathogen=selected,
@@ -1414,7 +1535,11 @@ class GroundingService:
                 extraction_method="llm_extraction",
             )
 
-        if temp.is_range and temp.range_min_celsius is not None and temp.range_max_celsius is not None:
+        if (
+            temp.is_range
+            and temp.range_min_celsius is not None
+            and temp.range_max_celsius is not None
+        ):
             return temp.range_min_celsius, ValueProvenance(
                 source=ValueSource.USER_EXPLICIT,
                 transformation_applied="range extracted, awaiting standardization",
@@ -1426,7 +1551,11 @@ class GroundingService:
         if temp.description:
             rule = find_temperature_interpretation_with_fallback(temp.description)
             if rule:
-                method = "embedding_fallback" if rule.similarity is not None else "rule_match"
+                method = (
+                    "embedding_fallback"
+                    if rule.similarity is not None
+                    else "rule_match"
+                )
                 return rule.value, ValueProvenance(
                     source=ValueSource.USER_INFERRED,
                     original_text=temp.description,
@@ -1504,7 +1633,9 @@ class GroundingService:
                     "temperature_celsius", f"Could not interpret: '{desc}'"
                 )
             else:
-                grounded.mark_ungrounded("temperature_celsius", "No temperature specified")
+                grounded.mark_ungrounded(
+                    "temperature_celsius", "No temperature specified"
+                )
 
     def _ground_duration(
         self,
@@ -1554,12 +1685,20 @@ class GroundingService:
 
             if temp_val is None:
                 desc = step.temperature.description or ""
-                reason = f"Could not interpret: '{desc}'" if desc else "No temperature specified"
+                reason = (
+                    f"Could not interpret: '{desc}'"
+                    if desc
+                    else "No temperature specified"
+                )
                 grounded.warnings.append(f"Step {order} temperature: {reason}")
 
             if dur_val is None:
                 desc = step.duration.description or ""
-                reason = f"Could not interpret: '{desc}'" if desc else "No duration specified"
+                reason = (
+                    f"Could not interpret: '{desc}'"
+                    if desc
+                    else "No duration specified"
+                )
                 grounded.warnings.append(f"Step {order} duration: {reason}")
 
             grounded.add_step(

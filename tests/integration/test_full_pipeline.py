@@ -5,33 +5,34 @@ These tests run the complete pipeline with real components
 (except LLM which is mocked to avoid API costs).
 """
 
-import pytest
-from unittest.mock import AsyncMock
-from pathlib import Path
-import tempfile
 import shutil
+import tempfile
+from pathlib import Path
+from unittest.mock import AsyncMock
+
+import pytest
 
 from app.core.orchestrator import Orchestrator
 from app.core.state import SessionManager
 from app.engines.combase.engine import ComBaseEngine
-from app.rag.vector_store import VectorStore
-from app.rag.retrieval import RetrievalService
-from app.services.grounding.grounding_service import GroundingService
-from app.services.standardization.standardization_service import StandardizationService
 from app.models.enums import (
-    SessionStatus,
-    ModelType,
     ComBaseOrganism,
+    ModelType,
+    SessionStatus,
 )
 from app.models.extraction import (
-    ExtractedScenario,
-    ExtractedIntent,
-    ExtractedTemperature,
     ExtractedDuration,
     ExtractedEnvironmentalConditions,
+    ExtractedIntent,
+    ExtractedScenario,
+    ExtractedTemperature,
     ExtractedTimeTemperatureStep,
 )
 from app.models.metadata import ValueSource
+from app.rag.retrieval import RetrievalService
+from app.rag.vector_store import VectorStore
+from app.services.grounding.grounding_service import GroundingService
+from app.services.standardization.standardization_service import StandardizationService
 
 
 def create_scenario(
@@ -55,7 +56,8 @@ def create_scenario(
         single_step_temperature=temperature or ExtractedTemperature(),
         single_step_duration=duration or ExtractedDuration(),
         time_temperature_steps=[],
-        environmental_conditions=environmental_conditions or ExtractedEnvironmentalConditions(),
+        environmental_conditions=environmental_conditions
+        or ExtractedEnvironmentalConditions(),
         concern_type="safety",
         additional_context=None,
         is_cooking_scenario=is_cooking_scenario,
@@ -88,7 +90,7 @@ def vector_store(temp_dir):
     """Create and populate vector store with test data."""
     store = VectorStore(persist_directory=temp_dir / "vectors")
     store.initialize()
-    
+
     # Add food properties
     store.add_documents(
         documents=[
@@ -100,7 +102,7 @@ def vector_store(temp_dir):
         ],
         doc_type=VectorStore.TYPE_FOOD_PROPERTIES,
     )
-    
+
     # Add pathogen hazards
     store.add_documents(
         documents=[
@@ -111,7 +113,7 @@ def vector_store(temp_dir):
         ],
         doc_type=VectorStore.TYPE_PATHOGEN_HAZARDS,
     )
-    
+
     return store
 
 
@@ -119,25 +121,29 @@ def vector_store(temp_dir):
 def mock_semantic_parser():
     """Create mock semantic parser."""
     parser = AsyncMock()
-    
-    parser.classify_intent = AsyncMock(return_value=ExtractedIntent(
-        is_prediction_request=True,
-        is_information_query=False,
-        confidence=0.95,
-    ))
-    
+
+    parser.classify_intent = AsyncMock(
+        return_value=ExtractedIntent(
+            is_prediction_request=True,
+            is_information_query=False,
+            confidence=0.95,
+        )
+    )
+
     # pathogen_mentioned is now required — the silent Salmonella default was removed.
     # This fixture explicitly names Salmonella so tests that rely on the default
     # fixture (and aren't specifically testing pathogen behavior) continue to work.
-    parser.extract_scenario = AsyncMock(return_value=create_scenario(
-        food_description="raw chicken",
-        food_state="raw",
-        pathogen_mentioned="Salmonella",
-        temperature=ExtractedTemperature(description="room temperature"),
-        duration=ExtractedDuration(value_minutes=180.0),
-        is_storage_scenario=True,
-    ))
-    
+    parser.extract_scenario = AsyncMock(
+        return_value=create_scenario(
+            food_description="raw chicken",
+            food_state="raw",
+            pathogen_mentioned="Salmonella",
+            temperature=ExtractedTemperature(description="room temperature"),
+            duration=ExtractedDuration(value_minutes=180.0),
+            is_storage_scenario=True,
+        )
+    )
+
     return parser
 
 
@@ -146,11 +152,13 @@ def orchestrator(combase_engine, vector_store, mock_semantic_parser):
     """Create orchestrator with real components except LLM."""
     if not combase_engine.is_available:
         pytest.skip("ComBase models not available")
-    
+
     retrieval_service = RetrievalService(vector_store=vector_store)
     grounding_service = GroundingService(retrieval_service=retrieval_service)
-    standardization_service = StandardizationService(model_registry=combase_engine.registry)
-    
+    standardization_service = StandardizationService(
+        model_registry=combase_engine.registry
+    )
+
     return Orchestrator(
         session_manager=SessionManager(),
         semantic_parser=mock_semantic_parser,
@@ -162,127 +170,142 @@ def orchestrator(combase_engine, vector_store, mock_semantic_parser):
 
 class TestFullPipeline:
     """End-to-end pipeline tests."""
-    
+
     @pytest.mark.asyncio
     async def test_chicken_room_temperature(self, orchestrator, mock_semantic_parser):
         """Should process chicken at room temperature query."""
-        mock_semantic_parser.extract_scenario = AsyncMock(return_value=create_scenario(
-            food_description="raw chicken",
-            pathogen_mentioned="Salmonella",
-            temperature=ExtractedTemperature(description="room temperature"),
-            duration=ExtractedDuration(value_minutes=180.0),
-            is_storage_scenario=True,
-        ))
-        
+        mock_semantic_parser.extract_scenario = AsyncMock(
+            return_value=create_scenario(
+                food_description="raw chicken",
+                pathogen_mentioned="Salmonella",
+                temperature=ExtractedTemperature(description="room temperature"),
+                duration=ExtractedDuration(value_minutes=180.0),
+                is_storage_scenario=True,
+            )
+        )
+
         result = await orchestrator.translate(
             "Raw chicken left out for 3 hours at room temperature"
         )
-        
+
         assert result.success is True, f"Failed with error: {result.error}"
         assert result.state.status == SessionStatus.COMPLETED
         assert result.execution_result is not None
         assert result.execution_result.total_log_increase > 0
-    
+
     @pytest.mark.asyncio
     async def test_explicit_temperature(self, orchestrator, mock_semantic_parser):
         """Should use explicit temperature when provided."""
-        mock_semantic_parser.extract_scenario = AsyncMock(return_value=create_scenario(
-            food_description="raw chicken",
-            pathogen_mentioned="Salmonella",
-            temperature=ExtractedTemperature(value_celsius=30.0),
-            duration=ExtractedDuration(value_minutes=120.0),
-            is_storage_scenario=True,
-        ))
-        
-        result = await orchestrator.translate(
-            "Chicken at 30°C for 2 hours"
+        mock_semantic_parser.extract_scenario = AsyncMock(
+            return_value=create_scenario(
+                food_description="raw chicken",
+                pathogen_mentioned="Salmonella",
+                temperature=ExtractedTemperature(value_celsius=30.0),
+                duration=ExtractedDuration(value_minutes=120.0),
+                is_storage_scenario=True,
+            )
         )
-        
+
+        result = await orchestrator.translate("Chicken at 30°C for 2 hours")
+
         assert result.success is True, f"Failed with error: {result.error}"
         assert result.state.execution_payload.parameters.temperature_celsius == 30.0
-    
+
     @pytest.mark.asyncio
     async def test_explicit_pathogen(self, orchestrator, mock_semantic_parser):
         """Should use explicit pathogen when mentioned."""
-        mock_semantic_parser.extract_scenario = AsyncMock(return_value=create_scenario(
-            food_description="deli meat",
-            pathogen_mentioned="Listeria",
-            temperature=ExtractedTemperature(value_celsius=4.0),
-            duration=ExtractedDuration(value_minutes=1440.0),
-            is_storage_scenario=True,
-        ))
-        
+        mock_semantic_parser.extract_scenario = AsyncMock(
+            return_value=create_scenario(
+                food_description="deli meat",
+                pathogen_mentioned="Listeria",
+                temperature=ExtractedTemperature(value_celsius=4.0),
+                duration=ExtractedDuration(value_minutes=1440.0),
+                is_storage_scenario=True,
+            )
+        )
+
         result = await orchestrator.translate(
             "Listeria growth in deli meat at 4°C for 24 hours"
         )
-        
-        assert result.success is True, f"Failed with error: {result.error}"
-        assert result.state.execution_payload.model_selection.organism == ComBaseOrganism.LISTERIA_MONOCYTOGENES
-    
-    @pytest.mark.asyncio
-    async def test_explicitly_named_pathogen_flows_through(self, orchestrator, mock_semantic_parser):
-        """Explicitly named pathogen flows through grounding into the execution payload."""
-        mock_semantic_parser.extract_scenario = AsyncMock(return_value=create_scenario(
-            food_description="raw chicken",
-            pathogen_mentioned="Salmonella",
-            temperature=ExtractedTemperature(value_celsius=25.0),
-            duration=ExtractedDuration(value_minutes=180.0),
-            is_storage_scenario=True,
-        ))
 
-        result = await orchestrator.translate(
-            "Raw chicken at 25°C for 3 hours"
+        assert result.success is True, f"Failed with error: {result.error}"
+        assert (
+            result.state.execution_payload.model_selection.organism
+            == ComBaseOrganism.LISTERIA_MONOCYTOGENES
         )
+
+    @pytest.mark.asyncio
+    async def test_explicitly_named_pathogen_flows_through(
+        self, orchestrator, mock_semantic_parser
+    ):
+        """Explicitly named pathogen flows through grounding into the execution payload."""
+        mock_semantic_parser.extract_scenario = AsyncMock(
+            return_value=create_scenario(
+                food_description="raw chicken",
+                pathogen_mentioned="Salmonella",
+                temperature=ExtractedTemperature(value_celsius=25.0),
+                duration=ExtractedDuration(value_minutes=180.0),
+                is_storage_scenario=True,
+            )
+        )
+
+        result = await orchestrator.translate("Raw chicken at 25°C for 3 hours")
 
         assert result.success is True, f"Failed with error: {result.error}"
         organism = result.state.execution_payload.model_selection.organism
         assert organism == ComBaseOrganism.SALMONELLA
-    
+
     @pytest.mark.asyncio
     async def test_duration_interpretation(self, orchestrator, mock_semantic_parser):
         """Should interpret vague duration descriptions."""
-        mock_semantic_parser.extract_scenario = AsyncMock(return_value=create_scenario(
-            food_description="cooked rice",
-            pathogen_mentioned="Salmonella",
-            temperature=ExtractedTemperature(value_celsius=25.0),
-            duration=ExtractedDuration(description="overnight"),
-            is_storage_scenario=True,
-        ))
-        
-        result = await orchestrator.translate(
-            "Cooked rice left out overnight"
+        mock_semantic_parser.extract_scenario = AsyncMock(
+            return_value=create_scenario(
+                food_description="cooked rice",
+                pathogen_mentioned="Salmonella",
+                temperature=ExtractedTemperature(value_celsius=25.0),
+                duration=ExtractedDuration(description="overnight"),
+                is_storage_scenario=True,
+            )
         )
-        
+
+        result = await orchestrator.translate("Cooked rice left out overnight")
+
         assert result.success is True, f"Failed with error: {result.error}"
         # "overnight" should be interpreted as ~480 minutes (8 hours)
-        duration = result.state.execution_payload.time_temperature_profile.total_duration_minutes
+        duration = (
+            result.state.execution_payload.time_temperature_profile.total_duration_minutes
+        )
         assert 400 <= duration <= 600
-    
+
     @pytest.mark.asyncio
     async def test_provenance_tracking(self, orchestrator, mock_semantic_parser):
         """Should track provenance of all grounded values."""
-        mock_semantic_parser.extract_scenario = AsyncMock(return_value=create_scenario(
-            food_description="raw chicken",
-            pathogen_mentioned="Salmonella",
-            temperature=ExtractedTemperature(description="room temperature"),
-            duration=ExtractedDuration(value_minutes=180.0),
-            is_storage_scenario=True,
-        ))
-        
+        mock_semantic_parser.extract_scenario = AsyncMock(
+            return_value=create_scenario(
+                food_description="raw chicken",
+                pathogen_mentioned="Salmonella",
+                temperature=ExtractedTemperature(description="room temperature"),
+                duration=ExtractedDuration(value_minutes=180.0),
+                is_storage_scenario=True,
+            )
+        )
+
         result = await orchestrator.translate(
             "Raw chicken at room temperature for 3 hours"
         )
-        
+
         assert result.success is True, f"Failed with error: {result.error}"
         assert result.metadata is not None
         assert len(result.metadata.provenance) > 0
-        
+
         # Should have provenance for temperature (from interpretation rule)
         temp_prov = result.metadata.provenance.get("temperature_celsius")
         assert temp_prov is not None
-    
+
     @pytest.mark.asyncio
-    async def test_thermal_inactivation(self, orchestrator, mock_semantic_parser, combase_engine):
+    async def test_thermal_inactivation(
+        self, orchestrator, mock_semantic_parser, combase_engine
+    ):
         """Should run thermal inactivation model."""
         # Check if Salmonella thermal model exists
         model = combase_engine.registry.get_model(
@@ -291,43 +314,47 @@ class TestFullPipeline:
         )
         if model is None:
             pytest.skip("Salmonella thermal model not available")
-        
-        mock_semantic_parser.extract_scenario = AsyncMock(return_value=create_scenario(
-            food_description="chicken",
-            pathogen_mentioned="Salmonella",
-            temperature=ExtractedTemperature(value_celsius=60.0),
-            duration=ExtractedDuration(value_minutes=10.0),
-            is_cooking_scenario=True,
-            implied_model_type=ModelType.THERMAL_INACTIVATION,
-        ))
-        
+
+        mock_semantic_parser.extract_scenario = AsyncMock(
+            return_value=create_scenario(
+                food_description="chicken",
+                pathogen_mentioned="Salmonella",
+                temperature=ExtractedTemperature(value_celsius=60.0),
+                duration=ExtractedDuration(value_minutes=10.0),
+                is_cooking_scenario=True,
+                implied_model_type=ModelType.THERMAL_INACTIVATION,
+            )
+        )
+
         result = await orchestrator.translate(
             "Cooking chicken at 60°C for 10 minutes",
             model_type=ModelType.THERMAL_INACTIVATION,
         )
-        
+
         assert result.success is True, f"Failed with error: {result.error}"
         # Thermal inactivation should show negative log change (death)
         assert result.execution_result.total_log_increase < 0
-    
+
     @pytest.mark.asyncio
     async def test_out_of_scope_query(self, orchestrator, mock_semantic_parser):
         """Should reject out-of-scope queries."""
-        mock_semantic_parser.classify_intent = AsyncMock(return_value=ExtractedIntent(
-            is_prediction_request=False,
-            is_information_query=False,
-            confidence=0.9,
-        ))
-        
-        result = await orchestrator.translate(
-            "What is the meaning of life?"
+        mock_semantic_parser.classify_intent = AsyncMock(
+            return_value=ExtractedIntent(
+                is_prediction_request=False,
+                is_information_query=False,
+                confidence=0.9,
+            )
         )
-        
+
+        result = await orchestrator.translate("What is the meaning of life?")
+
         assert result.success is False
         assert "out of scope" in result.error.lower()
-    
+
     @pytest.mark.asyncio
-    async def test_model_type_inference_cooking(self, orchestrator, mock_semantic_parser, combase_engine):
+    async def test_model_type_inference_cooking(
+        self, orchestrator, mock_semantic_parser, combase_engine
+    ):
         """Should infer thermal inactivation for cooking scenarios."""
         model = combase_engine.registry.get_model(
             ComBaseOrganism.SALMONELLA,
@@ -335,60 +362,70 @@ class TestFullPipeline:
         )
         if model is None:
             pytest.skip("Salmonella thermal model not available")
-        
-        mock_semantic_parser.extract_scenario = AsyncMock(return_value=create_scenario(
-            food_description="chicken",
-            pathogen_mentioned="Salmonella",
-            temperature=ExtractedTemperature(value_celsius=70.0),
-            duration=ExtractedDuration(value_minutes=5.0),
-            is_cooking_scenario=True,
-            implied_model_type=ModelType.THERMAL_INACTIVATION,
-        ))
-        
-        # Don't pass model_type - let it be inferred
-        result = await orchestrator.translate(
-            "Cooking chicken to 70°C for 5 minutes"
+
+        mock_semantic_parser.extract_scenario = AsyncMock(
+            return_value=create_scenario(
+                food_description="chicken",
+                pathogen_mentioned="Salmonella",
+                temperature=ExtractedTemperature(value_celsius=70.0),
+                duration=ExtractedDuration(value_minutes=5.0),
+                is_cooking_scenario=True,
+                implied_model_type=ModelType.THERMAL_INACTIVATION,
+            )
         )
-        
+
+        # Don't pass model_type - let it be inferred
+        result = await orchestrator.translate("Cooking chicken to 70°C for 5 minutes")
+
         assert result.success is True, f"Failed with error: {result.error}"
-        assert result.state.execution_payload.model_selection.model_type == ModelType.THERMAL_INACTIVATION
-    
+        assert (
+            result.state.execution_payload.model_selection.model_type
+            == ModelType.THERMAL_INACTIVATION
+        )
+
     @pytest.mark.asyncio
-    async def test_model_type_inference_storage(self, orchestrator, mock_semantic_parser):
+    async def test_model_type_inference_storage(
+        self, orchestrator, mock_semantic_parser
+    ):
         """Should infer growth for storage scenarios."""
-        mock_semantic_parser.extract_scenario = AsyncMock(return_value=create_scenario(
-            food_description="raw chicken",
-            pathogen_mentioned="Salmonella",
-            temperature=ExtractedTemperature(value_celsius=25.0),
-            duration=ExtractedDuration(value_minutes=180.0),
-            is_storage_scenario=True,
-            implied_model_type=ModelType.GROWTH,
-        ))
-        
-        # Don't pass model_type - let it be inferred
-        result = await orchestrator.translate(
-            "Chicken left out for 3 hours"
+        mock_semantic_parser.extract_scenario = AsyncMock(
+            return_value=create_scenario(
+                food_description="raw chicken",
+                pathogen_mentioned="Salmonella",
+                temperature=ExtractedTemperature(value_celsius=25.0),
+                duration=ExtractedDuration(value_minutes=180.0),
+                is_storage_scenario=True,
+                implied_model_type=ModelType.GROWTH,
+            )
         )
-        
+
+        # Don't pass model_type - let it be inferred
+        result = await orchestrator.translate("Chicken left out for 3 hours")
+
         assert result.success is True, f"Failed with error: {result.error}"
-        assert result.state.execution_payload.model_selection.model_type == ModelType.GROWTH
+        assert (
+            result.state.execution_payload.model_selection.model_type
+            == ModelType.GROWTH
+        )
 
 
 class TestEdgeCases:
     """Edge case and error handling tests."""
-    
+
     @pytest.mark.asyncio
     async def test_missing_single_step_duration_defaults_to_long_window(
         self, orchestrator, mock_semantic_parser
     ):
         """Phase 9.7: missing single-step duration succeeds with long-window default applied."""
-        mock_semantic_parser.extract_scenario = AsyncMock(return_value=create_scenario(
-            food_description="chicken",
-            pathogen_mentioned="Salmonella",
-            temperature=ExtractedTemperature(value_celsius=25.0),
-            duration=ExtractedDuration(),  # No duration info
-            is_storage_scenario=True,
-        ))
+        mock_semantic_parser.extract_scenario = AsyncMock(
+            return_value=create_scenario(
+                food_description="chicken",
+                pathogen_mentioned="Salmonella",
+                temperature=ExtractedTemperature(value_celsius=25.0),
+                duration=ExtractedDuration(),  # No duration info
+                is_storage_scenario=True,
+            )
+        )
 
         result = await orchestrator.translate("Chicken at 25°C")
 
@@ -396,7 +433,11 @@ class TestEdgeCases:
         assert result.error is None
 
         duration_default = next(
-            (d for d in result.metadata.defaults_imputed if d.field_name == "duration_minutes"),
+            (
+                d
+                for d in result.metadata.defaults_imputed
+                if d.field_name == "duration_minutes"
+            ),
             None,
         )
         assert duration_default is not None
@@ -411,19 +452,23 @@ class TestEdgeCases:
         self, orchestrator, mock_semantic_parser
     ):
         """Phase 9.7: explicit duration does not trigger the long-window default."""
-        mock_semantic_parser.extract_scenario = AsyncMock(return_value=create_scenario(
-            food_description="chicken",
-            pathogen_mentioned="Salmonella",
-            temperature=ExtractedTemperature(value_celsius=25.0),
-            duration=ExtractedDuration(value_minutes=120.0),
-            is_storage_scenario=True,
-        ))
+        mock_semantic_parser.extract_scenario = AsyncMock(
+            return_value=create_scenario(
+                food_description="chicken",
+                pathogen_mentioned="Salmonella",
+                temperature=ExtractedTemperature(value_celsius=25.0),
+                duration=ExtractedDuration(value_minutes=120.0),
+                is_storage_scenario=True,
+            )
+        )
 
         result = await orchestrator.translate("Chicken at 25°C for 2 hours")
 
         assert result.success is True
         duration_defaults = [
-            d for d in result.metadata.defaults_imputed if d.field_name == "duration_minutes"
+            d
+            for d in result.metadata.defaults_imputed
+            if d.field_name == "duration_minutes"
         ]
         assert duration_defaults == []
 
@@ -432,22 +477,29 @@ class TestEdgeCases:
         self, orchestrator, mock_semantic_parser
     ):
         """Phase 9.7: rule-matched duration ('overnight' → 480 min) does not trigger long-window."""
-        mock_semantic_parser.extract_scenario = AsyncMock(return_value=create_scenario(
-            food_description="chicken",
-            pathogen_mentioned="Salmonella",
-            temperature=ExtractedTemperature(value_celsius=25.0),
-            duration=ExtractedDuration(description="overnight"),
-            is_storage_scenario=True,
-        ))
+        mock_semantic_parser.extract_scenario = AsyncMock(
+            return_value=create_scenario(
+                food_description="chicken",
+                pathogen_mentioned="Salmonella",
+                temperature=ExtractedTemperature(value_celsius=25.0),
+                duration=ExtractedDuration(description="overnight"),
+                is_storage_scenario=True,
+            )
+        )
 
         result = await orchestrator.translate("Chicken overnight")
 
         assert result.success is True
         duration_defaults = [
-            d for d in result.metadata.defaults_imputed if d.field_name == "duration_minutes"
+            d
+            for d in result.metadata.defaults_imputed
+            if d.field_name == "duration_minutes"
         ]
         assert duration_defaults == []
-        assert result.state.execution_payload.time_temperature_profile.total_duration_minutes == 480.0
+        assert (
+            result.state.execution_payload.time_temperature_profile.total_duration_minutes
+            == 480.0
+        )
 
     @pytest.mark.asyncio
     async def test_multistep_missing_one_duration_fails(
@@ -480,7 +532,9 @@ class TestEdgeCases:
             is_non_thermal_treatment=False,
             implied_model_type=ModelType.GROWTH,
         )
-        mock_semantic_parser.extract_scenario = AsyncMock(return_value=multi_step_scenario)
+        mock_semantic_parser.extract_scenario = AsyncMock(
+            return_value=multi_step_scenario
+        )
 
         result = await orchestrator.translate("Chicken in two stages")
 
@@ -518,32 +572,39 @@ class TestEdgeCases:
             is_non_thermal_treatment=False,
             implied_model_type=ModelType.GROWTH,
         )
-        mock_semantic_parser.extract_scenario = AsyncMock(return_value=multi_step_scenario)
+        mock_semantic_parser.extract_scenario = AsyncMock(
+            return_value=multi_step_scenario
+        )
 
         result = await orchestrator.translate("Chicken in two stages")
 
         assert result.success is False
         assert "step 1" in result.error.lower()
-    
+
     @pytest.mark.asyncio
-    async def test_defaults_applied_with_warnings(self, orchestrator, mock_semantic_parser):
+    async def test_defaults_applied_with_warnings(
+        self, orchestrator, mock_semantic_parser
+    ):
         """Should apply defaults and track warnings."""
-        mock_semantic_parser.extract_scenario = AsyncMock(return_value=create_scenario(
-            food_description="unknown food",
-            pathogen_mentioned="Salmonella",
-            temperature=ExtractedTemperature(value_celsius=25.0),
-            duration=ExtractedDuration(value_minutes=180.0),
-            is_storage_scenario=True,
-        ))
-        
-        result = await orchestrator.translate(
-            "Unknown food at 25°C for 3 hours"
+        mock_semantic_parser.extract_scenario = AsyncMock(
+            return_value=create_scenario(
+                food_description="unknown food",
+                pathogen_mentioned="Salmonella",
+                temperature=ExtractedTemperature(value_celsius=25.0),
+                duration=ExtractedDuration(value_minutes=180.0),
+                is_storage_scenario=True,
+            )
         )
-        
+
+        result = await orchestrator.translate("Unknown food at 25°C for 3 hours")
+
         assert result.success is True, f"Failed with error: {result.error}"
         # Should have warnings about defaults applied
         assert result.metadata is not None
-        assert len(result.metadata.warnings) > 0 or len(result.metadata.defaults_imputed) > 0
+        assert (
+            len(result.metadata.warnings) > 0
+            or len(result.metadata.defaults_imputed) > 0
+        )
 
 
 class TestAuditFieldMap:
@@ -564,22 +625,23 @@ class TestAuditFieldMap:
         field_audit.ph.final_value must reflect that selection, not the
         pre-standardization placeholder (5.9).
         """
-        mock_semantic_parser.extract_scenario = AsyncMock(return_value=create_scenario(
-            food_description="raw chicken",
-            pathogen_mentioned="Salmonella",
-            temperature=ExtractedTemperature(value_celsius=25.0),
-            duration=ExtractedDuration(value_minutes=240.0),
-            is_storage_scenario=True,
-        ))
-
-        result = await orchestrator.translate(
-            "Raw chicken kept at 25°C for 4 hours."
+        mock_semantic_parser.extract_scenario = AsyncMock(
+            return_value=create_scenario(
+                food_description="raw chicken",
+                pathogen_mentioned="Salmonella",
+                temperature=ExtractedTemperature(value_celsius=25.0),
+                duration=ExtractedDuration(value_minutes=240.0),
+                is_storage_scenario=True,
+            )
         )
+
+        result = await orchestrator.translate("Raw chicken kept at 25°C for 4 hours.")
 
         assert result.success is True, f"Failed with error: {result.error}"
         assert result.metadata is not None
 
         from app.api.routes.translation import _build_field_audit
+
         field_audit = _build_field_audit(result)
 
         # pH must be present and reflect the post-standardization bound
@@ -594,7 +656,10 @@ class TestAuditFieldMap:
         )
 
         # When a range was retrieved and a bound was selected, assert the structure
-        if ph_entry.standardization is not None and ph_entry.standardization.rule == "range_bound_selection":
+        if (
+            ph_entry.standardization is not None
+            and ph_entry.standardization.rule == "range_bound_selection"
+        ):
             std = ph_entry.standardization
             assert std.direction == "upper"
             assert isinstance(std.before_value, list) and len(std.before_value) == 2
@@ -609,13 +674,15 @@ class TestAuditFieldMap:
         StandardizationService defaults it to 0.99.  Either way water_activity
         must appear in field_audit — whether grounded or defaulted.
         """
-        mock_semantic_parser.extract_scenario = AsyncMock(return_value=create_scenario(
-            food_description="cooked rice",
-            pathogen_mentioned="Salmonella",
-            temperature=ExtractedTemperature(description="sitting out"),
-            duration=ExtractedDuration(description="a while"),
-            is_storage_scenario=True,
-        ))
+        mock_semantic_parser.extract_scenario = AsyncMock(
+            return_value=create_scenario(
+                food_description="cooked rice",
+                pathogen_mentioned="Salmonella",
+                temperature=ExtractedTemperature(description="sitting out"),
+                duration=ExtractedDuration(description="a while"),
+                is_storage_scenario=True,
+            )
+        )
 
         result = await orchestrator.translate(
             "Cooked rice was sitting out for a while. Predict Bacillus cereus growth."
@@ -625,12 +692,13 @@ class TestAuditFieldMap:
         assert result.metadata is not None
 
         from app.api.routes.translation import _build_field_audit
+
         field_audit = _build_field_audit(result)
 
         # water_activity must appear — either from RAG or from conservative default
-        assert "water_activity" in field_audit, (
-            "water_activity must be present in field_audit whether grounded or defaulted"
-        )
+        assert (
+            "water_activity" in field_audit
+        ), "water_activity must be present in field_audit whether grounded or defaulted"
 
         aw_entry = field_audit["water_activity"]
         aw_used = result.state.execution_payload.parameters.water_activity
@@ -640,7 +708,11 @@ class TestAuditFieldMap:
         assert "temperature_celsius" in field_audit
         temp_entry = field_audit["temperature_celsius"]
         if temp_entry.extraction is not None:
-            assert temp_entry.extraction.method in ("rule_match", "embedding_fallback", None)
+            assert temp_entry.extraction.method in (
+                "rule_match",
+                "embedding_fallback",
+                None,
+            )
             if temp_entry.extraction.method in ("rule_match", "embedding_fallback"):
                 assert temp_entry.extraction.matched_pattern is not None
                 assert isinstance(temp_entry.extraction.conservative, bool)
@@ -670,13 +742,15 @@ class TestRangeClampingEndToEnd:
         if model is None:
             pytest.skip("E. coli growth model not available")
 
-        mock_semantic_parser.extract_scenario = AsyncMock(return_value=create_scenario(
-            food_description="milk",
-            pathogen_mentioned="E. coli",
-            temperature=ExtractedTemperature(value_celsius=50.0),
-            duration=ExtractedDuration(value_minutes=360.0),
-            is_storage_scenario=True,
-        ))
+        mock_semantic_parser.extract_scenario = AsyncMock(
+            return_value=create_scenario(
+                food_description="milk",
+                pathogen_mentioned="E. coli",
+                temperature=ExtractedTemperature(value_celsius=50.0),
+                duration=ExtractedDuration(value_minutes=360.0),
+                is_storage_scenario=True,
+            )
+        )
 
         result = await orchestrator.translate(
             "Predict E. coli growth on milk at 50°C for 6 hours."
@@ -687,13 +761,14 @@ class TestRangeClampingEndToEnd:
 
         # Payload temperature must be clamped
         temp_used = result.state.execution_payload.parameters.temperature_celsius
-        assert temp_used == pytest.approx(model.constraints.temp_max), (
-            f"Expected temperature clamped to {model.constraints.temp_max}°C, got {temp_used}"
-        )
+        assert temp_used == pytest.approx(
+            model.constraints.temp_max
+        ), f"Expected temperature clamped to {model.constraints.temp_max}°C, got {temp_used}"
 
         # Structured RangeClamp in metadata
         temp_clamps = [
-            c for c in result.metadata.range_clamps
+            c
+            for c in result.metadata.range_clamps
             if c.field_name == "temperature_celsius"
         ]
         assert len(temp_clamps) == 1
@@ -709,6 +784,7 @@ class TestRangeClampingEndToEnd:
 
         # field_audit.temperature_celsius.standardization.rule == "range_clamp"
         from app.api.routes.translation import _build_field_audit
+
         field_audit = _build_field_audit(result)
         assert "temperature_celsius" in field_audit
         std = field_audit["temperature_celsius"].standardization
@@ -732,20 +808,23 @@ class TestRangeClampingEndToEnd:
         if model is None:
             pytest.skip("E. coli growth model not available")
 
-        mock_semantic_parser.extract_scenario = AsyncMock(return_value=create_scenario(
-            food_description="milk",
-            pathogen_mentioned="E. coli",
-            temperature=ExtractedTemperature(value_celsius=50.0),
-            duration=ExtractedDuration(value_minutes=360.0),
-            is_storage_scenario=True,
-        ))
+        mock_semantic_parser.extract_scenario = AsyncMock(
+            return_value=create_scenario(
+                food_description="milk",
+                pathogen_mentioned="E. coli",
+                temperature=ExtractedTemperature(value_celsius=50.0),
+                duration=ExtractedDuration(value_minutes=360.0),
+                is_storage_scenario=True,
+            )
+        )
 
         result = await orchestrator.translate(
             "Predict E. coli growth on milk at 50°C for 6 hours."
         )
         assert result.success is True
 
-        from app.api.routes.translation import _build_field_audit, _build_audit_detail
+        from app.api.routes.translation import _build_audit_detail, _build_field_audit
+
         field_audit = _build_field_audit(result)
         audit_detail = _build_audit_detail(result, field_audit)
 
@@ -783,13 +862,15 @@ class TestDefaultOrganismFieldAudit:
         Uses "frobnitz" — TaxonomyBridge returns None (no FoodEx2 match), so
         the category fallback returns immediately without grounding organism.
         """
-        mock_semantic_parser.extract_scenario = AsyncMock(return_value=create_scenario(
-            food_description="frobnitz",
-            pathogen_mentioned=None,
-            temperature=ExtractedTemperature(value_celsius=25.0),
-            duration=ExtractedDuration(value_minutes=240.0),
-            is_storage_scenario=True,
-        ))
+        mock_semantic_parser.extract_scenario = AsyncMock(
+            return_value=create_scenario(
+                food_description="frobnitz",
+                pathogen_mentioned=None,
+                temperature=ExtractedTemperature(value_celsius=25.0),
+                duration=ExtractedDuration(value_minutes=240.0),
+                is_storage_scenario=True,
+            )
+        )
 
         result = await orchestrator.translate(
             "How long before frobnitz left out at 25°C becomes unsafe?"
@@ -798,11 +879,12 @@ class TestDefaultOrganismFieldAudit:
         assert result.success is False
 
         from app.api.routes.translation import _build_field_audit
+
         field_audit = _build_field_audit(result)
 
-        assert "organism" in field_audit, (
-            "organism must appear in field_audit as a missing required field"
-        )
+        assert (
+            "organism" in field_audit
+        ), "organism must appear in field_audit as a missing required field"
         org_entry = field_audit["organism"]
         assert org_entry.source == "missing"
 
@@ -817,13 +899,15 @@ class TestDefaultOrganismFieldAudit:
         Uses "mustard" — bridge resolves to condiment, which has no IFT-2003-T1
         row, so the category fallback returns without grounding organism.
         """
-        mock_semantic_parser.extract_scenario = AsyncMock(return_value=create_scenario(
-            food_description="mustard",
-            pathogen_mentioned=None,
-            temperature=ExtractedTemperature(value_celsius=25.0),
-            duration=ExtractedDuration(value_minutes=240.0),
-            is_storage_scenario=True,
-        ))
+        mock_semantic_parser.extract_scenario = AsyncMock(
+            return_value=create_scenario(
+                food_description="mustard",
+                pathogen_mentioned=None,
+                temperature=ExtractedTemperature(value_celsius=25.0),
+                duration=ExtractedDuration(value_minutes=240.0),
+                is_storage_scenario=True,
+            )
+        )
 
         result = await orchestrator.translate(
             "Is mustard left out at 25°C for 4 hours safe?"
@@ -832,7 +916,8 @@ class TestDefaultOrganismFieldAudit:
         assert result.success is False
 
         org_defaults = [
-            d for d in (result.metadata.defaults_imputed if result.metadata else [])
+            d
+            for d in (result.metadata.defaults_imputed if result.metadata else [])
             if d.field_name == "organism"
         ]
         assert org_defaults == []
@@ -853,13 +938,15 @@ class TestCategoryPathogenFallbackWarningPropagation:
     ):
         """When the category fallback grounds organism, a transparency warning must appear
         in result.metadata.warnings (not just grounded.warnings, which is internal)."""
-        mock_semantic_parser.extract_scenario = AsyncMock(return_value=create_scenario(
-            food_description="barley grain",
-            pathogen_mentioned=None,
-            temperature=ExtractedTemperature(value_celsius=25.0),
-            duration=ExtractedDuration(value_minutes=240.0),
-            is_storage_scenario=True,
-        ))
+        mock_semantic_parser.extract_scenario = AsyncMock(
+            return_value=create_scenario(
+                food_description="barley grain",
+                pathogen_mentioned=None,
+                temperature=ExtractedTemperature(value_celsius=25.0),
+                duration=ExtractedDuration(value_minutes=240.0),
+                is_storage_scenario=True,
+            )
+        )
 
         result = await orchestrator.translate(
             "How safe is barley grain left out at 25°C for 4 hours?"
@@ -867,10 +954,7 @@ class TestCategoryPathogenFallbackWarningPropagation:
 
         assert result.success is True
         assert result.metadata is not None
-        fallback_warnings = [
-            w for w in result.metadata.warnings
-            if "IFT-2003-T1" in w
-        ]
+        fallback_warnings = [w for w in result.metadata.warnings if "IFT-2003-T1" in w]
         assert len(fallback_warnings) >= 1, (
             "Category fallback transparency warning must propagate from grounded.warnings "
             "to result.metadata.warnings via the orchestrator"
@@ -891,13 +975,15 @@ class TestQualifierStrippingEndToEnd:
         self, orchestrator, mock_semantic_parser
     ):
         """'a large batch of ham' stripped to 'ham' → category fallback → success."""
-        mock_semantic_parser.extract_scenario = AsyncMock(return_value=create_scenario(
-            food_description="ham",   # simulates qualifier-stripped parser output
-            pathogen_mentioned=None,
-            temperature=ExtractedTemperature(value_celsius=25.0),
-            duration=ExtractedDuration(value_minutes=240.0),
-            is_storage_scenario=True,
-        ))
+        mock_semantic_parser.extract_scenario = AsyncMock(
+            return_value=create_scenario(
+                food_description="ham",  # simulates qualifier-stripped parser output
+                pathogen_mentioned=None,
+                temperature=ExtractedTemperature(value_celsius=25.0),
+                duration=ExtractedDuration(value_minutes=240.0),
+                is_storage_scenario=True,
+            )
+        )
 
         result = await orchestrator.translate(
             "What happens to a large batch of ham left to cool at room temperature?"
@@ -912,6 +998,7 @@ class TestQualifierStrippingEndToEnd:
         assert result.success is True
 
         from app.api.routes.translation import _build_field_audit
+
         field_audit = _build_field_audit(result)
         assert "organism" in field_audit
         assert field_audit["organism"].source == "rag_pathogen_category_fallback"
@@ -941,14 +1028,16 @@ class TestThermalInactivationEndToEnd:
         if model is None:
             pytest.skip("Salmonella thermal inactivation model not available")
 
-        mock_semantic_parser.extract_scenario = AsyncMock(return_value=create_scenario(
-            food_description="chicken",
-            pathogen_mentioned="Salmonella",
-            temperature=ExtractedTemperature(value_celsius=65.0),
-            duration=ExtractedDuration(value_minutes=10.0),
-            is_cooking_scenario=True,
-            implied_model_type=ModelType.THERMAL_INACTIVATION,
-        ))
+        mock_semantic_parser.extract_scenario = AsyncMock(
+            return_value=create_scenario(
+                food_description="chicken",
+                pathogen_mentioned="Salmonella",
+                temperature=ExtractedTemperature(value_celsius=65.0),
+                duration=ExtractedDuration(value_minutes=10.0),
+                is_cooking_scenario=True,
+                implied_model_type=ModelType.THERMAL_INACTIVATION,
+            )
+        )
 
         result = await orchestrator.translate(
             "Calculate Salmonella thermal inactivation in chicken at 65°C for 10 minutes.",
@@ -956,7 +1045,10 @@ class TestThermalInactivationEndToEnd:
         )
 
         assert result.success is True, f"Failed with error: {result.error}"
-        assert result.state.execution_payload.model_selection.model_type == ModelType.THERMAL_INACTIVATION
+        assert (
+            result.state.execution_payload.model_selection.model_type
+            == ModelType.THERMAL_INACTIVATION
+        )
         assert result.execution_result is not None
         # Thermal inactivation produces a negative log change (pathogen death)
         assert result.execution_result.total_log_increase < 0
@@ -979,14 +1071,16 @@ class TestThermalInactivationEndToEnd:
         if model is None:
             pytest.skip("Salmonella thermal inactivation model not available")
 
-        mock_semantic_parser.extract_scenario = AsyncMock(return_value=create_scenario(
-            food_description="raw chicken",
-            pathogen_mentioned="Salmonella",
-            temperature=ExtractedTemperature(value_celsius=65.0),
-            duration=ExtractedDuration(value_minutes=10.0),
-            is_cooking_scenario=True,
-            implied_model_type=ModelType.THERMAL_INACTIVATION,
-        ))
+        mock_semantic_parser.extract_scenario = AsyncMock(
+            return_value=create_scenario(
+                food_description="raw chicken",
+                pathogen_mentioned="Salmonella",
+                temperature=ExtractedTemperature(value_celsius=65.0),
+                duration=ExtractedDuration(value_minutes=10.0),
+                is_cooking_scenario=True,
+                implied_model_type=ModelType.THERMAL_INACTIVATION,
+            )
+        )
 
         result = await orchestrator.translate(
             "Predict Salmonella thermal inactivation in chicken at 65°C for 10 minutes.",
@@ -997,6 +1091,7 @@ class TestThermalInactivationEndToEnd:
         assert result.metadata is not None
 
         from app.api.routes.translation import _build_field_audit
+
         field_audit = _build_field_audit(result)
 
         # If pH was retrieved as a range, the standardization block must show "lower"
@@ -1054,8 +1149,12 @@ class TestValidationFailureAudit:
         )
 
     @pytest.mark.asyncio
-    async def test_failure_response_names_missing_field(self, orchestrator, mock_semantic_parser):
-        mock_semantic_parser.extract_scenario = AsyncMock(return_value=self._make_a2_scenario())
+    async def test_failure_response_names_missing_field(
+        self, orchestrator, mock_semantic_parser
+    ):
+        mock_semantic_parser.extract_scenario = AsyncMock(
+            return_value=self._make_a2_scenario()
+        )
         result = await orchestrator.translate(
             "For the exposure assessment, we need to estimate Salmonella growth on ground beef "
             "from purchase to cooking. Model the growth during the transport and home storage "
@@ -1068,27 +1167,40 @@ class TestValidationFailureAudit:
     @pytest.mark.asyncio
     async def test_organism_in_field_audit(self, orchestrator, mock_semantic_parser):
         from app.api.routes.translation import _build_field_audit
-        mock_semantic_parser.extract_scenario = AsyncMock(return_value=self._make_a2_scenario())
+
+        mock_semantic_parser.extract_scenario = AsyncMock(
+            return_value=self._make_a2_scenario()
+        )
         result = await orchestrator.translate("A2-style ground beef multi-step query")
         field_audit = _build_field_audit(result)
         assert "organism" in field_audit
         assert field_audit["organism"].final_value is not None
 
     @pytest.mark.asyncio
-    async def test_step_temperature_in_field_audit(self, orchestrator, mock_semantic_parser):
+    async def test_step_temperature_in_field_audit(
+        self, orchestrator, mock_semantic_parser
+    ):
         """Step 1 temperature resolved via rule → must appear with a non-null final_value."""
         from app.api.routes.translation import _build_field_audit
-        mock_semantic_parser.extract_scenario = AsyncMock(return_value=self._make_a2_scenario())
+
+        mock_semantic_parser.extract_scenario = AsyncMock(
+            return_value=self._make_a2_scenario()
+        )
         result = await orchestrator.translate("A2-style ground beef multi-step query")
         field_audit = _build_field_audit(result)
         assert "temperature_celsius (step 1)" in field_audit
         assert field_audit["temperature_celsius (step 1)"].final_value is not None
 
     @pytest.mark.asyncio
-    async def test_missing_duration_in_field_audit_with_null_value(self, orchestrator, mock_semantic_parser):
+    async def test_missing_duration_in_field_audit_with_null_value(
+        self, orchestrator, mock_semantic_parser
+    ):
         """Step 1 duration was not provided → must appear with final_value=null and source=missing."""
         from app.api.routes.translation import _build_field_audit
-        mock_semantic_parser.extract_scenario = AsyncMock(return_value=self._make_a2_scenario())
+
+        mock_semantic_parser.extract_scenario = AsyncMock(
+            return_value=self._make_a2_scenario()
+        )
         result = await orchestrator.translate("A2-style ground beef multi-step query")
         field_audit = _build_field_audit(result)
         assert "duration_minutes (step 1)" in field_audit
@@ -1097,27 +1209,39 @@ class TestValidationFailureAudit:
         assert entry.source == ValueSource.MISSING.value
 
     @pytest.mark.asyncio
-    async def test_defaults_imputed_appear_in_audit_summary(self, orchestrator, mock_semantic_parser):
+    async def test_defaults_imputed_appear_in_audit_summary(
+        self, orchestrator, mock_semantic_parser
+    ):
         """
         ph and water_activity must appear in the audit even on failure.
         They may be grounded from RAG (field_audit) or defaulted (defaults_imputed)
         depending on what the test vector store contains for the food.
         Either channel is acceptable — the invariant is that they are not silently absent.
         """
-        from app.api.routes.translation import _build_field_audit, _build_audit_detail
-        mock_semantic_parser.extract_scenario = AsyncMock(return_value=self._make_a2_scenario())
+        from app.api.routes.translation import _build_audit_detail, _build_field_audit
+
+        mock_semantic_parser.extract_scenario = AsyncMock(
+            return_value=self._make_a2_scenario()
+        )
         result = await orchestrator.translate("A2-style ground beef multi-step query")
         field_audit = _build_field_audit(result)
         audit = _build_audit_detail(result, field_audit)
-        all_resolved_fields = set(field_audit.keys()) | {d.field_name for d in audit.audit.defaults_imputed}
+        all_resolved_fields = set(field_audit.keys()) | {
+            d.field_name for d in audit.audit.defaults_imputed
+        }
         assert "ph" in all_resolved_fields
         assert "water_activity" in all_resolved_fields
 
     @pytest.mark.asyncio
-    async def test_structured_warning_in_audit(self, orchestrator, mock_semantic_parser):
+    async def test_structured_warning_in_audit(
+        self, orchestrator, mock_semantic_parser
+    ):
         """audit.audit.warnings must contain a message naming the missing field."""
-        from app.api.routes.translation import _build_field_audit, _build_audit_detail
-        mock_semantic_parser.extract_scenario = AsyncMock(return_value=self._make_a2_scenario())
+        from app.api.routes.translation import _build_audit_detail, _build_field_audit
+
+        mock_semantic_parser.extract_scenario = AsyncMock(
+            return_value=self._make_a2_scenario()
+        )
         result = await orchestrator.translate("A2-style ground beef multi-step query")
         field_audit = _build_field_audit(result)
         audit = _build_audit_detail(result, field_audit)
@@ -1127,7 +1251,9 @@ class TestValidationFailureAudit:
 
     @pytest.mark.asyncio
     async def test_prediction_is_null(self, orchestrator, mock_semantic_parser):
-        mock_semantic_parser.extract_scenario = AsyncMock(return_value=self._make_a2_scenario())
+        mock_semantic_parser.extract_scenario = AsyncMock(
+            return_value=self._make_a2_scenario()
+        )
         result = await orchestrator.translate("A2-style ground beef multi-step query")
         assert result.execution_result is None
 
@@ -1143,8 +1269,8 @@ class TestValidationFailureAudit:
         Marked @pytest.mark.live — excluded from standard pytest run.
         Run with: pytest -m live tests/integration/test_full_pipeline.py::TestValidationFailureAudit::test_a2_verbatim_live
         """
-        from app.services.extraction.semantic_parser import get_semantic_parser
         from app.api.routes.translation import _build_field_audit
+        from app.services.extraction.semantic_parser import get_semantic_parser
 
         # Swap in the real parser for this test
         real_orchestrator = Orchestrator(
@@ -1163,8 +1289,12 @@ class TestValidationFailureAudit:
         )
 
         field_audit = _build_field_audit(result)
-        assert len(field_audit) > 0, "field_audit must never be empty regardless of success/failure"
-        assert "organism" in field_audit, "organism must always be present in field_audit"
+        assert (
+            len(field_audit) > 0
+        ), "field_audit must never be empty regardless of success/failure"
+        assert (
+            "organism" in field_audit
+        ), "organism must always be present in field_audit"
         # On failure: error must name the missing field
         if not result.success:
             assert result.error is not None
@@ -1186,21 +1316,24 @@ class TestTemperatureExtractionShape:
 
     @pytest.mark.live
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("phrase,expected_celsius,desc_contains", [
-        # Explicit numeric — value_celsius populated, description null or carries qualifier
-        ("4°C",                          4.0,                    None),
-        ("around 4°C",                   4.0,                    "4"),
-        ("72°F",                         pytest.approx(22.2, abs=0.5), "72"),
-        ("refrigerator set to 38°F",     pytest.approx(3.3,  abs=0.5), "38"),
-        # Descriptive — value_celsius null, description carries original phrase verbatim
-        ("home refrigerator",            None, "home refrigerator"),
-        ("domestic refrigerator",        None, "domestic refrigerator"),
-        ("household freezer",            None, "household freezer"),
-        ("typical retail refrigeration", None, "typical retail refrigeration"),
-        ("room temperature",             None, "room temperature"),
-        ("stored cold",                  None, "stored cold"),
-        ("ambient",                      None, "ambient"),
-    ])
+    @pytest.mark.parametrize(
+        "phrase,expected_celsius,desc_contains",
+        [
+            # Explicit numeric — value_celsius populated, description null or carries qualifier
+            ("4°C", 4.0, None),
+            ("around 4°C", 4.0, "4"),
+            ("72°F", pytest.approx(22.2, abs=0.5), "72"),
+            ("refrigerator set to 38°F", pytest.approx(3.3, abs=0.5), "38"),
+            # Descriptive — value_celsius null, description carries original phrase verbatim
+            ("home refrigerator", None, "home refrigerator"),
+            ("domestic refrigerator", None, "domestic refrigerator"),
+            ("household freezer", None, "household freezer"),
+            ("typical retail refrigeration", None, "typical retail refrigeration"),
+            ("room temperature", None, "room temperature"),
+            ("stored cold", None, "stored cold"),
+            ("ambient", None, "ambient"),
+        ],
+    )
     async def test_extraction_shape(self, phrase, expected_celsius, desc_contains):
         """
         Live extractor must produce the documented (value_celsius, description) shape.
@@ -1221,17 +1354,17 @@ class TestTemperatureExtractionShape:
                 f"LLM applied world-knowledge inference despite prompt guard."
             )
         else:
-            assert temp.value_celsius == expected_celsius, (
-                f"'{phrase}': expected value_celsius≈{expected_celsius} but got {temp.value_celsius}"
-            )
+            assert (
+                temp.value_celsius == expected_celsius
+            ), f"'{phrase}': expected value_celsius≈{expected_celsius} but got {temp.value_celsius}"
 
         if desc_contains is None:
             # Pure numeric — no descriptive qualifier, description may be null
             pass  # Not asserting on description for plain "4°C"
         else:
-            assert temp.description is not None, (
-                f"'{phrase}': expected description to contain '{desc_contains}' but description=null"
-            )
+            assert (
+                temp.description is not None
+            ), f"'{phrase}': expected description to contain '{desc_contains}' but description=null"
             assert desc_contains.lower() in temp.description.lower(), (
                 f"'{phrase}': description '{temp.description}' does not contain '{desc_contains}'. "
                 f"LLM paraphrased instead of preserving original phrasing."
@@ -1255,6 +1388,7 @@ class TestVagueTemperatureAuditShapes:
     def _make_live_orchestrator(self, orchestrator):
         """Swap in the real semantic parser, keep all other components from the fixture."""
         from app.services.extraction.semantic_parser import get_semantic_parser
+
         return Orchestrator(
             session_manager=orchestrator._sessions,
             semantic_parser=get_semantic_parser(),
@@ -1265,29 +1399,39 @@ class TestVagueTemperatureAuditShapes:
 
     @pytest.mark.live
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("query,expected_source,expected_method", [
-        (
-            "Salmonella in ground beef stored in the home refrigerator for 4 hours",
-            "user_inferred", "rule_match",
-        ),
-        (
-            "L. monocytogenes in deli turkey under typical retail refrigeration for 35 days",
-            "user_inferred", "rule_match",
-        ),
-        (
-            "Ground beef stored cold for 2 hours",
-            "user_inferred", "rule_match",
-        ),
-        (
-            "Cheese in household freezer for 30 days",
-            "user_inferred", "rule_match",
-        ),
-        (
-            "Sauce held at 4°C for 6 hours",
-            "user_explicit", "llm_extraction",
-        ),
-    ])
-    async def test_temperature_audit_shape(self, orchestrator, query, expected_source, expected_method):
+    @pytest.mark.parametrize(
+        "query,expected_source,expected_method",
+        [
+            (
+                "Salmonella in ground beef stored in the home refrigerator for 4 hours",
+                "user_inferred",
+                "rule_match",
+            ),
+            (
+                "L. monocytogenes in deli turkey under typical retail refrigeration for 35 days",
+                "user_inferred",
+                "rule_match",
+            ),
+            (
+                "Ground beef stored cold for 2 hours",
+                "user_inferred",
+                "rule_match",
+            ),
+            (
+                "Cheese in household freezer for 30 days",
+                "user_inferred",
+                "rule_match",
+            ),
+            (
+                "Sauce held at 4°C for 6 hours",
+                "user_explicit",
+                "llm_extraction",
+            ),
+        ],
+    )
+    async def test_temperature_audit_shape(
+        self, orchestrator, query, expected_source, expected_method
+    ):
         """
         For each query, assert the temperature audit entry has the expected source and method.
 
@@ -1300,9 +1444,9 @@ class TestVagueTemperatureAuditShapes:
         result = await live_orchestrator.translate(query)
 
         field_audit = _build_field_audit(result)
-        assert "temperature_celsius" in field_audit, (
-            f"temperature_celsius missing from field_audit for query: {query!r}"
-        )
+        assert (
+            "temperature_celsius" in field_audit
+        ), f"temperature_celsius missing from field_audit for query: {query!r}"
 
         temp_entry = field_audit["temperature_celsius"]
         assert temp_entry.source == expected_source, (
@@ -1311,9 +1455,9 @@ class TestVagueTemperatureAuditShapes:
             f"If source='user_explicit', the prompt guard is not suppressing LLM world-knowledge "
             f"inference on this run."
         )
-        assert temp_entry.extraction is not None, (
-            f"extraction block is null for query: {query!r}"
-        )
+        assert (
+            temp_entry.extraction is not None
+        ), f"extraction block is null for query: {query!r}"
         assert temp_entry.extraction.method == expected_method, (
             f"Expected method={expected_method!r} but got {temp_entry.extraction.method!r}\n"
             f"Query: {query!r}"
@@ -1335,15 +1479,19 @@ class TestShigellaExecutability:
         """'shigella in my salad' (growth, no nitrite) -> success=false, error
         names Shigella and growth in plain language; no short-code string
         ("sf / growth / none") reaches the caller."""
-        mock_semantic_parser.extract_scenario = AsyncMock(return_value=create_scenario(
-            food_description="salad",
-            pathogen_mentioned="Shigella",
-            temperature=ExtractedTemperature(value_celsius=25.0),
-            duration=ExtractedDuration(value_minutes=180.0),
-            is_storage_scenario=True,
-        ))
+        mock_semantic_parser.extract_scenario = AsyncMock(
+            return_value=create_scenario(
+                food_description="salad",
+                pathogen_mentioned="Shigella",
+                temperature=ExtractedTemperature(value_celsius=25.0),
+                duration=ExtractedDuration(value_minutes=180.0),
+                is_storage_scenario=True,
+            )
+        )
 
-        result = await orchestrator.translate("Shigella in my salad left out for 3 hours")
+        result = await orchestrator.translate(
+            "Shigella in my salad left out for 3 hours"
+        )
 
         assert result.success is False
         assert result.error is not None
@@ -1359,14 +1507,18 @@ class TestShigellaExecutability:
         """sf + Factor4Type.NITRITE is executable and must keep working -- the
         executability check must use the actual factor4_type being built, not
         assume NONE."""
-        mock_semantic_parser.extract_scenario = AsyncMock(return_value=create_scenario(
-            food_description="cured meat",
-            pathogen_mentioned="Shigella",
-            temperature=ExtractedTemperature(value_celsius=25.0),
-            duration=ExtractedDuration(value_minutes=180.0),
-            environmental_conditions=ExtractedEnvironmentalConditions(nitrite_ppm=100.0),
-            is_storage_scenario=True,
-        ))
+        mock_semantic_parser.extract_scenario = AsyncMock(
+            return_value=create_scenario(
+                food_description="cured meat",
+                pathogen_mentioned="Shigella",
+                temperature=ExtractedTemperature(value_celsius=25.0),
+                duration=ExtractedDuration(value_minutes=180.0),
+                environmental_conditions=ExtractedEnvironmentalConditions(
+                    nitrite_ppm=100.0
+                ),
+                is_storage_scenario=True,
+            )
+        )
 
         # Explicit model_type=GROWTH: Shigella's only executable row is
         # (ModelID=1/GROWTH, Factor4=nitrite). _determine_model_type() would
@@ -1397,15 +1549,19 @@ class TestPreservativeRoutingRemoved:
         low pH/aw -- only nitrite_ppm set. Must fall through to the GROWTH default
         and produce a real prediction, not a refusal. Salmonella + nitrite + GROWTH
         is executable (3 organisms are, per the executable-organism matrix)."""
-        mock_semantic_parser.extract_scenario = AsyncMock(return_value=create_scenario(
-            food_description="cured meat",
-            pathogen_mentioned="Salmonella",
-            temperature=ExtractedTemperature(value_celsius=25.0),
-            duration=ExtractedDuration(value_minutes=180.0),
-            environmental_conditions=ExtractedEnvironmentalConditions(nitrite_ppm=100.0),
-            is_storage_scenario=True,
-            implied_model_type=None,
-        ))
+        mock_semantic_parser.extract_scenario = AsyncMock(
+            return_value=create_scenario(
+                food_description="cured meat",
+                pathogen_mentioned="Salmonella",
+                temperature=ExtractedTemperature(value_celsius=25.0),
+                duration=ExtractedDuration(value_minutes=180.0),
+                environmental_conditions=ExtractedEnvironmentalConditions(
+                    nitrite_ppm=100.0
+                ),
+                is_storage_scenario=True,
+                implied_model_type=None,
+            )
+        )
 
         result = await orchestrator.translate(
             "Salmonella on cured meat with 100ppm nitrite left out for 3 hours"

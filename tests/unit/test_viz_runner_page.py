@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Mirror of pure helpers from pages/3_run_experiments.py
 # ---------------------------------------------------------------------------
@@ -154,15 +153,21 @@ class TestEstimateCost:
 
     def test_single_model(self):
         # 0.005 × 3 × 10 = 0.15
-        result = estimate_cost(["GPT-4o"], runs=3, query_count=10, models_config=_SAMPLE_MODELS)
+        result = estimate_cost(
+            ["GPT-4o"], runs=3, query_count=10, models_config=_SAMPLE_MODELS
+        )
         assert result == "~$0.1500"
 
     def test_free_model_is_zero(self):
-        result = estimate_cost(["Free-Local"], runs=5, query_count=20, models_config=_SAMPLE_MODELS)
+        result = estimate_cost(
+            ["Free-Local"], runs=5, query_count=20, models_config=_SAMPLE_MODELS
+        )
         assert result == "~$0.0000"
 
     def test_unknown_model_name_treated_as_zero_cost(self):
-        result = estimate_cost(["Unknown-Model"], runs=5, query_count=20, models_config=_SAMPLE_MODELS)
+        result = estimate_cost(
+            ["Unknown-Model"], runs=5, query_count=20, models_config=_SAMPLE_MODELS
+        )
         assert result == "~$0.0000"
 
     def test_multiple_models_combined(self):
@@ -170,7 +175,10 @@ class TestEstimateCost:
         # GPT-4o-mini: 0.0003 × 2 × 10 = 0.006
         # total = 0.106
         result = estimate_cost(
-            ["GPT-4o", "GPT-4o-mini"], runs=2, query_count=10, models_config=_SAMPLE_MODELS
+            ["GPT-4o", "GPT-4o-mini"],
+            runs=2,
+            query_count=10,
+            models_config=_SAMPLE_MODELS,
         )
         assert result == "~$0.1060"
 
@@ -325,11 +333,15 @@ class TestEstimateCallsEdgeCases:
 
 class TestEstimateCostEdgeCases:
     def test_runs_zero_gives_zero_cost(self):
-        result = estimate_cost(["GPT-4o"], runs=0, query_count=10, models_config=_SAMPLE_MODELS)
+        result = estimate_cost(
+            ["GPT-4o"], runs=0, query_count=10, models_config=_SAMPLE_MODELS
+        )
         assert result == "~$0.0000"
 
     def test_query_count_zero_gives_zero_cost(self):
-        result = estimate_cost(["GPT-4o"], runs=5, query_count=0, models_config=_SAMPLE_MODELS)
+        result = estimate_cost(
+            ["GPT-4o"], runs=5, query_count=0, models_config=_SAMPLE_MODELS
+        )
         assert result == "~$0.0000"
 
 
@@ -404,10 +416,13 @@ class TestFormatTimestampEdgeCases:
 
 # We mirror get_query_count from the page because the page cannot be imported.
 
+
 def _load_latest_results_stub(results, df=None):
     """Return a stub function that returns (results, df)."""
+
     def _inner(_experiment_id: str):
         return results, df
+
     return _inner
 
 
@@ -462,10 +477,12 @@ class TestGetQueryCount:
 
     def test_returns_query_count_from_first_model_only(self):
         """Only results[0] is used; a second model with more queries is ignored."""
-        stub = _load_latest_results_stub([
-            {"queries": [1, 2]},
-            {"queries": [1, 2, 3, 4, 5]},
-        ])
+        stub = _load_latest_results_stub(
+            [
+                {"queries": [1, 2]},
+                {"queries": [1, 2, 3, 4, 5]},
+            ]
+        )
         assert get_query_count_mirrored("exp_3_1", stub) == 2
 
     def test_single_query_returns_one(self):
@@ -494,6 +511,7 @@ def _capture_cmd(monkeypatch, **kwargs) -> list[str]:
     class _FakePopen:
         stdout = iter([])
         returncode = 0
+
         def wait(self):
             pass
 
@@ -586,7 +604,9 @@ class TestRunExperimentExtraArgs:
             extra_args={"--temperature": "0.7", "--log-threshold": "2.0"},
         )
         assert "--temperature" in cmd and cmd[cmd.index("--temperature") + 1] == "0.7"
-        assert "--log-threshold" in cmd and cmd[cmd.index("--log-threshold") + 1] == "2.0"
+        assert (
+            "--log-threshold" in cmd and cmd[cmd.index("--log-threshold") + 1] == "2.0"
+        )
 
     def test_empty_string_value_raises_value_error(self, monkeypatch):
         """An empty-string value in extra_args must raise ValueError.
@@ -638,10 +658,16 @@ class TestResultsPageMapping:
 
 def _make_comparison_run_df(models: list[str]) -> pd.DataFrame:
     """Per-model CSV schema (Exp 3.1)."""
-    return pd.DataFrame([
-        {"model": m, "accuracy": 0.85 + i * 0.05, "cost_per_call_usd": 0.001 * (i + 1)}
-        for i, m in enumerate(models)
-    ])
+    return pd.DataFrame(
+        [
+            {
+                "model": m,
+                "accuracy": 0.85 + i * 0.05,
+                "cost_per_call_usd": 0.001 * (i + 1),
+            }
+            for i, m in enumerate(models)
+        ]
+    )
 
 
 def _make_per_food_run_df(
@@ -658,13 +684,15 @@ def _make_per_food_run_df(
     rows = []
     for m in models:
         for f in foods:
-            rows.append({
-                "model": m,
-                "food_name": f,
-                "ph_mae": ph_mae,
-                "boundary_crossing_rate": 0.0,
-                "crosses_safety_threshold": crosses_safety_threshold,
-            })
+            rows.append(
+                {
+                    "model": m,
+                    "food_name": f,
+                    "ph_mae": ph_mae,
+                    "boundary_crossing_rate": 0.0,
+                    "crosses_safety_threshold": crosses_safety_threshold,
+                }
+            )
     return pd.DataFrame(rows)
 
 
@@ -688,19 +716,23 @@ class TestRunHistorySchema:
 
     def test_comparison_schema_best_accuracy_is_max(self):
         """col2 must reflect the highest accuracy row, not mean or first."""
-        df = pd.DataFrame([
-            {"model": "A", "accuracy": 0.70, "cost_per_call_usd": 0.001},
-            {"model": "B", "accuracy": 0.92, "cost_per_call_usd": 0.002},
-        ])
+        df = pd.DataFrame(
+            [
+                {"model": "A", "accuracy": 0.70, "cost_per_call_usd": 0.001},
+                {"model": "B", "accuracy": 0.92, "cost_per_call_usd": 0.002},
+            ]
+        )
         _, col2, _ = _run_history_row(df)
         assert col2 == "92.0%"
 
     def test_comparison_schema_total_cost_is_sum(self):
         """col3 must be the sum of all models' cost_per_call_usd."""
-        df = pd.DataFrame([
-            {"model": "A", "accuracy": 0.80, "cost_per_call_usd": 0.001},
-            {"model": "B", "accuracy": 0.85, "cost_per_call_usd": 0.002},
-        ])
+        df = pd.DataFrame(
+            [
+                {"model": "A", "accuracy": 0.80, "cost_per_call_usd": 0.001},
+                {"model": "B", "accuracy": 0.85, "cost_per_call_usd": 0.002},
+            ]
+        )
         _, _, col3 = _run_history_row(df)
         assert col3 == "$0.00300"
 
@@ -711,13 +743,14 @@ class TestRunHistorySchema:
         df = _make_per_food_run_df(["GPT-4o"], ["chicken", "salsa"], ph_mae=0.45)
         models_str, col2, col3 = _run_history_row(df)
         assert models_str == "GPT-4o"
-        assert col2 == "0.450"           # mean ph_mae formatted to 3dp
-        assert col3 == "0"               # crosses_safety_threshold=False → count 0
+        assert col2 == "0.450"  # mean ph_mae formatted to 3dp
+        assert col3 == "0"  # crosses_safety_threshold=False → count 0
 
     def test_per_food_schema_safety_impact_count(self):
         """Safety impacts count is the number of rows where crosses_safety_threshold=True."""
         df = _make_per_food_run_df(
-            ["GPT-4o"], ["chicken", "salsa", "pickle"],
+            ["GPT-4o"],
+            ["chicken", "salsa", "pickle"],
             crosses_safety_threshold=True,
         )
         _, _, col3 = _run_history_row(df)
@@ -725,18 +758,32 @@ class TestRunHistorySchema:
 
     def test_per_food_schema_mae_mean_across_foods(self):
         """Mean MAE is computed across all food rows, not just first."""
-        df = pd.DataFrame([
-            {"model": "GPT-4o", "food_name": "chicken", "ph_mae": 0.2, "crosses_safety_threshold": False},
-            {"model": "GPT-4o", "food_name": "salsa",   "ph_mae": 0.4, "crosses_safety_threshold": False},
-        ])
+        df = pd.DataFrame(
+            [
+                {
+                    "model": "GPT-4o",
+                    "food_name": "chicken",
+                    "ph_mae": 0.2,
+                    "crosses_safety_threshold": False,
+                },
+                {
+                    "model": "GPT-4o",
+                    "food_name": "salsa",
+                    "ph_mae": 0.4,
+                    "crosses_safety_threshold": False,
+                },
+            ]
+        )
         _, col2, _ = _run_history_row(df)
         assert col2 == "0.300"  # (0.2 + 0.4) / 2
 
     def test_per_food_schema_no_crosses_column_defaults_to_zero_impacts(self):
         """If crosses_safety_threshold column is absent, safety impact count must be 0."""
-        df = pd.DataFrame([
-            {"model": "GPT-4o", "food_name": "chicken", "ph_mae": 0.3},
-        ])
+        df = pd.DataFrame(
+            [
+                {"model": "GPT-4o", "food_name": "chicken", "ph_mae": 0.3},
+            ]
+        )
         _, _, col3 = _run_history_row(df)
         assert col3 == "0"
 
