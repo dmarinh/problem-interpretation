@@ -162,7 +162,12 @@ class TestComBaseOrganismMatchesCSV:
 
     @pytest.mark.parametrize("organism", list(ComBaseOrganism))
     def test_organism_value_resolves_to_matching_csv_row(self, registry, organism):
-        """Every member's OrganismID must load row(s) naming this organism."""
+        """Alias-routing check: from_string()/_get_fuzzy_map() bucket every CSV row
+        under the member whose short-code alias matches its raw OrganismID. This
+        exercises get_models_for_organism() -> _by_organism, which is built via
+        from_string() at registration time -- it verifies the alias dict is
+        self-consistent with the CSV, not that .value itself matches the CSV
+        (see test_organism_value_matches_raw_csv_organism_id for that)."""
         if len(registry) == 0:
             pytest.skip("combase_models.csv not found")
 
@@ -173,6 +178,49 @@ class TestComBaseOrganismMatchesCSV:
         assert any(expected in m.organism_name.lower() for m in models), (
             f"{organism.name} (OrganismID={organism.value!r}) loaded Org names "
             f"{[m.organism_name for m in models]}, none containing {expected!r}"
+        )
+
+    @pytest.fixture
+    def raw_csv_org_names(self) -> dict:
+        """{OrganismID: [Org, ...]} read directly from the CSV -- no ComBaseOrganism,
+        no from_string(), no registry indexing. The ground truth this class checks against."""
+        csv_path = Path("data/combase_models.csv")
+        if not csv_path.exists():
+            return {}
+        import csv as csv_module
+        by_oid: dict = {}
+        with csv_path.open(encoding="utf-8-sig") as f:
+            for row in csv_module.DictReader(f, delimiter=";"):
+                oid = row.get("OrganismID", "").strip()
+                org = row.get("Org", "").strip()
+                if oid:
+                    by_oid.setdefault(oid, []).append(org)
+        return by_oid
+
+    @pytest.mark.parametrize("organism", list(ComBaseOrganism))
+    def test_organism_value_matches_raw_csv_organism_id(self, raw_csv_org_names, organism):
+        """Execution-path check: registry.get_model() builds its lookup key from
+        organism.value directly (f"{model_id}_{organism.value}_{factor4_type.value}"),
+        matched against rows keyed by their own raw OrganismID string. This test
+        resolves organism.value against the CSV's raw OrganismID with no enum
+        machinery in between (no from_string, no _get_fuzzy_map, no registry
+        bucketing) -- it is the thing that actually determines which coefficients
+        get_model() loads, and is exactly what test_organism_value_resolves_to_matching_csv_row
+        does NOT cover."""
+        if not raw_csv_org_names:
+            pytest.skip("combase_models.csv not found")
+
+        org_names = raw_csv_org_names.get(organism.value)
+        assert org_names, (
+            f"{organism.name} (.value={organism.value!r}) has no row in the CSV "
+            f"under OrganismID={organism.value!r}"
+        )
+
+        expected = self._EXPECTED_NAME_SUBSTRING[organism]
+        assert any(expected in name.lower() for name in org_names), (
+            f"{organism.name} (.value={organism.value!r}) resolves via .value to CSV "
+            f"OrganismID={organism.value!r}, whose Org name(s) are {org_names}, "
+            f"none containing {expected!r}"
         )
 
     def test_brochothrix_resolves_to_brochothrix_row(self, registry):
@@ -193,3 +241,57 @@ class TestComBaseOrganismMatchesCSV:
         assert ComBaseOrganism.from_string("bacillus stearothermophilus") is None
         assert ComBaseOrganism.from_string("b. stearothermophilus") is None
         assert not hasattr(ComBaseOrganism, "BACILLUS_STEAROTHERMOPHILUS")
+
+
+class TestExecutableOrganisms:
+    """A0.5b: is_executable() / get_executable_organisms() must be derived from
+    the loaded registry (no hardcoded organism lists). sf (Shigella flexneri) is
+    the only member with no (ModelID=1, Factor4=NONE) row -- its sole CSV row
+    requires Factor4=nitrite."""
+
+    @pytest.fixture
+    def registry(self) -> ComBaseModelRegistry:
+        """Create and load registry."""
+        reg = ComBaseModelRegistry()
+        csv_path = Path("data/combase_models.csv")
+        if csv_path.exists():
+            reg.load_from_csv(csv_path)
+        return reg
+
+    def test_shigella_not_executable_for_plain_growth(self, registry):
+        if len(registry) == 0:
+            pytest.skip("combase_models.csv not found")
+
+        assert registry.is_executable(
+            ComBaseOrganism.SHIGELLA_FLEXNERI, ModelType.GROWTH, Factor4Type.NONE
+        ) is False
+
+    def test_shigella_executable_with_nitrite(self, registry):
+        """The nitrite path must keep working -- executability depends on the
+        actual factor4_type, not an assumption of NONE."""
+        if len(registry) == 0:
+            pytest.skip("combase_models.csv not found")
+
+        assert registry.is_executable(
+            ComBaseOrganism.SHIGELLA_FLEXNERI, ModelType.GROWTH, Factor4Type.NITRITE
+        ) is True
+
+    def test_get_executable_organisms_growth_none_excludes_shigella(self, registry):
+        """The count must be derived, not hardcoded: cross-checked here against an
+        independently computed list (every loaded organism filtered by get_model()),
+        not just asserted as a bare literal."""
+        if len(registry) == 0:
+            pytest.skip("combase_models.csv not found")
+
+        executable = registry.get_executable_organisms(ModelType.GROWTH, Factor4Type.NONE)
+
+        assert ComBaseOrganism.SHIGELLA_FLEXNERI not in executable
+
+        all_loaded = registry.list_organisms()
+        independently_derived = [
+            o for o in all_loaded
+            if registry.get_model(o, ModelType.GROWTH, Factor4Type.NONE) is not None
+        ]
+        assert set(executable) == set(independently_derived)
+        assert len(all_loaded) == 15
+        assert len(executable) == 14

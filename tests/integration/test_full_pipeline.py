@@ -1318,3 +1318,66 @@ class TestVagueTemperatureAuditShapes:
             f"Expected method={expected_method!r} but got {temp_entry.extraction.method!r}\n"
             f"Query: {query!r}"
         )
+
+
+class TestShigellaExecutability:
+    """A0.5b: sf (Shigella flexneri) has no (ModelID=1, Factor4=NONE) row -- the
+    only organism with this gap. StandardizationService must fail closed before
+    building a payload the engine cannot execute, with an error naming the
+    organism and model type in plain language -- not the internal short codes
+    that used to leak via engine.execute()'s ValueError("Model not found: sf /
+    growth / none")."""
+
+    @pytest.mark.asyncio
+    async def test_shigella_plain_growth_fails_closed_with_human_readable_error(
+        self, orchestrator, mock_semantic_parser
+    ):
+        """'shigella in my salad' (growth, no nitrite) -> success=false, error
+        names Shigella and growth in plain language; no short-code string
+        ("sf / growth / none") reaches the caller."""
+        mock_semantic_parser.extract_scenario = AsyncMock(return_value=create_scenario(
+            food_description="salad",
+            pathogen_mentioned="Shigella",
+            temperature=ExtractedTemperature(value_celsius=25.0),
+            duration=ExtractedDuration(value_minutes=180.0),
+            is_storage_scenario=True,
+        ))
+
+        result = await orchestrator.translate("Shigella in my salad left out for 3 hours")
+
+        assert result.success is False
+        assert result.error is not None
+        assert "shigella" in result.error.lower(), result.error
+        assert "growth" in result.error.lower(), result.error
+        assert "sf / growth / none" not in result.error, result.error
+        assert "sf /" not in result.error, result.error
+
+    @pytest.mark.asyncio
+    async def test_shigella_with_nitrite_executes_normally(
+        self, orchestrator, mock_semantic_parser
+    ):
+        """sf + Factor4Type.NITRITE is executable and must keep working -- the
+        executability check must use the actual factor4_type being built, not
+        assume NONE."""
+        mock_semantic_parser.extract_scenario = AsyncMock(return_value=create_scenario(
+            food_description="cured meat",
+            pathogen_mentioned="Shigella",
+            temperature=ExtractedTemperature(value_celsius=25.0),
+            duration=ExtractedDuration(value_minutes=180.0),
+            environmental_conditions=ExtractedEnvironmentalConditions(nitrite_ppm=100.0),
+            is_storage_scenario=True,
+        ))
+
+        # Explicit model_type=GROWTH: Shigella's only executable row is
+        # (ModelID=1/GROWTH, Factor4=nitrite). Without this override,
+        # _determine_model_type()'s "preservative detected" heuristic routes a
+        # nitrite-bearing scenario to NON_THERMAL_SURVIVAL, for which Shigella
+        # has no row at all -- a real, separate fail-closed case, not the one
+        # this test is checking.
+        result = await orchestrator.translate(
+            "Shigella on cured meat with 100ppm nitrite left out for 3 hours",
+            model_type=ModelType.GROWTH,
+        )
+
+        assert result.success is True, f"Failed with error: {result.error}"
+        assert result.execution_result is not None

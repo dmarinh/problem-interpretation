@@ -142,6 +142,13 @@ class StandardizationService:
         model = None
         constraints = None
         if self._registry:
+            if not self._registry.is_executable(organism, model_type, factor4_type):
+                organism_name = self._organism_display_name(organism)
+                result.missing_required.append(
+                    f"organism ({organism_name} is not supported for "
+                    f"{model_type.value.replace('_', ' ')} predictions)"
+                )
+                return result
             model = self._registry.get_model(organism, model_type, factor4_type)
             if model:
                 constraints = model.constraints
@@ -263,6 +270,24 @@ class StandardizationService:
     def _get_organism(self, grounded: GroundedValues) -> ComBaseOrganism | None:
         """Get organism; returns None when not grounded (caller adds to missing_required)."""
         return grounded.get("organism")
+
+    def _organism_display_name(self, organism: ComBaseOrganism) -> str:
+        """Human-readable organism name for error messages — never a short code.
+
+        Prefers the CSV's own Org name (correct casing, e.g. "Shigella flexneri"),
+        stripping a trailing factor4 qualifier ("... with nitrite(ppm)") so the
+        name reads cleanly regardless of which row supplied it. Falls back to a
+        title-cased enum name only if the registry has no row at all for this
+        organism (should not occur for a grounded organism, but no registry
+        lookup is guaranteed non-empty).
+        """
+        if self._registry:
+            models = self._registry.get_models_for_organism(organism)
+            if models:
+                base = models[0].organism_name.split(" with ")[0].strip()
+                if base:
+                    return base
+        return organism.name.replace("_", " ").title()
 
     def _get_factor4(
         self,

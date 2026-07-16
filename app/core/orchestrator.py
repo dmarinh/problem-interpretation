@@ -42,7 +42,12 @@ def _missing_key_to_audit_key(field_spec: str) -> str:
       "duration"          → single-step duration
       "duration (step N)" → multi-step step N duration
       "temperature"       → single-step temperature (rare — gets a default before missing)
-      "organism"          → organism (same in both namespaces)
+      "organism"          → organism ungrounded (same in both namespaces)
+      "organism (...)"    → organism grounded but not executable for this model_type/
+                             factor4_type (e.g. "organism (Shigella flexneri is not
+                             supported for growth predictions)") — same audit key as
+                             plain "organism"; the parenthetical is human-readable
+                             detail for the top-level error string, not part of the key.
 
     metadata.provenance uses full field names matching grounded.provenance keys:
       "duration_minutes", "duration_minutes (step N)", "temperature_celsius"
@@ -53,7 +58,7 @@ def _missing_key_to_audit_key(field_spec: str) -> str:
         return field_spec.replace("duration (step ", "duration_minutes (step ", 1)
     if field_spec == "temperature":
         return "temperature_celsius"
-    if field_spec == "organism":
+    if field_spec == "organism" or field_spec.startswith("organism ("):
         return "organism"
     _log.warning("_missing_key_to_audit_key: unrecognised field spec %r — passing through; audit key may be wrong", field_spec)
     return field_spec

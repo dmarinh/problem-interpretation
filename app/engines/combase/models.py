@@ -258,6 +258,27 @@ class ComBaseModelRegistry:
     def get_models_for_organism(self, organism: ComBaseOrganism) -> list[ComBaseModel]:
         """Get all models for an organism."""
         return self._by_organism.get(organism, [])
+
+    def is_executable(
+        self,
+        organism: ComBaseOrganism,
+        model_type: ModelType,
+        factor4_type: Factor4Type = Factor4Type.NONE,
+    ) -> bool:
+        """Whether a loaded CSV row exists for this exact combination."""
+        return self.get_model(organism, model_type, factor4_type) is not None
+
+    def get_executable_organisms(
+        self,
+        model_type: ModelType,
+        factor4_type: Factor4Type = Factor4Type.NONE,
+    ) -> list[ComBaseOrganism]:
+        """All organisms with a loaded row for this (model_type, factor4_type) combination."""
+        return [
+            organism
+            for organism in self._by_organism
+            if self.is_executable(organism, model_type, factor4_type)
+        ]
     
     def get_models_by_type(self, model_type: ModelType) -> list[ComBaseModel]:
         """Get all models of a specific type."""
