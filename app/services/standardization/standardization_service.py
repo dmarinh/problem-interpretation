@@ -50,7 +50,7 @@ range_clamps — it is a deterministic, mechanical step that fires on every
 range-typed value.
 """
 
-from typing import Callable
+from collections.abc import Callable
 
 from pydantic import ValidationError
 
@@ -144,8 +144,11 @@ class StandardizationService:
             result.missing_required.append("organism")
             return result
 
-        # Determine factor4
-        factor4_type, factor4_value = self._get_factor4(grounded)
+        # Peek at which factor4 candidate would win, to resolve is_executable()
+        # below. The full pick — with clamping and audit — happens once
+        # constraints are known, via _get_factor4() further down; constraints
+        # depend on factor4_type, so this cheap pure lookup runs first.
+        factor4_type, _, _, _ = self._pick_factor4_candidate(grounded)
 
         # Get model constraints if registry available
         model = None
@@ -161,6 +164,13 @@ class StandardizationService:
             model = self._registry.get_model(organism, model_type, factor4_type)
             if model:
                 constraints = model.constraints
+
+        # Determine, clamp, and audit factor4 now that constraints (if any)
+        # are known. Picks the same winner as the peek above — grounded data
+        # hasn't changed — then applies the model's declared valid range.
+        factor4_type, factor4_value = self._get_factor4(grounded, result, constraints)
+        if result.missing_required:
+            return result
 
         # Get and standardize pH and water activity (shared across all steps)
         ph = self._get_ph(grounded, result, constraints, model_type)
@@ -351,21 +361,116 @@ class StandardizationService:
                     return base
         return organism.name.replace("_", " ").title()
 
+    def _pick_factor4_candidate(
+        self, grounded: GroundedValues
+    ) -> tuple[Factor4Type, str | None, float | None, list[str]]:
+        """
+        Pick the winning factor4 candidate from grounded environmental conditions.
+
+        First-match-wins priority: CO2 > nitrite > lactic acid > acetic acid.
+        GroundingService grounds all four independently whenever the user
+        states a number for each, so more than one may be present; this picks
+        exactly one to reach the model and reports the field names of the
+        others, so the caller can mark them excluded rather than letting them
+        sit in field_audit looking used.
+
+        Pure lookup — no registry access, no side effects, safe to call more
+        than once for the same GroundedValues.
+
+        Returns (factor4_type, grounded_field_name, value, excluded_field_names).
+        factor4_type is NONE and the rest are (None, None, []) when nothing
+        was grounded.
+        """
+        candidates: list[tuple[Factor4Type, str]] = [
+            (Factor4Type.CO2, "co2_percent"),
+            (Factor4Type.NITRITE, "nitrite_ppm"),
+            (Factor4Type.LACTIC_ACID, "lactic_acid_ppm"),
+            (Factor4Type.ACETIC_ACID, "acetic_acid_ppm"),
+        ]
+        present = [(t, f) for t, f in candidates if grounded.has(f)]
+        if not present:
+            return Factor4Type.NONE, None, None, []
+
+        winner_type, winner_field = present[0]
+        excluded_fields = [f for _, f in present[1:]]
+        return winner_type, winner_field, grounded.get(winner_field), excluded_fields
+
     def _get_factor4(
         self,
         grounded: GroundedValues,
+        result: StandardizationResult,
+        constraints: ComBaseModelConstraints | None,
     ) -> tuple[Factor4Type, float | None]:
-        """Determine factor4 type and value."""
-        if grounded.has("co2_percent"):
-            return Factor4Type.CO2, grounded.get("co2_percent")
-        if grounded.has("nitrite_ppm"):
-            return Factor4Type.NITRITE, grounded.get("nitrite_ppm")
-        if grounded.has("lactic_acid_ppm"):
-            return Factor4Type.LACTIC_ACID, grounded.get("lactic_acid_ppm")
-        if grounded.has("acetic_acid_ppm"):
-            return Factor4Type.ACETIC_ACID, grounded.get("acetic_acid_ppm")
+        """
+        Determine, clamp, and audit the fourth factor.
 
-        return Factor4Type.NONE, None
+        Picks the winning grounded candidate (see _pick_factor4_candidate).
+        When more than one factor4 field was grounded, records a warning
+        naming the selected and excluded field(s) and marks each excluded
+        field's ValueProvenance.excluded_reason, so field_audit does not
+        present it as having reached the model.
+
+        When a model constraint is available for the winning factor4_type,
+        clamps the value via the shared _clamp_to_constraints helper — full
+        parity with temperature/pH/aw (RangeClamp, range_clamps entry,
+        warning). Bounds are read from the registry (Factor4Min/Factor4Max),
+        never hardcoded.
+
+        Fails closed via result.missing_required when the model declares a
+        factor4 type but the registry has no bounds for it (Factor4Min
+        and/or Factor4Max absent) — an unbounded input cannot be modelled,
+        same principle as the organism-executability check above.
+        Unreachable with the current CSV (all 11 factor4 rows carry both
+        bounds) but not assumed impossible — bounds come from whatever
+        registry is loaded, so a future engine's CSV is handled the same way.
+        """
+        factor4_type, field_name, factor4_value, excluded_fields = (
+            self._pick_factor4_candidate(grounded)
+        )
+
+        if excluded_fields:
+            excluded_desc = ", ".join(f"{f}={grounded.get(f)}" for f in excluded_fields)
+            result.warnings.append(
+                f"Multiple fourth-factor values grounded ({field_name}={factor4_value} "
+                f"and {excluded_desc}); only {field_name} reaches the model "
+                f"(priority: CO2 > nitrite > lactic acid > acetic acid)."
+            )
+            for excluded_field in excluded_fields:
+                excluded_prov = grounded.provenance.get(excluded_field)
+                if excluded_prov is not None:
+                    excluded_prov.excluded_reason = (
+                        f"Grounded but not used — {field_name} took priority "
+                        f"(CO2 > nitrite > lactic acid > acetic acid)."
+                    )
+
+        if factor4_type == Factor4Type.NONE or constraints is None:
+            return factor4_type, factor4_value
+
+        # Invariant: _pick_factor4_candidate() only returns a non-NONE
+        # factor4_type alongside a real field_name/value pair — never one
+        # without the other. Asserted (not just commented) so the type
+        # narrowing below is checked, not assumed.
+        assert field_name is not None and factor4_value is not None
+
+        if constraints.factor4_min is None or constraints.factor4_max is None:
+            result.missing_required.append(
+                f"{field_name} (no declared valid range for {factor4_type.value} "
+                f"— cannot bound the input, not modelled)"
+            )
+            return factor4_type, factor4_value
+
+        factor4_value = self._clamp_to_constraints(
+            result,
+            field_name=field_name,
+            label=field_name.replace("_", " "),
+            value=factor4_value,
+            is_valid=constraints.is_factor4_valid,
+            clamp=constraints.clamp_factor4,
+            valid_min=constraints.factor4_min,
+            valid_max=constraints.factor4_max,
+            reason="Model constraint",
+        )
+        return factor4_type, factor4_value
 
     def _get_temperature(
         self,

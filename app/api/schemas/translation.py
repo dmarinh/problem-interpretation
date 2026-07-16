@@ -270,6 +270,13 @@ class FieldAuditEntry(BaseModel):
     extraction: ExtractionAuditInfo | None
     standardization: StandardizationAuditInfo | None
     pathogen_category_fallback: PathogenCategoryFallbackAuditInfo | None = None
+    # Non-null when this field was grounded but a downstream selection rule chose
+    # a different candidate for the same decision slot (e.g. factor4 precedence:
+    # CO2 > nitrite > lactic acid > acetic acid, when more than one is grounded).
+    # final_value above still reflects the raw grounded value for transparency;
+    # this field is what tells the reader it did NOT reach the model. Generic --
+    # not specific to factor4 -- so any future precedence rule reuses it.
+    excluded_reason: str | None = None
 
 
 class ComBaseModelAuditInfo(BaseModel):

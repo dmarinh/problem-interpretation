@@ -303,6 +303,20 @@ class ValueProvenance(BaseModel):
         default=None,
         description="The canonical phrase that scored highest in the embedding lookup",
     )
+    # Generic "grounded but excluded" marker — not specific to any one field or
+    # precedence rule. Populated whenever a value was successfully grounded but
+    # a downstream selection rule chose a different candidate for the same
+    # decision slot (e.g. StandardizationService._get_factor4()'s CO2 > nitrite
+    # > lactic acid > acetic acid precedence, when more than one is grounded).
+    # None means the value (if present) reached the model normally. Deliberately
+    # a single free-text field rather than a companion bool: a bool and a reason
+    # string can desync (bool says excluded, reason absent, or vice versa); one
+    # field cannot. Any future precedence/selection rule should populate this
+    # same field rather than inventing a new one.
+    excluded_reason: str | None = Field(
+        default=None,
+        description="Non-null when this value was grounded but a downstream selection rule chose a different candidate instead; names why",
+    )
 
 
 # =============================================================================

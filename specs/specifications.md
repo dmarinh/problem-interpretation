@@ -254,7 +254,14 @@ When a value falls outside the ComBase model's valid range (from `ComBaseModelCo
 - Emits a warning string
 - The model is evaluated at the clamped value (no extrapolation)
 
-When range-bound selection AND clamping both fire on the same field, `prov.standardization` records only the clamp (last event wins). The pre-clamp range is recoverable from `prov.parsed_range`. This is a known limitation (deferred refactor: standardization-block-as-a-list).
+When range-bound selection AND clamping both fire on the same field, `prov.standardization` is **not** overwritten or mutated by the clamp — it still holds the `RangeBoundSelection` set earlier. What actually happens is in the route layer: `_build_field_audit()` (`app/api/routes/translation.py`) builds a `clamp_by_field` index from `metadata.range_clamps` and checks it *before* `prov.standardization` (`if field_name in clamp_by_field: ... elif prov.standardization is not None: ...`), so the API-facing `field_audit[X].standardization` block shows only the clamp when both fired. (Verified 2026-07-17 by tracing every `prov.standardization =` assignment site in `standardization_service.py` — none of the six write a clamp-related object; `StandardizationAuditInfo`, the type this section previously claimed was "written to `prov.standardization`," is a route-layer API schema class, a different type in a different module, and is never assigned to `ValueProvenance.standardization` at all.) The pre-clamp range remains recoverable from `prov.parsed_range` regardless. This is a known limitation (deferred refactor: standardization-block-as-a-list) — the *outcome* (only the clamp is visible in the audit) is unchanged from the prior description, only the *mechanism* was corrected.
+
+**Operation 3b — Factor4 selection, clamping, and audit (`_pick_factor4_candidate()`, `_get_factor4()`, Phase 2026-07-17):**  
+`GroundingService` grounds `co2_percent`, `nitrite_ppm`, `lactic_acid_ppm`, and `acetic_acid_ppm` independently — each one whenever the user states a number for it — so more than one can be grounded at once. `_pick_factor4_candidate()` picks exactly one to reach the model by first-match-wins priority: CO2 > nitrite > lactic acid > acetic acid.
+- **Excluded candidates:** when more than one is grounded, a warning names the selected and excluded field(s), and each excluded field's `ValueProvenance.excluded_reason` is set to a plain-language reason. `final_value` for an excluded field in `field_audit` still shows the raw grounded value (it *was* stated by the user); `excluded_reason` is what tells a reader it did not reach the model. Generic field, not factor4-specific — see §4.5.
+- **Clamping:** once the winning `factor4_type` is known and a model row is resolved, if a value is outside `[Factor4Min, Factor4Max]` (read from the registry, never hardcoded), it is clamped via the same `_clamp_to_constraints()` helper used for temperature/pH/aw (§8) — `RangeClamp(field_name=<grounded field, e.g. "nitrite_ppm">, ...)`, a `range_clamps` entry, and a warning. Full parity with temperature/pH/aw's clamping; `prov.standardization` is not touched here either, consistent with how the other three fields' clamps behave (see the corrected note above).
+- **Fail-closed on missing bounds:** `ComBaseModelConstraints.is_factor4_valid()` returns `True` when `factor4_min`/`factor4_max` are `None` ("no factor4 for this model"). If the resolved model row declares a factor4 type but the registry has no bounds for it, the input cannot be bounded, so — per the project's fail-closed rule — it is not modelled: `missing_required` gets an entry `"<field> (no declared valid range for <type> — cannot bound the input, not modelled)"`, mapped by `_missing_key_to_audit_key()` to the field's own audit key. Unreachable with the current CSV (all 11 factor4 rows carry both `Factor4Min` and `Factor4Max`); reachable under a future engine's CSV, and covered by a synthetic-registry unit test (`tests/unit/test_factor4_standardization.py::TestFactor4MissingBoundsFailsClosed`) since the CSV itself is never edited to force it.
+- Before this phase, factor4 was the only value reaching the polynomial (`calculator.py:159`, the `b10`–`b14` terms) with no standardization pass at all — no clamp, no audit, no fail-closed check — because `engine.py` always calls `calculator.calculate(clamp_to_range=False)` and `StandardizationService` never touched it. The engine's own out-of-range check (a warning-only path when unclamped) remains as a defensive backstop, not replaced.
 
 **Operation 4 — Payload construction:**  
 Assembles `ComBaseExecutionPayload` with:
@@ -269,14 +276,15 @@ For multi-step scenarios, `_build_multi_step_profile()` iterates `grounded.steps
 
 **Duration pass-through:** Duration is passed unchanged. USER_INFERRED values carry their own conservatism via the rule's chosen point.
 
-**Missing required values:** `StandardizationResult.missing_required` is populated in exactly three reachable cases:
-- `organism` ungrounded after all grounding paths (user statement, food-specific RAG hazard lookup, category-level pathogen fallback) fail — `standardization_service.py:133-136`. Organism has no default.
-- `organism` grounded but not executable for the resolved `(model_type, factor4_type)` — no `data/combase_models.csv` row exists for that exact combination (Phase A0.5b, 2026-07-16) — `standardization_service.py:145-150`, checked via `ComBaseModelRegistry.is_executable()`. The entry is `"organism ({name} is not supported for {model_type} predictions)"`, human-readable rather than a short code; `_missing_key_to_audit_key()` (`orchestrator.py`) maps both this and the plain ungrounded-organism case to the same `"organism"` audit key. See §5.4 for the current example (`sf`/Shigella flexneri, no plain-growth row).
-- A multi-step step with an unresolvable duration, recorded as `"duration (step N)"` — `standardization_service.py:742`. Multi-step temperature falls back to its conservative default; multi-step duration does not.
+**Missing required values:** `StandardizationResult.missing_required` is populated in exactly four reachable cases:
+- `organism` ungrounded after all grounding paths (user statement, food-specific RAG hazard lookup, category-level pathogen fallback) fail — `standardization_service.py:144`. Organism has no default.
+- `organism` grounded but not executable for the resolved `(model_type, factor4_type)` — no `data/combase_models.csv` row exists for that exact combination (Phase A0.5b, 2026-07-16) — `standardization_service.py:157`, checked via `ComBaseModelRegistry.is_executable()`. The entry is `"organism ({name} is not supported for {model_type} predictions)"`, human-readable rather than a short code; `_missing_key_to_audit_key()` (`orchestrator.py`) maps both this and the plain ungrounded-organism case to the same `"organism"` audit key. See §5.4 for the current example (`sf`/Shigella flexneri, no plain-growth row).
+- A grounded factor4 field whose model row declares a factor4 type but has no `Factor4Min`/`Factor4Max` (2026-07-17) — `standardization_service.py:457` — see Operation 3b above. The entry is `"<field> (no declared valid range for <type> — cannot bound the input, not modelled)"`; `_missing_key_to_audit_key()` maps it to the field's own audit key. Unreachable with the current CSV — synthetic-registry-only, per the engine-agnostic design rule (nothing here may assume today's CSV is the only CSV).
+- A multi-step step with an unresolvable duration, recorded as `"duration (step N)"` — `standardization_service.py:918`. Multi-step temperature falls back to its conservative default; multi-step duration does not.
 
 Single-step duration can never populate `missing_required` — it always falls back to `LONG_WINDOW_DEFAULT` (see the table above). Single-step temperature likewise always falls back to a default and cannot populate it.
 
-Consequence: `orchestrator.py:181-184` sets `SessionStatus.FAILED`, `success=False`, `error="Missing required values: ..."`. These three cases are the only reachable end-user failure modes of the pipeline (excluding out-of-scope/information-query intent classification and unhandled exceptions).
+Consequence: `orchestrator.py` sets `SessionStatus.FAILED`, `success=False`, `error="Missing required values: ..."`. These four cases are the only reachable end-user failure modes of the pipeline (excluding out-of-scope/information-query intent classification and unhandled exceptions) — three of the four reachable with today's CSV, the factor4-bounds case reachable only under a future engine's data.
 
 **Singleton:** `get_standardization_service()` / `reset_standardization_service()`
 
@@ -472,13 +480,14 @@ Tracks origin and transformations of a single value. Key fields:
 | `raw_match` | `str \| None` | Regex-matched text fragment |
 | `parsed_range` | `list[float] \| None` | [min, max] when extracted from a range |
 | `range_pending` | `bool` | Pipeline signal: True when bound selection not yet performed; always False in serialized output |
-| `standardization` | `RangeBoundSelection \| None` | Structured record of the standardization event that fired (range_bound_selection or range_clamp); None if no event fired. When both fire on the same field, clamp overwrites range_bound_selection (last-event-wins; known limitation) |
+| `standardization` | `RangeBoundSelection \| None` | Structured record of a range-bound-selection event (`_select_range_bound()`); `None` if none fired. **Not** written by clamping — a clamp on the same field does not touch this (see §8's 2026-07-17 correction); the API's `field_audit[X].standardization` block prioritizing the clamp over this is a route-layer read-priority, not a write here |
 | `matched_pattern` | `str \| None` | Rule pattern (USER_INFERRED values) |
 | `rule_conservative` | `bool \| None` | Whether the matched rule was flagged conservative |
 | `rule_notes` | `str \| None` | Human-readable rationale from rule |
 | `embedding_similarity` | `float \| None` | Cosine similarity score (embedding-fallback only) |
 | `canonical_phrase` | `str \| None` | Closest canonical phrase in embedding lookup |
 | `category_bridge` | `CategoryBridgeInfo \| None` | Taxonomy bridge resolution record; non-null only when source is `RAG_RETRIEVAL_CATEGORY_BRIDGE`. Carries: `species` (food_description input), `resolved_category`, `taxonomy_code`, `taxonomy_label`, `taxonomy_source_id` (e.g. `EFSA-FoodEx2-MTX-12.0`), `matched_food_name`, `match_score` (token_set_ratio), `property_row_food_name`, `property_row_source_ids`, `query_state` (state used for curated lookup), `assumed_state` (non-empty when _apply_state_default converted "unspecified"/"" → "fresh"; empty when the taxonomy already carried a concrete state). |
+| `excluded_reason` | `str \| None` | (2026-07-17) Non-null when this value was grounded but a downstream selection rule chose a different candidate for the same decision slot — currently only factor4's CO2 > nitrite > lactic acid > acetic acid precedence (§3.3 Operation 3b) — and names why. Generic, not factor4-specific, so any future precedence rule reuses it rather than inventing a new field. `final_value` still reflects the raw grounded value for transparency; this field is what tells a reader it did not reach the model. |
 
 **No confidence numbers.** The `source` enum tier is the reliability signal. The only numeric reliability score is `RetrievalResult.embedding_score` (cosine similarity = 1 - ChromaDB distance).
 
@@ -492,8 +501,9 @@ The API response's `field_audit` (under `audit` when `verbose=true`) is a `dict[
 - `retrieval: RetrievalAuditInfo | None` — RAG call details: query, `top_match` (the doc that supplied the value — null when no doc passed threshold), `runners_up`, and two optional diagnostic fields: `reranker_top` (present when the cross-encoder's top-ranked doc failed the embedding threshold gate and a lower-ranked doc was used instead) and `attempted_top` (present when all docs failed threshold; `top_match` is null in this case). Both carry `doc_id`, `content_preview`, `embedding_score`, `rerank_score`, and `skip_reason` (e.g. `"failed_embedding_threshold:0.70"`)
 - `extraction: ExtractionAuditInfo | None` — how the value was extracted (method, raw_match, matched_pattern, conservative, notes, similarity, canonical_phrase)
 - `standardization: StandardizationAuditInfo | None` — structured event (rule, direction, before_value, after_value, reason)
+- `excluded_reason: str | None` — (2026-07-17) non-null when this field was grounded but excluded by a downstream precedence rule (currently only factor4's CO2 > nitrite > lactic acid > acetic acid); see §4.5. `final_value` for such a field still shows the raw grounded value — "the map of every value used by the model" (next paragraph) is not quite accurate for these entries unless `excluded_reason` is also checked
 
-The `field_audit` map includes both grounded fields (from `metadata.provenance`) and defaulted fields (from `metadata.defaults_imputed`). It is the single complete map of all values used by the model. The legacy top-level `provenance` array is auto-derived from `field_audit` for backward compatibility.
+The `field_audit` map includes both grounded fields (from `metadata.provenance`) and defaulted fields (from `metadata.defaults_imputed`). It is the single complete map of all values *considered*; `excluded_reason` distinguishes considered-but-unused from used. The legacy top-level `provenance` array is auto-derived from `field_audit` for backward compatibility.
 
 `StandardizationAuditInfo.rule` values: `"range_bound_selection"`, `"range_clamp"`, `"default_imputed"`.
 
@@ -537,9 +547,11 @@ Registry key: `f"{model_id}_{organism_id}_{factor4_type.value}"` (e.g., `"1_ss_c
 
 ### 5.3 Valid Range Enforcement
 
-`ComBaseModelConstraints` provides `is_temperature_valid()`, `is_ph_valid()`, `is_aw_valid()`, `clamp_temperature()`, `clamp_ph()`, `clamp_aw()`. Clamping is `max(min_val, min(value, max_val))`.
+`ComBaseModelConstraints` provides `is_temperature_valid()`, `is_ph_valid()`, `is_aw_valid()`, `is_factor4_valid()`, `clamp_temperature()`, `clamp_ph()`, `clamp_aw()`, `clamp_factor4()`. Clamping is `max(min_val, min(value, max_val))`.
 
-Clamping is applied by StandardizationService before payload construction. The engine's `ComBaseCalculator.calculate()` also validates ranges and can clamp internally when `clamp_to_range=True`, but the engine is called with `clamp_to_range=False` (`app/engines/combase/engine.py:115`) — meaning the engine relies on StandardizationService having already clamped. Warning messages from the calculator are still appended to `ComBaseExecutionResult.warnings`.
+Clamping is applied by StandardizationService before payload construction — as of 2026-07-17, for all four scalar inputs (temperature, pH, aw, factor4) via a single shared helper, `_clamp_to_constraints()`, rather than four hand-rolled copies (see §3.3 Operations 1–3b). The engine's `ComBaseCalculator.calculate()` also validates ranges and can clamp internally when `clamp_to_range=True`, but the engine is called with `clamp_to_range=False` (`app/engines/combase/engine.py:117`) for every input including factor4 — meaning the engine relies on StandardizationService having already clamped. Warning messages from the calculator are still appended to `ComBaseExecutionResult.warnings` as a defensive backstop.
+
+`is_factor4_valid()` returns `True` when `factor4_min`/`factor4_max` are `None` ("no factor4 for this model" — i.e. the model row's `Factor4ID` is `NULL`, so factor4 isn't checked at all for that row). This must not be read as "any bounds-less factor4 row is fine": StandardizationService now checks *before* calling it whether the resolved row declares a real factor4 type (`Factor4ID != NULL`) with `factor4_min`/`factor4_max` still absent, and fails closed in that case rather than letting `is_factor4_valid()`'s permissive default silently pass an unbounded value through (§3.3 Operation 3b, §8).
 
 ### 5.4 Supported Organisms (15)
 
@@ -695,18 +707,18 @@ The top-level `provenance: list[ProvenanceInfo]` in `TranslationResponse` is aut
 
 ## 8. Out-of-Range Behaviour
 
-When an input parameter falls outside a ComBase model's valid range:
+Applies to all four scalar inputs — temperature, pH, water activity, and (as of 2026-07-17) factor4. When an input parameter falls outside a ComBase model's valid range:
 
-1. StandardizationService calls `constraints.clamp_*(value)` to obtain the boundary value
-2. `RangeClamp` is appended to `StandardizationResult.range_clamps` (structured, machine-readable)
-3. `StandardizationAuditInfo(rule="range_clamp")` is written to `prov.standardization` (per-field structured record)
-4. A warning string is appended to `StandardizationResult.warnings`
+1. StandardizationService's shared `_clamp_to_constraints()` helper calls `constraints.clamp_*(value)` to obtain the boundary value (`clamp_temperature`/`clamp_ph`/`clamp_aw`/`clamp_factor4`)
+2. `RangeClamp` is appended to `StandardizationResult.range_clamps` (structured, machine-readable), then copied to `metadata.range_clamps` by the orchestrator
+3. A warning string is appended to `StandardizationResult.warnings`
+4. At the API layer, `_build_field_audit()` (`app/api/routes/translation.py`) reads `metadata.range_clamps`, indexes it by `field_name`, and constructs `StandardizationAuditInfo(rule="range_clamp", ...)` directly from the `RangeClamp` object for `field_audit[X].standardization` — `ValueProvenance.standardization` (the internal `RangeBoundSelection | None` field) is never written to or read from during this step; the two are unrelated in the service layer and connected only by this route-layer construction
 
-The model is evaluated at the clamped value. No extrapolation occurs.
+The model is evaluated at the clamped value. No extrapolation occurs. (Before 2026-07-17, factor4 was the sole exception: it reached the polynomial unclamped, because `engine.py` always calls the calculator with `clamp_to_range=False` and StandardizationService never touched factor4 at all — an out-of-range factor4 value produced only a warning string from the calculator and was evaluated raw, extrapolating past the model's fitted domain with no `RangeClamp`, no `range_clamps` entry, and no field-level audit signal beyond the warning. See §3.3 Operation 3b.)
 
 **Rationale for clamping rather than refusal:** A prediction at the model boundary is more practically useful than a refusal. The user receives the closest defensible answer plus full audit transparency showing the original and clamped values.
 
-**Known limitation:** When range-bound selection and clamping both fire on the same field, `prov.standardization` records only the clamp. The pre-clamp range remains recoverable from `prov.parsed_range`. A deferred refactor (standardization-block-as-a-list) would make both events visible; the trigger for this refactor is when a regulator asks why a clamp event "lost" its preceding range-bound selection.
+**Corrected (2026-07-17) — "last event wins" was a mechanism claim, not just a wording gap:** This section previously stated that step 3 "writes `StandardizationAuditInfo(rule="range_clamp")` to `prov.standardization`," and that "when range-bound selection and clamping both fire on the same field, `prov.standardization` records only the clamp (last event wins)." Both sentences described a write/overwrite that does not happen: traced every `prov.standardization =` assignment in `standardization_service.py` (six sites, all setting a `RangeBoundSelection` from `_select_range_bound()`) — none ever assign clamp data, and `StandardizationAuditInfo` is a route-layer API schema type, not assignable to `ValueProvenance.standardization` (`RangeBoundSelection | None`) at all; the two are different classes in different modules. What actually produces the observed outcome — the API's `field_audit[X].standardization` showing only the clamp when both events fired — is `_build_field_audit()`'s **read priority** (`if field_name in clamp_by_field: ... elif prov.standardization is not None: ...`), not a mutation of `prov.standardization`, which remains untouched and still holds the original `RangeBoundSelection` in memory. The collision itself is real and reachable (pH/aw/temperature all support both range extraction and clamping in the same `_get_*` method), and the pre-clamp range remains recoverable from `prov.parsed_range` either way — that part of the "known limitation" holds. A deferred refactor (standardization-block-as-a-list) would surface both events in the API response; the trigger for this refactor is when a regulator asks why a clamp event "lost" its preceding range-bound selection. See `specs/lessons.md` 2026-07-17 for the pattern this is the fifth instance of.
 
 ---
 
@@ -719,6 +731,8 @@ Conservatism is committed in exactly two places:
 2. **Range-bound selection** — applied by StandardizationService when a value arrives as a range
 
 There is no bias-correction layer. No duration multiplier. No temperature bump. Rules in `config/rules.py` carry their own conservatism by choosing the upper end of their underlying interval (e.g., "room temperature" → 25°C is the high end of 20–25°C). Adding a multiplier on top of that would double-count.
+
+Range clamping (§8) is deliberately not a third place on this list: it is a boundary constraint forced by a model's fitted domain, not a conservative *choice* between candidate values. This holds for factor4's clamping too (added 2026-07-17, §3.3 Operation 3b) — clamping nitrite/CO2/lactic/acetic acid to `[Factor4Min, Factor4Max]` has no directional "more conservative" reading the way upper-bound-for-growth does; it simply keeps the polynomial inside its fitted range.
 
 ### 9.2 Default Values
 
@@ -863,7 +877,7 @@ When an embedding match fires, `ValueProvenance.extraction_method = "embedding_f
 
 On orchestrator exception: returns `TranslationResponse(success=False, error=str(e))`.
 
-On missing required values: `success=False, error="Missing required values: organism"` (ungrounded), or `success=False, error="Missing required values: organism (Shigella flexneri is not supported for growth predictions)"` (grounded but not executable for the resolved model type/factor4 — Phase A0.5b; see §3.3).
+On missing required values: `success=False, error="Missing required values: organism"` (ungrounded), or `success=False, error="Missing required values: organism (Shigella flexneri is not supported for growth predictions)"` (grounded but not executable for the resolved model type/factor4 — Phase A0.5b; see §3.3), or `success=False, error="Missing required values: nitrite_ppm (no declared valid range for nitrite — cannot bound the input, not modelled)"` (the factor4 field is grounded but the resolved model row has no `Factor4Min`/`Factor4Max` — 2026-07-17; synthetic-registry-only with the current CSV; see §3.3).
 
 On intent classification failure: `success=False, error="Query is out of scope..."` or `"Information queries not yet implemented"`.
 
@@ -956,6 +970,7 @@ LiteLLM + Instructor. Model specified via `LLM_MODEL`. Supported providers inclu
 | `ComBaseExecutionPayload` | The standardized, engine-ready payload produced by StandardizationService |
 | `ComBaseModelRegistry` | In-memory registry of all ComBase models loaded from CSV, keyed by `{model_id}_{organism_id}_{factor4_type}` |
 | `conservative_default` | A value substituted when the user's input is absent, chosen to predict the worst-case food safety outcome |
+| `excluded_reason` | `ValueProvenance`/`FieldAuditEntry` field (2026-07-17): non-null when a value was grounded but a downstream precedence rule chose a different candidate for the same decision slot (currently only factor4's CO2 > nitrite > lactic acid > acetic acid). Generic — not factor4-specific — so any future precedence rule reuses it. See §3.3, §4.5, §4.6. |
 | `LONG_WINDOW_DEFAULT` | `ValueSource` variant emitted when a single-step query provides no duration. The 7-day (10080 min) window ensures the prediction trajectory reaches the physical growth cap (±15 log CFU) under all model types. Epistemically distinct from `CONSERVATIVE_DEFAULT`: duration is a scenario dimension (how long to simulate), not an environmental property with a scientifically-defensible worst-case value. |
 | `ExtractedScenario` | Pydantic model produced by SemanticParser from the user's query |
 | `Factor4Type` | Optional fourth environmental factor: NONE, CO2, NITRITE, LACTIC_ACID, ACETIC_ACID |

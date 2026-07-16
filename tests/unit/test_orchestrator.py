@@ -207,6 +207,15 @@ class TestMissingKeyToAuditKey:
     def test_organism_explicit_branch(self):
         assert _missing_key_to_audit_key("organism") == "organism"
 
+    def test_factor4_no_declared_range(self):
+        assert (
+            _missing_key_to_audit_key(
+                "nitrite_ppm (no declared valid range for nitrite "
+                "— cannot bound the input, not modelled)"
+            )
+            == "nitrite_ppm"
+        )
+
     def test_unknown_field_passthrough(self, caplog):
         import logging
 

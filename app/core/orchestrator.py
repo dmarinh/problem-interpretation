@@ -53,10 +53,16 @@ def _missing_key_to_audit_key(field_spec: str) -> str:
                              supported for growth predictions)") — same audit key as
                              plain "organism"; the parenthetical is human-readable
                              detail for the top-level error string, not part of the key.
+      "<field> (no declared valid range for ...)" → the grounded factor4 field
+                             (e.g. "nitrite_ppm") when the model declares a
+                             factor4 type but the registry has no bounds for
+                             it — audit key is the field name itself.
 
     metadata.provenance uses full field names matching grounded.provenance keys:
       "duration_minutes", "duration_minutes (step N)", "temperature_celsius"
     """
+    _NO_VALID_RANGE_MARKER = " (no declared valid range for "
+
     if field_spec == "duration":
         return "duration_minutes"
     if field_spec.startswith("duration (step "):
@@ -65,6 +71,8 @@ def _missing_key_to_audit_key(field_spec: str) -> str:
         return "temperature_celsius"
     if field_spec == "organism" or field_spec.startswith("organism ("):
         return "organism"
+    if _NO_VALID_RANGE_MARKER in field_spec:
+        return field_spec.split(_NO_VALID_RANGE_MARKER, 1)[0]
     _log.warning(
         "_missing_key_to_audit_key: unrecognised field spec %r — passing through; audit key may be wrong",
         field_spec,

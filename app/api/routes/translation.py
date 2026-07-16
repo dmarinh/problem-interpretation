@@ -278,6 +278,7 @@ def _build_field_audit(result: TranslationResult) -> dict[str, FieldAuditEntry]:
             extraction=extraction_info,
             standardization=std_info,
             pathogen_category_fallback=pcf_info,
+            excluded_reason=prov.excluded_reason,
         )
 
     # ── Defaulted fields: absent from provenance but used by the model ─────────
