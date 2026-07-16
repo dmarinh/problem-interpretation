@@ -50,6 +50,8 @@ range_clamps — it is a deterministic, mechanical step that fires on every
 range-typed value.
 """
 
+from typing import Callable
+
 from pydantic import ValidationError
 
 from app.config import settings
@@ -274,6 +276,55 @@ class StandardizationService:
             after_value=value,
         )
 
+    def _clamp_to_constraints(
+        self,
+        result: StandardizationResult,
+        field_name: str,
+        label: str,
+        value: float,
+        is_valid: Callable[[float], bool],
+        clamp: Callable[[float], float],
+        valid_min: float,
+        valid_max: float,
+        reason: str,
+        unit_suffix: str = "",
+    ) -> float:
+        """
+        Shared clamp-and-audit block for a scalar model input.
+
+        Checks is_valid(value); if invalid, clamps via clamp(value), records a
+        RangeClamp (field_name, original_value, clamped_value, valid_min,
+        valid_max, reason) and a warning string on result, and returns the
+        clamped value. Returns value unchanged when already valid.
+
+        Field-specific behavior (which ComBaseModelConstraints method to call,
+        the reason text, the warning's units) is entirely supplied by the
+        caller, so wording is parameterised per field, not normalised across
+        them — e.g. temperature's "°C" survives via unit_suffix, pH/aw's
+        static "Model constraint" reason survives as a plain string.
+        """
+        if is_valid(value):
+            return value
+
+        original = value
+        clamped_value = clamp(value)
+        result.range_clamps.append(
+            RangeClamp(
+                field_name=field_name,
+                original_value=original,
+                clamped_value=clamped_value,
+                valid_min=valid_min,
+                valid_max=valid_max,
+                reason=reason,
+            )
+        )
+        result.warnings.append(
+            f"{label} {original}{unit_suffix} is outside the model's valid range "
+            f"[{valid_min}, {valid_max}]{unit_suffix}; "
+            f"clamped to {clamped_value}{unit_suffix}. Prediction is at the model boundary."
+        )
+        return clamped_value
+
     # =========================================================================
     # VALUE STANDARDIZATION
     # =========================================================================
@@ -372,23 +423,18 @@ class StandardizationService:
                 )
 
         # Clamp to valid range if constraints available
-        if constraints and not constraints.is_temperature_valid(temp):
-            original = temp
-            temp = constraints.clamp_temperature(temp)
-            result.range_clamps.append(
-                RangeClamp(
-                    field_name="temperature_celsius",
-                    original_value=original,
-                    clamped_value=temp,
-                    valid_min=constraints.temp_min,
-                    valid_max=constraints.temp_max,
-                    reason=f"Model constraint for {model_type.value}",
-                )
-            )
-            result.warnings.append(
-                f"Temperature {original}°C is outside the model's valid range "
-                f"[{constraints.temp_min}, {constraints.temp_max}]°C; "
-                f"clamped to {temp}°C. Prediction is at the model boundary."
+        if constraints:
+            temp = self._clamp_to_constraints(
+                result,
+                field_name="temperature_celsius",
+                label="Temperature",
+                value=temp,
+                is_valid=constraints.is_temperature_valid,
+                clamp=constraints.clamp_temperature,
+                valid_min=constraints.temp_min,
+                valid_max=constraints.temp_max,
+                reason=f"Model constraint for {model_type.value}",
+                unit_suffix="°C",
             )
 
         return temp
@@ -523,23 +569,17 @@ class StandardizationService:
             )
 
         # Clamp to valid range
-        if constraints and not constraints.is_ph_valid(ph):
-            original = ph
-            ph = constraints.clamp_ph(ph)
-            result.range_clamps.append(
-                RangeClamp(
-                    field_name="ph",
-                    original_value=original,
-                    clamped_value=ph,
-                    valid_min=constraints.ph_min,
-                    valid_max=constraints.ph_max,
-                    reason="Model constraint",
-                )
-            )
-            result.warnings.append(
-                f"pH {original} is outside the model's valid range "
-                f"[{constraints.ph_min}, {constraints.ph_max}]; "
-                f"clamped to {ph}. Prediction is at the model boundary."
+        if constraints:
+            ph = self._clamp_to_constraints(
+                result,
+                field_name="ph",
+                label="pH",
+                value=ph,
+                is_valid=constraints.is_ph_valid,
+                clamp=constraints.clamp_ph,
+                valid_min=constraints.ph_min,
+                valid_max=constraints.ph_max,
+                reason="Model constraint",
             )
 
         return ph
@@ -619,23 +659,17 @@ class StandardizationService:
             )
 
         # Clamp to valid range
-        if constraints and not constraints.is_aw_valid(aw):
-            original = aw
-            aw = constraints.clamp_aw(aw)
-            result.range_clamps.append(
-                RangeClamp(
-                    field_name="water_activity",
-                    original_value=original,
-                    clamped_value=aw,
-                    valid_min=constraints.aw_min,
-                    valid_max=constraints.aw_max,
-                    reason="Model constraint",
-                )
-            )
-            result.warnings.append(
-                f"Water activity {original} is outside the model's valid range "
-                f"[{constraints.aw_min}, {constraints.aw_max}]; "
-                f"clamped to {aw}. Prediction is at the model boundary."
+        if constraints:
+            aw = self._clamp_to_constraints(
+                result,
+                field_name="water_activity",
+                label="Water activity",
+                value=aw,
+                is_valid=constraints.is_aw_valid,
+                clamp=constraints.clamp_aw,
+                valid_min=constraints.aw_min,
+                valid_max=constraints.aw_max,
+                reason="Model constraint",
             )
 
         return aw
