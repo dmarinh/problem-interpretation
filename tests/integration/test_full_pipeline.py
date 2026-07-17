@@ -22,6 +22,7 @@ from app.models.enums import (
     SessionStatus,
 )
 from app.models.extraction import (
+    ExtractedClarificationResponse,
     ExtractedDuration,
     ExtractedEnvironmentalConditions,
     ExtractedIntent,
@@ -29,7 +30,7 @@ from app.models.extraction import (
     ExtractedTemperature,
     ExtractedTimeTemperatureStep,
 )
-from app.models.metadata import ValueSource
+from app.models.metadata import ClarificationTranscript, ValueSource
 from app.rag.retrieval import RetrievalService
 from app.rag.vector_store import VectorStore
 from app.services.grounding.grounding_service import GroundingService
@@ -963,6 +964,238 @@ class TestDefaultOrganismFieldAudit:
         assert "mustard" in question.question
         assert "condiment" in question.question
         assert "IFT-2003-T1" in question.question
+
+
+class TestClarificationReEntry:
+    """
+    A1b (2026-07-17): the round-1 organism clarification gate is followed
+    by a round-2 request carrying a ClarificationTranscript, resolving to a
+    full prediction, a fail-closed refusal, or (never) a second question.
+
+    PTM is stateless, so round 2 reprocesses "frobnitz left out for 3 hours"
+    from scratch via the same mocked extract_scenario — round 1's real
+    question/options are captured and echoed back on the transcript, exactly
+    as a real stateless client would.
+    """
+
+    QUERY = "How long before frobnitz left out at 25°C becomes unsafe?"
+
+    @staticmethod
+    def _scenario():
+        return create_scenario(
+            food_description="frobnitz",
+            pathogen_mentioned=None,
+            temperature=ExtractedTemperature(value_celsius=25.0),
+            duration=ExtractedDuration(value_minutes=240.0),
+            is_storage_scenario=True,
+        )
+
+    async def _ask(self, orchestrator, mock_semantic_parser):
+        """Round 1: get the real question/options for this query."""
+        mock_semantic_parser.extract_scenario = AsyncMock(return_value=self._scenario())
+        result = await orchestrator.translate(self.QUERY)
+        assert result.state.status == SessionStatus.AWAITING_CLARIFICATION
+        question = result.state.clarification_question
+        assert question is not None
+        return question
+
+    def _transcript(self, question, user_reply: str) -> ClarificationTranscript:
+        return ClarificationTranscript(
+            original_query=self.QUERY,
+            question_asked=question.question,
+            options_offered=question.options,
+            user_reply=user_reply,
+        )
+
+    @pytest.mark.asyncio
+    async def test_offered_organism_completes_prediction(
+        self, orchestrator, mock_semantic_parser
+    ):
+        """Reply naming an offered organism -> full prediction, source:
+        clarification_response, final_value = the organism actually executed."""
+        question = await self._ask(orchestrator, mock_semantic_parser)
+        offered = question.options[0]  # first real organism option, not the escape
+        assert offered.code != "other"
+
+        mock_semantic_parser.extract_scenario = AsyncMock(return_value=self._scenario())
+        mock_semantic_parser.extract_clarification_response = AsyncMock(
+            return_value=ExtractedClarificationResponse(
+                selected_option=offered.label,
+                understood_value=offered.label,
+                wants_to_skip=False,
+            )
+        )
+
+        result = await orchestrator.translate(
+            self.QUERY,
+            transcript=self._transcript(question, f"Let's go with {offered.label}"),
+        )
+
+        assert result.success is True, f"Failed with error: {result.error}"
+        assert result.state.status == SessionStatus.COMPLETED
+        assert result.execution_result is not None
+
+        from app.api.routes.translation import _build_field_audit
+
+        field_audit = _build_field_audit(result)
+        assert field_audit["organism"].source == "clarification_response"
+        assert field_audit["organism"].final_value == offered.label
+
+        # A resolved-and-executed request must not carry a stale "required
+        # value missing" warning from before the transcript resolved it.
+        assert not any(
+            "required value missing" in w for w in result.metadata.warnings
+        ), result.metadata.warnings
+
+        # Exactly one ClarificationRecord for the whole exchange, not two.
+        assert len(result.metadata.clarifications) == 1
+        record = result.metadata.clarifications[0]
+        assert record.turn_number == 1
+        assert (
+            record.user_response is not None and offered.label in record.user_response
+        )
+        assert record.extracted_value == offered.code
+
+    @pytest.mark.asyncio
+    async def test_skip_fails_closed_no_default(
+        self, orchestrator, mock_semantic_parser
+    ):
+        """wants_to_skip=True -> fail closed, plain language, no organism default."""
+        question = await self._ask(orchestrator, mock_semantic_parser)
+
+        mock_semantic_parser.extract_scenario = AsyncMock(return_value=self._scenario())
+        mock_semantic_parser.extract_clarification_response = AsyncMock(
+            return_value=ExtractedClarificationResponse(
+                understood_value=None,
+                wants_to_skip=True,
+            )
+        )
+
+        result = await orchestrator.translate(
+            self.QUERY,
+            transcript=self._transcript(question, "I don't know, just use a default"),
+        )
+
+        assert result.success is False
+        assert result.state.status == SessionStatus.FAILED
+        assert result.error is not None
+        assert "default" in result.error.lower()
+
+        org_defaults = [
+            d
+            for d in (result.metadata.defaults_imputed if result.metadata else [])
+            if d.field_name == "organism"
+        ]
+        assert org_defaults == []
+
+    @pytest.mark.asyncio
+    async def test_organism_not_offered_fails_closed_not_substituted(
+        self, orchestrator, mock_semantic_parser
+    ):
+        """Reply names a real organism (Shigella) that was NOT among the
+        options offered for this growth scenario -> fail closed, not
+        silently substituted."""
+        question = await self._ask(orchestrator, mock_semantic_parser)
+        offered_codes = {o.code for o in question.options}
+        assert "sf" not in offered_codes, "test assumes Shigella wasn't offered"
+
+        mock_semantic_parser.extract_scenario = AsyncMock(return_value=self._scenario())
+        mock_semantic_parser.extract_clarification_response = AsyncMock(
+            return_value=ExtractedClarificationResponse(
+                selected_option="Shigella",
+                understood_value="Shigella",
+                wants_to_skip=False,
+            )
+        )
+
+        result = await orchestrator.translate(
+            self.QUERY,
+            transcript=self._transcript(question, "It's Shigella"),
+        )
+
+        assert result.success is False
+        assert result.state.status == SessionStatus.FAILED
+        assert result.error is not None
+        assert "shigella" in result.error.lower()
+        assert "wasn't one of the options" in result.error.lower()
+
+    @pytest.mark.asyncio
+    async def test_unmappable_reply_fails_closed(
+        self, orchestrator, mock_semantic_parser
+    ):
+        """Reply the LLM can't map to any organism at all -> fail closed."""
+        question = await self._ask(orchestrator, mock_semantic_parser)
+
+        mock_semantic_parser.extract_scenario = AsyncMock(return_value=self._scenario())
+        mock_semantic_parser.extract_clarification_response = AsyncMock(
+            return_value=ExtractedClarificationResponse(
+                selected_option="Something else / I'm not sure",
+                understood_value=None,
+                wants_to_skip=False,
+            )
+        )
+
+        result = await orchestrator.translate(
+            self.QUERY,
+            transcript=self._transcript(question, "Something else / I'm not sure"),
+        )
+
+        assert result.success is False
+        assert result.state.status == SessionStatus.FAILED
+        assert result.error is not None
+        assert "didn't name a pathogen" in result.error.lower()
+
+    @pytest.mark.asyncio
+    async def test_ambiguous_multi_organism_reply_fails_closed(
+        self, orchestrator, mock_semantic_parser
+    ):
+        """Reply naming more than one organism -> ambiguous, fail closed
+        rather than resolved to an arbitrary one of them."""
+        question = await self._ask(orchestrator, mock_semantic_parser)
+
+        mock_semantic_parser.extract_scenario = AsyncMock(return_value=self._scenario())
+        mock_semantic_parser.extract_clarification_response = AsyncMock(
+            return_value=ExtractedClarificationResponse(
+                selected_option="Salmonella or Listeria",
+                understood_value="Salmonella or Listeria",
+                wants_to_skip=False,
+            )
+        )
+
+        result = await orchestrator.translate(
+            self.QUERY,
+            transcript=self._transcript(question, "Salmonella or Listeria, not sure"),
+        )
+
+        assert result.success is False
+        assert result.state.status == SessionStatus.FAILED
+        assert result.error is not None
+        assert "more than one" in result.error.lower()
+
+    @pytest.mark.asyncio
+    async def test_transcript_present_still_fails_no_second_question(
+        self, orchestrator, mock_semantic_parser
+    ):
+        """One round only: if resolution fails, status must be FAILED, never
+        AWAITING_CLARIFICATION again — no second question."""
+        question = await self._ask(orchestrator, mock_semantic_parser)
+
+        mock_semantic_parser.extract_scenario = AsyncMock(return_value=self._scenario())
+        mock_semantic_parser.extract_clarification_response = AsyncMock(
+            return_value=ExtractedClarificationResponse(
+                understood_value=None,
+                wants_to_skip=True,
+            )
+        )
+
+        result = await orchestrator.translate(
+            self.QUERY,
+            transcript=self._transcript(question, "I don't know"),
+        )
+
+        assert result.state.status != SessionStatus.AWAITING_CLARIFICATION
+        assert result.state.status == SessionStatus.FAILED
+        assert result.state.clarification_question is None
 
 
 class TestCategoryPathogenFallbackWarningPropagation:

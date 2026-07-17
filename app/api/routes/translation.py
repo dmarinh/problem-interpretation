@@ -557,6 +557,7 @@ async def translate_query(
         result = await orchestrator.translate(
             user_input=request.query,
             model_type=request.model_type,
+            transcript=request.transcript,
         )
         completed_at = datetime.utcnow()
 

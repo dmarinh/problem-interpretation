@@ -105,6 +105,54 @@ class TestUnhandledStagesRejected:
             )
 
 
+class TestReasonForStage:
+    """A1b: reason_for_stage() — the standalone stage->reason lookup used on
+    re-entry, when the full question doesn't need to be rebuilt."""
+
+    def test_food_unrecognised(self, service: ClarificationService) -> None:
+        assert (
+            service.reason_for_stage(OrganismGroundingFailureStage.FOOD_UNRECOGNISED)
+            == ClarificationReason.ORGANISM_FOOD_UNRECOGNIZED
+        )
+
+    def test_category_has_no_hazard_data(self, service: ClarificationService) -> None:
+        assert (
+            service.reason_for_stage(
+                OrganismGroundingFailureStage.CATEGORY_HAS_NO_HAZARD_DATA
+            )
+            == ClarificationReason.ORGANISM_CATEGORY_UNCOVERED
+        )
+
+    @pytest.mark.parametrize(
+        "stage",
+        [
+            OrganismGroundingFailureStage.BRIDGE_DISABLED,
+            OrganismGroundingFailureStage.INTERNAL_NO_MAPPABLE_CANDIDATE,
+        ],
+    )
+    def test_raises_for_non_clarifiable_stage(
+        self, service: ClarificationService, stage: OrganismGroundingFailureStage
+    ) -> None:
+        with pytest.raises(ValueError, match="does not handle"):
+            service.reason_for_stage(stage)
+
+    def test_matches_build_organism_question_reason(
+        self, service: ClarificationService
+    ) -> None:
+        """Same mapping both ways — one source of truth, not two."""
+        for stage in (
+            OrganismGroundingFailureStage.FOOD_UNRECOGNISED,
+            OrganismGroundingFailureStage.CATEGORY_HAS_NO_HAZARD_DATA,
+        ):
+            question = service.build_organism_question(
+                stage=stage,
+                food_description="frobnitz",
+                ranked_organisms=[(ComBaseOrganism.SALMONELLA, "Salmonella")],
+                resolved_category="condiment",
+            )
+            assert question.reason == service.reason_for_stage(stage)
+
+
 class TestOptionAssembly:
     def test_options_preserve_caller_order_and_append_free_text_escape(
         self, service: ClarificationService

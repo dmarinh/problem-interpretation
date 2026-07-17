@@ -1,5 +1,6 @@
 """
-Organism clarification gate — question construction (ask-only, A1a).
+Organism clarification gate — question construction (A1a) + reason lookup
+for re-entry (A1b).
 
 Builds a user-facing clarification question when organism grounding fails
 closed for a reason a question can actually resolve: the food description
@@ -9,7 +10,9 @@ organism-grounding failure stage (BRIDGE_DISABLED,
 INTERNAL_NO_MAPPABLE_CANDIDATE) and every other missing_required reason
 (non-executable organism, missing factor4 bounds, missing duration, ...)
 keeps the existing fail-closed path unchanged — see
-Orchestrator._build_organism_clarification for the trigger condition.
+Orchestrator._build_organism_clarification (round 1, asking) and
+Orchestrator._resolve_organism_from_transcript (round 2, re-entry) for the
+trigger conditions.
 
 Pure and deterministic: given the same stage, food description, resolved
 category, and ranked organism list, this always produces the same question.
@@ -19,8 +22,9 @@ CDC annual deaths — see GroundingService.rank_executable_organisms) and
 display names (StandardizationService.organism_display_name) before
 calling in, so this module never derives or reorders anything itself.
 
-Non-goals (A1a is ask-only): no re-entry, no answer parsing, no
-clarification_context — that is A1b.
+Non-goals (A1b is still one round only): no multi-round, no
+clarification_context, no server-side session — the caller carries the
+round-1 exchange back on the request (ClarificationTranscript).
 """
 
 from app.models.enums import (
@@ -30,7 +34,10 @@ from app.models.enums import (
 )
 from app.models.metadata import ClarificationOption, ClarificationQuestion
 
-# Not consumed by anything yet — A1a does not wire answer handling.
+# The free-text escape option's code, checked by
+# Orchestrator._resolve_organism_from_transcript on re-entry: a reply that
+# resolves to no organism at all (including one that just names this escape
+# option back) fails closed the same way as any other unmappable reply.
 FREE_TEXT_ESCAPE_CODE = "other"
 FREE_TEXT_ESCAPE_LABEL = "Something else / I'm not sure"
 
@@ -132,6 +139,29 @@ class ClarificationService:
             question=question_text,
             options=options,
         )
+
+    def reason_for_stage(
+        self, stage: OrganismGroundingFailureStage
+    ) -> ClarificationReason:
+        """
+        Public accessor for the stage -> reason mapping build_organism_question()
+        uses internally.
+
+        A1b needs this on re-entry: it already has the round-1 question text
+        and options verbatim from the transcript (ClarificationTranscript), so
+        rebuilding a full ClarificationQuestion via build_organism_question()
+        just to read its .reason would be wasteful (and would require
+        re-deriving ranked_organisms, which A1b's re-entry path has no need
+        for). Raises the same ValueError as build_organism_question() for an
+        unhandled stage — one validation rule, not two.
+        """
+        if stage not in _STAGE_TO_REASON:
+            raise ValueError(
+                f"ClarificationService.reason_for_stage does not handle "
+                f"stage {stage!r} — only FOOD_UNRECOGNISED and "
+                f"CATEGORY_HAS_NO_HAZARD_DATA have a reason mapping."
+            )
+        return _STAGE_TO_REASON[stage]
 
 
 _clarification_service: ClarificationService | None = None

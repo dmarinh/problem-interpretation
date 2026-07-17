@@ -475,7 +475,8 @@ class ClarificationOption(BaseModel):
         description="Machine-readable identifier for this option — a "
         "ComBaseOrganism short code (e.g. 'ss') for a derived organism "
         "option, or a fixed escape code (e.g. 'other') for the free-text "
-        "fallback. Not consumed by anything yet — A1a is ask-only."
+        "fallback. Echoed back in ClarificationTranscript.options_offered "
+        "on re-entry (A1b) and checked for membership there."
     )
     label: str = Field(description="Human-readable display text for this option")
 
@@ -497,6 +498,52 @@ class ClarificationQuestion(BaseModel):
     question: str = Field(description="The question text, including preamble")
     options: list[ClarificationOption] = Field(
         description="Selectable options, including a free-text escape"
+    )
+
+
+class ClarificationTranscript(BaseModel):
+    """
+    A1b (2026-07-17): the single round-1 exchange, carried on the request so
+    the pipeline can complete without a server-side session.
+
+    PTM is stateless — no SessionManager, no server-held conversation state
+    (see specs/lessons.md on SessionManager._sessions being unbounded,
+    TTL-less, and broken under multi-worker deployment; A1b deliberately does
+    not build on it). The caller (API client) is responsible for holding the
+    round-1 question and echoing it back verbatim alongside the user's reply.
+
+    Structurally caps the exchange to one round: this is a single object with
+    four scalar/list fields, not a list of turns, so there is no representable
+    way to accumulate a second round within it. Field-level max_length bounds
+    additionally cap payload size. If grounding still fails after a transcript
+    is present, the orchestrator fails closed rather than asking again.
+    """
+
+    original_query: str = Field(
+        min_length=1,
+        max_length=2000,
+        description="The original query from the round-1 request — reprocessed "
+        "from scratch, since no session persists it server-side",
+    )
+    question_asked: str = Field(
+        min_length=1,
+        max_length=2000,
+        description="The exact question text from the round-1 response "
+        "(ClarificationQuestion.question), echoed back for the audit record",
+    )
+    options_offered: list[ClarificationOption] = Field(
+        min_length=1,
+        max_length=10,
+        description="The exact options from the round-1 response "
+        "(ClarificationQuestion.options), echoed back. This is the "
+        "authoritative offered set the reply is validated against — not a "
+        "freshly re-derived one, since re-deriving could drift from what the "
+        "user actually saw",
+    )
+    user_reply: str = Field(
+        min_length=1,
+        max_length=2000,
+        description="The user's free-text answer to the round-1 question",
     )
 
 

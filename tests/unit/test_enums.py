@@ -142,6 +142,47 @@ class TestComBaseOrganismFromText:
         ]
 
 
+class TestComBaseOrganismAllMatchesInText:
+    """Tests for ComBaseOrganism.all_matches_in_text() (A1b re-entry validation)."""
+
+    def test_single_match(self):
+        result = ComBaseOrganism.all_matches_in_text("I'll go with Salmonella")
+        assert result == {ComBaseOrganism.SALMONELLA}
+
+    def test_multiple_distinct_matches(self):
+        result = ComBaseOrganism.all_matches_in_text(
+            "Could be Salmonella or maybe Listeria?"
+        )
+        assert result == {
+            ComBaseOrganism.SALMONELLA,
+            ComBaseOrganism.LISTERIA_MONOCYTOGENES,
+        }
+
+    def test_repeated_mention_of_same_organism_is_one_match(self):
+        """Same organism named twice (e.g. via two aliases) must not appear
+        as two entries — the caller relies on set size to detect ambiguity."""
+        result = ComBaseOrganism.all_matches_in_text(
+            "Salmonella, definitely salmonella enteritidis"
+        )
+        assert result == {ComBaseOrganism.SALMONELLA}
+
+    def test_no_match_returns_empty_set(self):
+        assert ComBaseOrganism.all_matches_in_text("I don't know") == set()
+
+    def test_empty_text_returns_empty_set(self):
+        assert ComBaseOrganism.all_matches_in_text("") == set()
+        assert ComBaseOrganism.all_matches_in_text(None) == set()
+
+    def test_short_code_alone_does_not_false_positive(self):
+        """2-char short codes are excluded, same as from_text() — 'sa' inside
+        an unrelated word must not resolve to Staphylococcus aureus."""
+        assert ComBaseOrganism.all_matches_in_text("that seems safe") == set()
+
+    def test_case_insensitive(self):
+        result = ComBaseOrganism.all_matches_in_text("LISTERIA was mentioned")
+        assert result == {ComBaseOrganism.LISTERIA_MONOCYTOGENES}
+
+
 class TestFactor4Type:
     """Tests for Factor4Type enum."""
 

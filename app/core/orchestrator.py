@@ -11,12 +11,14 @@ Coordinates the full translation pipeline:
 
 import logging
 import re
+from dataclasses import dataclass
 
 _log = logging.getLogger(__name__)
 
 from app.core.state import SessionManager, SessionState, get_session_manager
 from app.engines.combase.engine import ComBaseEngine, get_combase_engine
 from app.models.enums import (
+    ComBaseOrganism,
     Factor4Type,
     IntentType,
     ModelType,
@@ -27,7 +29,9 @@ from app.models.extraction import ExtractedDuration
 from app.models.metadata import (
     ClarificationQuestion,
     ClarificationRecord,
+    ClarificationTranscript,
     ComBaseModelAudit,
+    OrganismGroundingFailure,
     SystemAudit,
     ValueProvenance,
     ValueSource,
@@ -45,6 +49,7 @@ from app.services.grounding.grounding_service import (
 )
 from app.services.llm.exceptions import LLMProviderError
 from app.services.standardization.standardization_service import (
+    StandardizationResult,
     StandardizationService,
     get_standardization_service,
 )
@@ -60,6 +65,19 @@ _CLARIFIABLE_ORGANISM_STAGES = frozenset(
         OrganismGroundingFailureStage.CATEGORY_HAS_NO_HAZARD_DATA,
     }
 )
+
+
+@dataclass
+class _TranscriptResolution:
+    """Outcome of Orchestrator._resolve_organism_from_transcript.
+
+    organism is None iff resolution failed closed; failure_reason is then a
+    plain-language string (never a short code) suitable for state.set_error().
+    Exactly one of the two is populated.
+    """
+
+    organism: ComBaseOrganism | None
+    failure_reason: str | None
 
 
 def _missing_key_to_audit_key(field_spec: str) -> str:
@@ -150,6 +168,7 @@ class Orchestrator:
         self,
         user_input: str,
         model_type: ModelType | None = None,
+        transcript: ClarificationTranscript | None = None,
     ) -> TranslationResult:
         """
         Run the full translation pipeline.
@@ -157,12 +176,26 @@ class Orchestrator:
         Args:
             user_input: User's natural language input
             model_type: Type of model to run
+            transcript: A1b re-entry (2026-07-17). When present, this request
+                is answering a prior status=awaiting_clarification response.
+                PTM is stateless (no server-side session — see
+                specs/lessons.md), so transcript.original_query is what's
+                actually reprocessed; user_input is ignored in that case.
+                The pipeline runs from scratch exactly as round 1 did, and
+                only when it reaches the same clarifiable organism gap does
+                the transcript's reply get a chance to resolve it — see
+                _handle_missing_required.
 
         Returns:
             TranslationResult with execution result and metadata
         """
-        # Create session
-        state = self._sessions.create_session(user_input)
+        # Create session. When a transcript is present it is the source of
+        # truth for what to (re)process — there is no session to resume, so
+        # the original query is reprocessed from scratch each time.
+        effective_input = (
+            transcript.original_query if transcript is not None else user_input
+        )
+        state = self._sessions.create_session(effective_input)
 
         try:
             # Step 1: Classify intent
@@ -212,56 +245,15 @@ class Orchestrator:
                 state.metadata.warnings.extend(std_result.warnings)
 
             if std_result.missing_required:
-                if state.metadata:
-                    for field in std_result.missing_required:
-                        # Add a null-provenance entry so field_audit shows this field
-                        # with final_value=null instead of omitting it entirely.
-                        audit_key = _missing_key_to_audit_key(field)
-                        if audit_key not in state.metadata.provenance:
-                            state.metadata.add_provenance(
-                                audit_key,
-                                ValueProvenance(source=ValueSource.MISSING),
-                            )
-                        state.metadata.warnings.append(
-                            f"Validation failed: required value missing — {field}"
-                        )
-
-                # Narrow trigger: only the bare "organism" spec (organism
-                # entirely ungrounded), never "organism (...)" (grounded but
-                # not executable — a different failure a question can't fix).
-                # See _build_organism_clarification for the stage gate.
-                clarification = None
-                if "organism" in std_result.missing_required:
-                    clarification = self._build_organism_clarification(
-                        grounded,
-                        (
-                            state.extracted_scenario.food_description
-                            if state.extracted_scenario
-                            else None
-                        )
-                        or "",
-                        effective_model_type,
-                        std_result.factor4_type,
-                    )
-
-                if clarification is not None:
-                    state.clarification_question = clarification
-                    state.update_status(SessionStatus.AWAITING_CLARIFICATION)
-                    if state.metadata:
-                        state.metadata.add_clarification(
-                            ClarificationRecord(
-                                turn_number=1,
-                                reason=clarification.reason,
-                                question_asked=clarification.question,
-                                user_response=None,
-                            )
-                        )
-                    return TranslationResult(state)
-
-                state.set_error(
-                    f"Missing required values: {', '.join(std_result.missing_required)}"
+                outcome = await self._handle_missing_required(
+                    state, grounded, transcript, effective_model_type, std_result
                 )
-                return TranslationResult(state)
+                if isinstance(outcome, TranslationResult):
+                    return outcome
+                # Transcript-driven organism resolution succeeded and
+                # standardize() was re-run — continue the pipeline with the
+                # new, now-complete result.
+                std_result = outcome
 
             if std_result.payload is None:
                 error_detail = (
@@ -474,6 +466,284 @@ class Orchestrator:
             ranked_organisms=ranked_organisms,
             resolved_category=failure.resolved_category,
         )
+
+    def _record_missing_required(
+        self, state: SessionState, std_result: StandardizationResult
+    ) -> None:
+        """Backfill null provenance + a warning for every missing_required field.
+
+        Shared by the initial standardize() failure and, when transcript
+        resolution is attempted but standardize() still fails afterward, the
+        retry's failure too — so both paths produce the same field_audit
+        shape rather than one being backfilled and the other not.
+        """
+        if not state.metadata:
+            return
+        for field in std_result.missing_required:
+            # Add a null-provenance entry so field_audit shows this field
+            # with final_value=null instead of omitting it entirely.
+            audit_key = _missing_key_to_audit_key(field)
+            if audit_key not in state.metadata.provenance:
+                state.metadata.add_provenance(
+                    audit_key,
+                    ValueProvenance(source=ValueSource.MISSING),
+                )
+            state.metadata.warnings.append(
+                f"Validation failed: required value missing — {field}"
+            )
+
+    async def _handle_missing_required(
+        self,
+        state: SessionState,
+        grounded: "GroundedValues",
+        transcript: ClarificationTranscript | None,
+        model_type: ModelType,
+        std_result: StandardizationResult,
+    ) -> "TranslationResult | StandardizationResult":
+        """
+        Handle a standardize() result with missing_required populated.
+
+        Returns a StandardizationResult when transcript-driven organism
+        resolution (A1b) succeeded and standardize() was re-run — the caller
+        (translate()) should continue the pipeline with it, exactly as if
+        organism had been grounded from the start. Returns a terminal
+        TranslationResult for every other outcome: a hard failure, or (round
+        1, no transcript) a fresh clarification question was asked.
+
+        Narrow trigger, same as A1a: only the bare "organism" spec (organism
+        entirely ungrounded) with a clarifiable failure stage reaches either
+        the ask path or the re-entry path below. "organism (...)" (grounded
+        but not executable), missing factor4 bounds, missing duration, and
+        every non-clarifiable organism-failure stage keep the unchanged
+        fail-closed path regardless of whether a transcript is present.
+
+        _record_missing_required(state, std_result) is deliberately NOT
+        called unconditionally up front — only on branches that are actually
+        terminal. Calling it eagerly would leave a stale "required value
+        missing — organism" warning in metadata.warnings even after a
+        transcript-driven resolution succeeds and the request completes
+        (std_result's missing_required reflects the pre-resolution state; it
+        must never be recorded once organism is later resolved). Each
+        terminal branch below records the *result it is actually failing on*
+        (std_result for round 1 / non-clarifiable, new_result for a retry
+        that still fails) instead.
+        """
+        failure: OrganismGroundingFailure | None = (
+            grounded.organism_failure
+            if "organism" in std_result.missing_required
+            else None
+        )
+        clarifiable = (
+            failure is not None and failure.stage in _CLARIFIABLE_ORGANISM_STAGES
+        )
+
+        if clarifiable and transcript is not None:
+            assert failure is not None  # narrowed by `clarifiable`
+            resolution = await self._resolve_organism_from_transcript(
+                transcript, model_type, std_result.factor4_type
+            )
+            if state.metadata:
+                state.metadata.add_clarification(
+                    ClarificationRecord(
+                        turn_number=1,
+                        reason=self._clarifier.reason_for_stage(failure.stage),
+                        question_asked=transcript.question_asked,
+                        user_response=transcript.user_reply,
+                        extracted_value=(
+                            resolution.organism.value
+                            if resolution.organism is not None
+                            else None
+                        ),
+                    )
+                )
+
+            if resolution.organism is None:
+                self._record_missing_required(state, std_result)
+                assert resolution.failure_reason is not None
+                state.set_error(resolution.failure_reason)
+                return TranslationResult(state)
+
+            # Ground the resolved organism and re-run standardization — the
+            # same path as if organism had been grounded from the start.
+            grounded.set(
+                "organism",
+                resolution.organism,
+                source=ValueSource.CLARIFICATION_RESPONSE,
+                original_text=transcript.user_reply,
+                extraction_method="clarification_response",
+            )
+            if state.metadata:
+                state.metadata.add_provenance(
+                    "organism", grounded.provenance["organism"]
+                )
+
+            new_result = self._standardizer.standardize(grounded, model_type)
+            if state.metadata:
+                state.metadata.defaults_imputed.extend(new_result.defaults_imputed)
+                for clamp in new_result.range_clamps:
+                    state.metadata.add_range_clamp(clamp)
+                state.metadata.warnings.extend(new_result.warnings)
+
+            if new_result.missing_required:
+                # One round only — grounding still fails after the reply was
+                # applied (e.g. some other field is now the blocker), so this
+                # is a hard failure, never a second question.
+                self._record_missing_required(state, new_result)
+                state.set_error(
+                    f"Missing required values: {', '.join(new_result.missing_required)}"
+                )
+                return TranslationResult(state)
+
+            return new_result
+
+        if clarifiable:
+            # Round 1: ask, unless transcript is absent (checked above) — i.e.
+            # this branch is reached only when transcript is None. Terminal
+            # either way (asks or falls through to the hard failure below),
+            # so record now.
+            self._record_missing_required(state, std_result)
+            clarification = self._build_organism_clarification(
+                grounded,
+                (
+                    state.extracted_scenario.food_description
+                    if state.extracted_scenario
+                    else None
+                )
+                or "",
+                model_type,
+                std_result.factor4_type,
+            )
+            if clarification is not None:
+                state.clarification_question = clarification
+                state.update_status(SessionStatus.AWAITING_CLARIFICATION)
+                if state.metadata:
+                    state.metadata.add_clarification(
+                        ClarificationRecord(
+                            turn_number=1,
+                            reason=clarification.reason,
+                            question_asked=clarification.question,
+                            user_response=None,
+                        )
+                    )
+                return TranslationResult(state)
+            # clarification is None (no viable option set) — falls through
+            # to the hard failure below. Already recorded above (this whole
+            # `if clarifiable:` branch is terminal either way), so the
+            # non-clarifiable branch's record call below must not double it.
+
+        if not clarifiable:
+            self._record_missing_required(state, std_result)
+
+        state.set_error(
+            f"Missing required values: {', '.join(std_result.missing_required)}"
+        )
+        return TranslationResult(state)
+
+    async def _resolve_organism_from_transcript(
+        self,
+        transcript: ClarificationTranscript,
+        model_type: ModelType,
+        factor4_type: Factor4Type,
+    ) -> _TranscriptResolution:
+        """
+        Attempt to resolve an organism from the user's reply to a round-1
+        clarification question, carried on the request (ClarificationTranscript
+        — see its docstring for why PTM does this instead of a server-side
+        session).
+
+        Fails closed (organism=None with a plain-language failure_reason)
+        rather than guessing, on any of:
+          - wants_to_skip=True: no organism default exists, so skipping is a
+            refusal, not a fallback.
+          - The reply names zero organisms (free-text escape, unrecognised
+            name, or nothing identifiable at all).
+          - The reply names more than one distinct organism — ambiguous, not
+            resolved to an arbitrary one of them.
+          - The resolved organism is not among transcript.options_offered — a
+            near-miss is not a match, and this is never silently substituted.
+          - The resolved organism is not executable for (model_type,
+            factor4_type) when re-checked now — the option set was derived at
+            some point in the past; the reply is new input, so this is
+            checked, not trusted.
+
+        Both selected_option and understood_value are scanned together for
+        organism aliases (ComBaseOrganism.all_matches_in_text). Neither field
+        is guaranteed by CLARIFICATION_RESPONSE_PROMPT to be an index or an
+        exact copy of an offered option string — it is free text — so
+        exact-string matching (e.g. from_string()) would reject perfectly
+        good answers wrapped in a sentence. If the two fields name different
+        organisms, that surfaces as an ambiguous multi-match rather than an
+        unresolvable disagreement between fields, since there is no way to
+        know which field is authoritative — this is the correct fail-closed
+        outcome, not a special case.
+        """
+        extracted = await self._parser.extract_clarification_response(
+            user_response=transcript.user_reply,
+            original_question=transcript.question_asked,
+            options=[opt.label for opt in transcript.options_offered],
+        )
+
+        if extracted.wants_to_skip:
+            return _TranscriptResolution(
+                organism=None,
+                failure_reason=(
+                    "You indicated you'd like to skip naming a pathogen, but "
+                    "no organism default exists — a pathogen is required to "
+                    "run a prediction, so this can't proceed without one."
+                ),
+            )
+
+        search_text = " ".join(
+            part
+            for part in (extracted.selected_option, extracted.understood_value)
+            if part
+        )
+        matches = ComBaseOrganism.all_matches_in_text(search_text)
+
+        if not matches:
+            return _TranscriptResolution(
+                organism=None,
+                failure_reason=(
+                    f"Your reply ({transcript.user_reply!r}) didn't name a "
+                    "pathogen I could identify, so this can't proceed."
+                ),
+            )
+
+        if len(matches) > 1:
+            names = ", ".join(
+                sorted(self._standardizer.organism_display_name(o) for o in matches)
+            )
+            return _TranscriptResolution(
+                organism=None,
+                failure_reason=(
+                    f"Your reply named more than one pathogen ({names}) — "
+                    "please name exactly one."
+                ),
+            )
+
+        candidate = next(iter(matches))
+        offered_codes = {opt.code for opt in transcript.options_offered}
+        if candidate.value not in offered_codes:
+            return _TranscriptResolution(
+                organism=None,
+                failure_reason=(
+                    f"{self._standardizer.organism_display_name(candidate)} "
+                    "wasn't one of the options offered, so it can't be used."
+                ),
+            )
+
+        if not self._engine.registry.is_executable(candidate, model_type, factor4_type):
+            name = self._standardizer.organism_display_name(candidate)
+            return _TranscriptResolution(
+                organism=None,
+                failure_reason=(
+                    f"{name} is not supported for "
+                    f"{model_type.value.replace('_', ' ')} predictions, so "
+                    "this can't proceed."
+                ),
+            )
+
+        return _TranscriptResolution(organism=candidate, failure_reason=None)
 
     async def _classify_intent(self, state: SessionState) -> None:
         """Classify user intent."""

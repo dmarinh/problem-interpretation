@@ -15,6 +15,7 @@ from app.models.enums import (
     OrganismGroundingFailureStage,
     SessionStatus,
 )
+from app.models.metadata import ClarificationTranscript
 
 # =============================================================================
 # REQUEST
@@ -40,6 +41,14 @@ class TranslationRequest(BaseModel):
     model_type: ModelType | None = Field(
         default=None,
         description="Type of prediction model. If not provided, inferred from query context.",
+    )
+    transcript: ClarificationTranscript | None = Field(
+        default=None,
+        description="A1b re-entry: the round-1 exchange (original_query, "
+        "question_asked, options_offered, user_reply), when this request is "
+        "answering a prior status=awaiting_clarification response. PTM is "
+        "stateless — the caller carries this, not a server-side session. "
+        "Omit on a first-turn request.",
     )
 
     model_config = {

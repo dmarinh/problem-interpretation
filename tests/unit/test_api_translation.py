@@ -212,6 +212,117 @@ class TestTranslationEndpoint:
         assert data["error"] is not None
 
 
+class TestClarificationField:
+    """
+    A1a/A1b: TranslationResponse.clarification -- present (and unconditional,
+    not verbose-gated) when status=awaiting_clarification; and A1b's
+    transcript field is passed through to Orchestrator.translate().
+    """
+
+    def test_clarification_surfaced_when_awaiting(self, client):
+        from app.core.orchestrator import TranslationResult
+        from app.models.enums import OrganismGroundingFailureStage
+        from app.models.metadata import ClarificationOption, ClarificationQuestion
+
+        state = SessionState(user_input="frobnitz left out for 3 hours")
+        state.status = SessionStatus.AWAITING_CLARIFICATION
+        state.clarification_question = ClarificationQuestion(
+            reason="organism_food_unrecognized",
+            stage=OrganismGroundingFailureStage.FOOD_UNRECOGNISED,
+            question='I don\'t recognise "frobnitz"...',
+            options=[
+                ClarificationOption(code="ss", label="Salmonella"),
+                ClarificationOption(
+                    code="other", label="Something else / I'm not sure"
+                ),
+            ],
+        )
+        state.metadata = InterpretationMetadata(
+            session_id=state.session_id,
+            original_input=state.user_input,
+            status=state.status,
+        )
+
+        mock_result = MagicMock(spec=TranslationResult)
+        mock_result.success = False
+        mock_result.error = None
+        mock_result.state = state
+        mock_result.execution_result = None
+        mock_result.metadata = state.metadata
+
+        with patch("app.api.routes.translation.get_orchestrator") as mock_get:
+            mock_orch = MagicMock()
+            mock_orch.translate = AsyncMock(return_value=mock_result)
+            mock_get.return_value = mock_orch
+
+            response = client.post(
+                "/api/v1/translate",
+                json={"query": "frobnitz left out for 3 hours"},
+            )
+
+        data = response.json()
+        assert data["status"] == "awaiting_clarification"
+        assert data["success"] is False
+        assert data["error"] is None
+        assert data["clarification"] is not None
+        assert data["clarification"]["stage"] == "food_unrecognised"
+        assert data["clarification"]["options"][0]["code"] == "ss"
+
+    def test_clarification_absent_when_not_awaiting(
+        self, client, mock_translation_result
+    ):
+        with patch("app.api.routes.translation.get_orchestrator") as mock_get:
+            mock_orch = MagicMock()
+            mock_orch.translate = AsyncMock(return_value=mock_translation_result)
+            mock_get.return_value = mock_orch
+
+            response = client.post(
+                "/api/v1/translate",
+                json={"query": "Raw chicken left out for 3 hours"},
+            )
+
+        assert response.json()["clarification"] is None
+
+    def test_transcript_passed_through_to_orchestrator(
+        self, client, mock_translation_result
+    ):
+        with patch("app.api.routes.translation.get_orchestrator") as mock_get:
+            mock_orch = MagicMock()
+            mock_orch.translate = AsyncMock(return_value=mock_translation_result)
+            mock_get.return_value = mock_orch
+
+            client.post(
+                "/api/v1/translate",
+                json={
+                    "query": "frobnitz left out for 3 hours",
+                    "transcript": {
+                        "original_query": "frobnitz left out for 3 hours",
+                        "question_asked": "Which pathogen?",
+                        "options_offered": [{"code": "ss", "label": "Salmonella"}],
+                        "user_reply": "Salmonella",
+                    },
+                },
+            )
+
+        _, kwargs = mock_orch.translate.call_args
+        assert kwargs["transcript"] is not None
+        assert kwargs["transcript"].user_reply == "Salmonella"
+
+    def test_transcript_omitted_defaults_to_none(self, client, mock_translation_result):
+        with patch("app.api.routes.translation.get_orchestrator") as mock_get:
+            mock_orch = MagicMock()
+            mock_orch.translate = AsyncMock(return_value=mock_translation_result)
+            mock_get.return_value = mock_orch
+
+            client.post(
+                "/api/v1/translate",
+                json={"query": "Raw chicken left out for 3 hours"},
+            )
+
+        _, kwargs = mock_orch.translate.call_args
+        assert kwargs["transcript"] is None
+
+
 class TestVerboseAudit:
     """Tests for verbose=true audit output on /api/v1/translate."""
 

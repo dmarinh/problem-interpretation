@@ -197,6 +197,33 @@ class ComBaseOrganism(str, Enum):
 
         return None
 
+    @classmethod
+    def all_matches_in_text(cls, text: str) -> "set[ComBaseOrganism]":
+        """
+        Find every distinct organism mentioned in text, not just the first.
+
+        Same alias matching as from_text() (same fuzzy map, same 2-char
+        short-code exclusion to avoid false positives), but returns the full
+        set of distinct organisms found rather than stopping at the first
+        match. Used where a reply naming more than one organism must be
+        treated as ambiguous rather than silently resolved to an arbitrary
+        one of them (see Orchestrator._resolve_organism_from_transcript).
+
+        Args:
+            text: Text that may contain organism names
+
+        Returns:
+            Set of every distinct organism whose alias appears in text
+        """
+        if not text:
+            return set()
+
+        text_lower = text.lower()
+        fuzzy_map = cls._get_fuzzy_map()
+        patterns = [p for p in fuzzy_map if len(p) > 2]
+
+        return {fuzzy_map[pattern] for pattern in patterns if pattern in text_lower}
+
 
 # =============================================================================
 # FOURTH FACTOR (OPTIONAL PARAMETER)

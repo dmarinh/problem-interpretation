@@ -96,6 +96,8 @@ The orchestrator (stage 5) is the coordination layer, not a processing stage in 
 - `extract_clarification_response(user_response, original_question, options=None) → ExtractedClarificationResponse`
 - `extract_generic(response_model, user_input, system_prompt) → T` (generic extraction)
 
+**`extract_clarification_response()` is called for the first time as of A1b (2026-07-17)** — `Orchestrator._resolve_organism_from_transcript()` (§3.5) is now its only caller. `CLARIFICATION_RESPONSE_PROMPT` gives the LLM no output-format constraint ("If they selected from given options, which option") — `ExtractedClarificationResponse.selected_option`/`understood_value` are free text, not an index into `options` and not guaranteed to reproduce an option string verbatim. Validation is therefore split in two: extraction (`ComBaseOrganism.all_matches_in_text()` — substring alias search, tolerant of free text) is deliberately loose; acceptance (strict membership of the resolved organism in the offered set, plus a fresh executability re-check) is strict and is the actual safety boundary. See §3.5.
+
 **LLM call:** `SCENARIO_EXTRACTION_PROMPT` instructs the model to extract food description, state, pathogen, temperatures, durations, environmental conditions, scenario-type flags (`is_cooking_scenario`, `is_storage_scenario`, `is_non_thermal_treatment`), `implied_model_type`, and `initial_inoculum_log_cfu`. Temperature is converted to Celsius; duration to minutes. Ranges are captured if given. Initial inoculum is converted from raw CFU/g to log₁₀ CFU/g (e.g., 1000 CFU/g → 3.0); left null if not explicitly stated.
 
 **`implied_model_type` inference rules (in system prompt):**
@@ -368,26 +370,46 @@ Both are returned in `ComBaseExecutionResult` and exposed in the API response.
 5. Determine model type (`_determine_model_type()`)
 6. Ground values (`GroundingService.ground_scenario()`), store provenance in metadata
 7. Standardize (`StandardizationService.standardize()`), record defaults and clamps in metadata
-7a. If `std_result.missing_required` is non-empty, the organism clarification gate (below) runs before the generic failure path
+7a. If `std_result.missing_required` is non-empty, `_handle_missing_required()` (below) runs before the generic failure path — asks a question (no transcript), attempts re-entry resolution (transcript present), or falls through to the unchanged hard failure
 8. Execute model (`ComBaseEngine.execute()`)
 9. Record `ComBaseModelAudit` (post-execution, after organism is known)
 10. Transition to `COMPLETED`, attach `SystemAudit`
 
-**Organism clarification gate (A1a, 2026-07-16) — ask-only, no re-entry.** Sits between standardization and execution (step 7a) — the only seam where this fits: standardization is the last stage that knows what's missing, and the engine is the first that needs everything. Deliberately not inside `StandardizationService` — its job is filling gaps; the gate's job is noticing a gap can't be honestly filled and asking instead.
+**Organism clarification gate (A1a, 2026-07-16, ask) + re-entry (A1b, 2026-07-17, answer).** Sits between standardization and execution (step 7a) — the only seam where this fits: standardization is the last stage that knows what's missing, and the engine is the first that needs everything. Deliberately not inside `StandardizationService` — its job is filling gaps; the gate's job is noticing a gap can't be honestly filled, asking instead, and — one round later — validating the answer.
 
-*Trigger — narrow by construction:* fires only when `"organism"` (the bare string — organism entirely ungrounded) is in `std_result.missing_required` **and** `grounded.organism_failure.stage` is `FOOD_UNRECOGNISED` or `CATEGORY_HAS_NO_HAZARD_DATA`. The bare-string match is deliberate: `"organism (Shigella flexneri is not supported for growth predictions)"` (organism grounded but not executable, §3.3) does not equal `"organism"`, so that case — and every other `missing_required` reason (missing factor4 bounds, missing duration, `BRIDGE_DISABLED`, `INTERNAL_NO_MAPPABLE_CANDIDATE`) — is untouched and keeps today's hard-failure path.
+*Trigger — narrow by construction, unchanged since A1a:* the gate's ask/answer logic only engages when `"organism"` (the bare string — organism entirely ungrounded) is in `std_result.missing_required` **and** `grounded.organism_failure.stage` is `FOOD_UNRECOGNISED` or `CATEGORY_HAS_NO_HAZARD_DATA`. The bare-string match is deliberate: `"organism (Shigella flexneri is not supported for growth predictions)"` (organism grounded but not executable, §3.3) does not equal `"organism"`, so that case — and every other `missing_required` reason (missing factor4 bounds, missing duration, `BRIDGE_DISABLED`, `INTERNAL_NO_MAPPABLE_CANDIDATE`) — is untouched and keeps today's hard-failure path, transcript present or not.
 
-*`Orchestrator._build_organism_clarification()`:* assembles the inputs `ClarificationService` needs (it does no I/O or registry access itself) and returns `None` (→ unchanged failure path) when the stage isn't clarifiable or no viable option set could be derived:
+*`Orchestrator._handle_missing_required()`:* the single entry point for a `missing_required` result. Backfills null provenance for every missing field (`_record_missing_required()`, unchanged from A1a), then branches on whether the trigger above fires and whether a `transcript` was supplied:
+- **Not clarifiable:** falls straight through to the hard failure (`state.set_error(...)`), as always.
+- **Clarifiable, no transcript (round 1 — ask):** `_build_organism_clarification()` derives the option set and asks — unchanged from A1a (see below).
+- **Clarifiable, transcript present (round 2 — answer, A1b):** `_resolve_organism_from_transcript()` (below) attempts to resolve an organism from the reply. On success, grounds it and re-runs `standardize()`; the caller (`translate()`) continues the pipeline with the new result exactly as if organism had been grounded from the start. On failure, or if the re-run standardize() *still* has `missing_required` (e.g. some other field is now the blocker), fails closed immediately — **never** a second question. `_handle_missing_required()`'s return type is `TranslationResult | StandardizationResult`: a `StandardizationResult` means "continue the pipeline with this"; a `TranslationResult` is terminal.
+
+*`Orchestrator._build_organism_clarification()`* (round 1, unchanged since A1a): assembles the inputs `ClarificationService` needs (it does no I/O or registry access itself) and returns `None` (→ unchanged failure path) when the stage isn't clarifiable or no viable option set could be derived:
 1. Reads `grounded.organism_failure` (stage, `resolved_category`).
 2. Derives the option set: `self._engine.registry.get_executable_organisms(model_type, factor4_type)` ∩ `GroundingService.rank_executable_organisms()` (§3.2) — using `std_result.factor4_type`, the actual factor4 candidate standardization picked for this request, not `NONE`. Top 5.
-3. Resolves display names via `StandardizationService.organism_display_name()` (registry `Org` name, factor4 qualifier stripped) — same helper `_get_organism`'s error messages use (§3.3), reused rather than reimplemented. Made public (no leading underscore) in A1a specifically because the orchestrator now calls it across the service boundary — a leading-underscore "private" method being relied on by another module has no type-level or import-level signal protecting the caller from a silent rename.
-4. Delegates wording to `ClarificationService.build_organism_question()` (`app/services/clarification/clarification_service.py`) — pure, deterministic, no I/O, no LLM, unit-testable in isolation. Raises `ValueError` if called with a stage it doesn't handle (belt-and-suspenders: the orchestrator gates the call, but the service validates independently).
+3. Resolves display names via `StandardizationService.organism_display_name()` (registry `Org` name, factor4 qualifier stripped) — same helper `_get_organism`'s error messages use (§3.3), reused rather than reimplemented. Public (no leading underscore) since A1a, specifically because the orchestrator calls it across the service boundary.
+4. Delegates wording to `ClarificationService.build_organism_question()` (`app/services/clarification/clarification_service.py`) — pure, deterministic, no I/O, no LLM, unit-testable in isolation. Raises `ValueError` if called with a stage it doesn't handle.
+
+On fire (round 1): `state.clarification_question` (a `ClarificationQuestion`) is set, `state.status` → `AWAITING_CLARIFICATION` (not `FAILED` — `state.set_error()` is not called, so `state.error` stays `None`), and a `ClarificationRecord(turn_number=1, reason=..., question_asked=question.question, user_response=None)` is appended to `metadata.clarifications`. `TranslationResult.success` is `state.status == COMPLETED`, so `success=False` for a clarification exactly as for a hard failure — the two are told apart via `status`.
 
 **`std_result.factor4_type`** (A1a): `StandardizationResult` now carries the factor4 candidate `_pick_factor4_candidate()` picked, set unconditionally near the top of `standardize()` — before the organism check — since the picker is pure (reads only grounded data, no organism/registry dependency) and organism grounding can fail before `_get_factor4()` would otherwise ever run. Defaults to `Factor4Type.NONE`.
 
-**On fire:** `state.clarification_question` (a `ClarificationQuestion`) is set, `state.status` → `AWAITING_CLARIFICATION` (not `FAILED` — `state.set_error()` is not called, so `state.error` stays `None`), and a `ClarificationRecord(turn_number=1, reason=..., question_asked=question.question, user_response=None)` is appended to `metadata.clarifications` — the first time this model/field/method have ever been populated. `TranslationResult.success` is `state.status == COMPLETED`, so `success=False` for a clarification exactly as for a hard failure — the two are told apart via `status`.
+**Re-entry (A1b, 2026-07-17) — stateless, one round.** PTM keeps no server-side session (`SessionManager._sessions` is an unbounded, TTL-less in-memory dict with no caller for `delete_session()`, and it breaks under `--workers > 1` — see specs/lessons.md; deliberately not built on). Instead, `TranslationRequest.transcript: ClarificationTranscript | None` carries the round-1 exchange back on the request: `original_query`, `question_asked`, `options_offered` (the exact `ClarificationOption` list from round 1's response), `user_reply`. All four fields are length-capped (max 2000 chars for the three strings, max 10 options); the model is a single object with scalar/list fields, not a list of turns, so a second round has no representable slot to accumulate into. When `transcript` is present, `Orchestrator.translate()` reprocesses `transcript.original_query` from scratch (not `user_input` — there is nothing to resume) through the *entire* pipeline, exactly as round 1 did, and only engages re-entry logic if it lands on the same clarifiable organism gap.
 
-**Non-goals (A1a is ask-only):** no re-entry, no `clarification_context`, no answer parsing (`SemanticParser.extract_clarification_response()` stays unwired) — that is a future phase. No organism default or substitution. No duration clarification. No advisory gates (a gate that would ask but still proceed with a default) — this gate always either asks or falls through to the unchanged failure path, never both.
+*`Orchestrator._resolve_organism_from_transcript()`:* async (calls the LLM). Fails closed — returns `organism=None` with a plain-language `failure_reason` — rather than guessing, on any of:
+1. `wants_to_skip=True` — no organism default exists, so skipping is a refusal, not a fallback.
+2. The reply names zero organisms.
+3. The reply names more than one distinct organism — ambiguous, not resolved to an arbitrary one of them.
+4. The resolved organism is not among `transcript.options_offered` — a near-miss is not a match, never silently substituted.
+5. The resolved organism is not executable for `(model_type, factor4_type)` when re-checked *now* via `registry.is_executable()` — the option set was derived at some point in the past; the reply is new input, so this is checked, not trusted. Defense in depth: unreachable via the normal flow (an organism offered in round 1 was executable then, and nothing between round 1 and round 2 changes the registry within a single process), but not assumed impossible — a reloaded registry or a tampered `options_offered` are exactly the cases this catches.
+
+Extraction mechanism (why loose extraction is safe here): `SemanticParser.extract_clarification_response()` (§3.1) is called for the first time — `CLARIFICATION_RESPONSE_PROMPT` gives it no output-format constraint, so `selected_option`/`understood_value` are free text, not an index or a guaranteed-exact option string. `ComBaseOrganism.all_matches_in_text()` (new — same fuzzy alias map and 2-char short-code exclusion as `from_text()`, but returns the *set* of every distinct organism found rather than stopping at the first) scans `selected_option` and `understood_value` *together* as one combined text. If the two fields name different organisms, that surfaces as case 3 above (ambiguous multi-match) rather than an unresolved disagreement between fields — there is no way to know which field is authoritative, so treating it as ambiguous is the correct fail-closed outcome, not a special case. The safety boundary is case 4 (strict set-membership) and case 5 (strict executability), not the extraction step — loose extraction feeding a strict acceptance gate is different from loose acceptance.
+
+On success: `grounded.set("organism", resolution.organism, source=ValueSource.CLARIFICATION_RESPONSE, original_text=transcript.user_reply, extraction_method="clarification_response")`, `metadata.provenance["organism"]` is overwritten with the new provenance (replacing the `MISSING` placeholder `_record_missing_required()` set moments earlier), and `standardize()` is re-run. `field_audit["organism"].source` becomes `"clarification_response"` and `final_value` becomes the organism actually executed — both fall out of the existing `_build_field_audit()` machinery unchanged (§4.6), since `metadata.combase_model.organism_display_name` is populated post-execution from `state.execution_payload`, which now carries the resolved organism.
+
+**Exactly one `ClarificationRecord` per exchange, both rounds combined:** unlike round 1 (which appends a record with `user_response=None`), round 2 does not append a second record — there is no server-side round-1 record to "update" (statelessness means no such object persists between requests) and no loop within a single request either, so `_handle_missing_required()`'s re-entry branch constructs and appends exactly one `ClarificationRecord` per request: `turn_number=1`, `reason=self._clarifier.reason_for_stage(failure.stage)`, `question_asked=transcript.question_asked`, `user_response=transcript.user_reply`, `extracted_value=resolution.organism.value if resolved else None`. This single record represents the whole exchange (question + answer) as observed from round 2's vantage point.
+
+**Non-goals (A1b is still one round only):** no multi-round — a transcript-present request whose re-entry resolution fails goes straight to `FAILED`, never back to `AWAITING_CLARIFICATION`. No multi-step duration clarification. No advisory gates. No organism default or substitution. No server-side session.
 
 **Model type determination priority (`_determine_model_type()`):**
 1. Explicit `model_type` parameter (API caller override)
@@ -481,7 +503,7 @@ Top-level session audit container. Fields:
 | `range_clamps` | `list[RangeClamp]` | Structured range-clamp events |
 | `retrievals` | `list[RetrievalResult]` | All RAG calls |
 | `warnings` | `list[str]` | String warning messages |
-| `clarifications` | `list[ClarificationRecord]` | Populated by the A1a organism clarification gate (§3.5): one `ClarificationRecord(turn_number=1, reason, question_asked, user_response=None)` per fired gate. Ask-only — no re-entry yet, so every record currently has `user_response=None` and `default_used=False` |
+| `clarifications` | `list[ClarificationRecord]` | Populated by the organism clarification gate (§3.5): round 1 (ask, no transcript) appends `ClarificationRecord(turn_number=1, reason, question_asked, user_response=None)`; round 2 (A1b re-entry, transcript present) appends exactly one record for the whole exchange — `question_asked` from the transcript, `user_response` the raw reply, `extracted_value` the resolved organism's code (or `None` on fail-closed). Never two records for one exchange — there is no session to "update in place" across requests, so round 2 constructs the complete record fresh. `default_used` is always `False` — A1b has no organism default |
 | `combase_model` | `ComBaseModelAudit \| None` | Model selection audit block |
 | `system` | `SystemAudit \| None` | Software/data state at prediction time |
 
@@ -831,9 +853,16 @@ When an embedding match fires, `ValueProvenance.extraction_method = "embedding_f
 ```json
 {
   "query": "string (1-2000 chars, required)",
-  "model_type": "growth | thermal_inactivation | non_thermal_survival | null"
+  "model_type": "growth | thermal_inactivation | non_thermal_survival | null",
+  "transcript": {
+    "original_query": "string (1-2000 chars)",
+    "question_asked": "string (1-2000 chars)",
+    "options_offered": [{"code": "string", "label": "string"}],
+    "user_reply": "string (1-2000 chars)"
+  }
 }
 ```
+`transcript` (`ClarificationTranscript | None`, A1b, 2026-07-17) is present only when this request answers a prior `status=awaiting_clarification` response. PTM is stateless — the caller carries the round-1 exchange verbatim (echoing `question`/`options` from that response, plus the user's reply); `original_query` is what actually gets reprocessed, not `query` (which is still required by the schema but not otherwise used when `transcript` is present). Omit on a first-turn request.
 
 **Query parameter:** `verbose: bool = false` — when `true`, includes the full `audit` block in the response.
 
@@ -851,7 +880,7 @@ When an embedding match fires, `ValueProvenance.extraction_method = "embedding_f
 | `warnings` | Yes | List of `WarningInfo` (type, message, field?) |
 | `error` | When success=False | Error message string |
 | `audit` | When verbose=True | `AuditDetail` (see below) |
-| `clarification` | When `status=awaiting_clarification` | `ClarificationInfo` (2026-07-16, A1a): `reason`, `stage`, `question`, `options` (list of `{code, label}`). `error` is `None` in this case — `state.set_error()` is not called, so this is not treated as an error. Ask-only: no field here yet for submitting an answer. |
+| `clarification` | When `status=awaiting_clarification` | `ClarificationInfo` (2026-07-16, A1a): `reason`, `stage`, `question`, `options` (list of `{code, label}`). `error` is `None` in this case — `state.set_error()` is not called, so this is not treated as an error. This is exactly the shape a client should echo back inside the follow-up request's `transcript` (A1b) — `question`→`question_asked`, `options`→`options_offered`. |
 
 **`PredictionResult` fields:**
 
@@ -900,6 +929,13 @@ On orchestrator exception: returns `TranslationResponse(success=False, error=str
 On missing required values: `success=False, error="Missing required values: organism"` (ungrounded), or `success=False, error="Missing required values: organism (Shigella flexneri is not supported for growth predictions)"` (grounded but not executable for the resolved model type/factor4 — Phase A0.5b; see §3.3), or `success=False, error="Missing required values: nitrite_ppm (no declared valid range for nitrite — cannot bound the input, not modelled)"` (the factor4 field is grounded but the resolved model row has no `Factor4Min`/`Factor4Max` — 2026-07-17; synthetic-registry-only with the current CSV; see §3.3).
 
 **Organism clarification instead of failure (A1a, 2026-07-16):** when the bare `"organism"` missing-required case's `organism_failure.stage` is `FOOD_UNRECOGNISED` or `CATEGORY_HAS_NO_HAZARD_DATA` and a viable option set can be derived (§3.5), the response is `status=AWAITING_CLARIFICATION, success=False, error=None, prediction=None, clarification={...}` instead of the generic missing-required error above. Example (unrecognised food): `question="I don't recognise \"frobnitz\" as a food I have safety data for. You could try rephrasing the food, or — if you already know it — tell me which pathogen you're concerned about:"`, `options=[{code: "ss", label: "Salmonella"}, ..., {code: "other", label: "Something else / I'm not sure"}]`.
+
+**Re-entry fail-closed responses (A1b, 2026-07-17):** when `transcript` is present and `_resolve_organism_from_transcript()` (§3.5) fails, the response is a plain `success=False, status=FAILED` (never a second `AWAITING_CLARIFICATION`), with `error` naming what was said and why it couldn't be used — never a short code:
+- `wants_to_skip=True`: `"You indicated you'd like to skip naming a pathogen, but no organism default exists — a pathogen is required to run a prediction, so this can't proceed without one."`
+- Unmappable reply: `"Your reply ('...') didn't name a pathogen I could identify, so this can't proceed."`
+- Ambiguous (more than one organism named): `"Your reply named more than one pathogen (Listeria monocytogenes, Salmonella) — please name exactly one."`
+- Named an organism not among `options_offered`: `"Shigella flexneri wasn't one of the options offered, so it can't be used."`
+- Resolved and offered, but fails the fresh executability re-check: `"{name} is not supported for {model_type} predictions, so this can't proceed."`
 
 On intent classification failure: `success=False, error="Query is out of scope..."` or `"Information queries not yet implemented"`.
 
@@ -989,8 +1025,10 @@ LiteLLM + Instructor. Model specified via `LLM_MODEL`. Supported providers inclu
 |---|---|
 | `aw` | Water activity — measure of free water available for microbial growth (0–1 scale) |
 | `bw` | Water activity term in the ComBase polynomial: `sqrt(1-aw)` for growth/non-thermal, `aw` for thermal inactivation |
-| `ClarificationOption` | (2026-07-16) One selectable option in a `ClarificationQuestion`: `code` (a `ComBaseOrganism` short code, or the fixed `"other"` free-text escape) and `label` (display text). Not consumed by anything yet — A1a is ask-only. |
+| `ClarificationOption` | (2026-07-16) One selectable option in a `ClarificationQuestion`: `code` (a `ComBaseOrganism` short code, or the fixed `"other"` free-text escape) and `label` (display text). As of A1b (2026-07-17), also reused as the item type of `ClarificationTranscript.options_offered` — the caller echoes back the exact options a round-1 response offered, and `code` is checked for membership on re-entry. |
 | `ClarificationQuestion` | (2026-07-16) Built by `ClarificationService.build_organism_question()` — `reason` (`ClarificationReason`), `stage` (`OrganismGroundingFailureStage`), `question` text, `options` (list of `ClarificationOption`, always ending in the free-text escape). Stored on `SessionState.clarification_question`; surfaced via `TranslationResponse.clarification` (§11.1). See §3.5. |
+| `ClarificationTranscript` | (2026-07-17, A1b) The round-1 exchange, carried on `TranslationRequest.transcript` so a stateless server can complete a clarification without a session: `original_query`, `question_asked`, `options_offered` (list of `ClarificationOption`), `user_reply`. All fields length-capped; single object (not a list of turns), so it cannot represent more than one round. See §3.5. |
+| `all_matches_in_text()` | (2026-07-17, A1b) `ComBaseOrganism` classmethod — same fuzzy alias matching as `from_text()`, but returns the *set* of every distinct organism found in text rather than stopping at the first match. Used to detect an ambiguous reply (more than one organism named) rather than silently picking one. See §3.5. |
 | `ComBaseExecutionPayload` | The standardized, engine-ready payload produced by StandardizationService |
 | `ComBaseModelRegistry` | In-memory registry of all ComBase models loaded from CSV, keyed by `{model_id}_{organism_id}_{factor4_type}` |
 | `conservative_default` | A value substituted when the user's input is absent, chosen to predict the worst-case food safety outcome |
