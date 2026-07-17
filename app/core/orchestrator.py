@@ -16,15 +16,27 @@ _log = logging.getLogger(__name__)
 
 from app.core.state import SessionManager, SessionState, get_session_manager
 from app.engines.combase.engine import ComBaseEngine, get_combase_engine
-from app.models.enums import IntentType, ModelType, SessionStatus
+from app.models.enums import (
+    Factor4Type,
+    IntentType,
+    ModelType,
+    OrganismGroundingFailureStage,
+    SessionStatus,
+)
 from app.models.extraction import ExtractedDuration
 from app.models.metadata import (
+    ClarificationQuestion,
+    ClarificationRecord,
     ComBaseModelAudit,
     SystemAudit,
     ValueProvenance,
     ValueSource,
 )
 from app.services.audit.system import build_system_audit
+from app.services.clarification.clarification_service import (
+    ClarificationService,
+    get_clarification_service,
+)
 from app.services.extraction.semantic_parser import SemanticParser, get_semantic_parser
 from app.services.grounding.grounding_service import (
     GroundedValues,
@@ -35,6 +47,18 @@ from app.services.llm.exceptions import LLMProviderError
 from app.services.standardization.standardization_service import (
     StandardizationService,
     get_standardization_service,
+)
+
+# The only two OrganismGroundingFailureStage members the organism
+# clarification gate can resolve with a question — see
+# Orchestrator._build_organism_clarification. Every other stage
+# (BRIDGE_DISABLED, INTERNAL_NO_MAPPABLE_CANDIDATE) keeps the existing
+# fail-closed path: no question would help.
+_CLARIFIABLE_ORGANISM_STAGES = frozenset(
+    {
+        OrganismGroundingFailureStage.FOOD_UNRECOGNISED,
+        OrganismGroundingFailureStage.CATEGORY_HAS_NO_HAZARD_DATA,
+    }
 )
 
 
@@ -113,12 +137,14 @@ class Orchestrator:
         grounding_service: GroundingService | None = None,
         standardization_service: StandardizationService | None = None,
         combase_engine: ComBaseEngine | None = None,
+        clarification_service: ClarificationService | None = None,
     ):
         self._sessions = session_manager or get_session_manager()
         self._parser = semantic_parser or get_semantic_parser()
         self._grounder = grounding_service or get_grounding_service()
         self._standardizer = standardization_service or get_standardization_service()
         self._engine = combase_engine or get_combase_engine()
+        self._clarifier = clarification_service or get_clarification_service()
 
     async def translate(
         self,
@@ -199,6 +225,39 @@ class Orchestrator:
                         state.metadata.warnings.append(
                             f"Validation failed: required value missing — {field}"
                         )
+
+                # Narrow trigger: only the bare "organism" spec (organism
+                # entirely ungrounded), never "organism (...)" (grounded but
+                # not executable — a different failure a question can't fix).
+                # See _build_organism_clarification for the stage gate.
+                clarification = None
+                if "organism" in std_result.missing_required:
+                    clarification = self._build_organism_clarification(
+                        grounded,
+                        (
+                            state.extracted_scenario.food_description
+                            if state.extracted_scenario
+                            else None
+                        )
+                        or "",
+                        effective_model_type,
+                        std_result.factor4_type,
+                    )
+
+                if clarification is not None:
+                    state.clarification_question = clarification
+                    state.update_status(SessionStatus.AWAITING_CLARIFICATION)
+                    if state.metadata:
+                        state.metadata.add_clarification(
+                            ClarificationRecord(
+                                turn_number=1,
+                                reason=clarification.reason,
+                                question_asked=clarification.question,
+                                user_response=None,
+                            )
+                        )
+                    return TranslationResult(state)
+
                 state.set_error(
                     f"Missing required values: {', '.join(std_result.missing_required)}"
                 )
@@ -372,6 +431,48 @@ class Orchestrator:
             selection_reason=selection_reason,
             y_max=model.y_max if model else None,
             h0=model.h0 if model else None,
+        )
+
+    def _build_organism_clarification(
+        self,
+        grounded: "GroundedValues",
+        food_description: str,
+        model_type: ModelType,
+        factor4_type: Factor4Type,
+    ) -> ClarificationQuestion | None:
+        """
+        Build the organism clarification question, or None when no question
+        should be asked — either the failure stage isn't one a question can
+        resolve, or no viable option set could be derived. None means the
+        caller falls back to today's unchanged failure path.
+
+        Assembles the inputs ClarificationService needs (it does no I/O or
+        registry access itself): the executable-organism option set is
+        derived from the registry ∩ pathogen_characteristics.csv via
+        GroundingService.rank_executable_organisms, using the actual
+        factor4_type standardization computed for this request — not NONE.
+        """
+        failure = grounded.organism_failure
+        if failure is None or failure.stage not in _CLARIFIABLE_ORGANISM_STAGES:
+            return None
+
+        executable = self._engine.registry.get_executable_organisms(
+            model_type, factor4_type
+        )
+        ranked = self._grounder.rank_executable_organisms(executable)
+        if not ranked:
+            return None
+
+        ranked_organisms = [
+            (organism, self._standardizer.organism_display_name(organism))
+            for organism in ranked[:5]
+        ]
+
+        return self._clarifier.build_organism_question(
+            stage=failure.stage,
+            food_description=food_description,
+            ranked_organisms=ranked_organisms,
+            resolved_category=failure.resolved_category,
         )
 
     async def _classify_intent(self, state: SessionState) -> None:

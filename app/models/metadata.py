@@ -468,6 +468,38 @@ class RetrievalResult(BaseModel):
 # =============================================================================
 
 
+class ClarificationOption(BaseModel):
+    """One selectable option offered in a ClarificationQuestion."""
+
+    code: str = Field(
+        description="Machine-readable identifier for this option — a "
+        "ComBaseOrganism short code (e.g. 'ss') for a derived organism "
+        "option, or a fixed escape code (e.g. 'other') for the free-text "
+        "fallback. Not consumed by anything yet — A1a is ask-only."
+    )
+    label: str = Field(description="Human-readable display text for this option")
+
+
+class ClarificationQuestion(BaseModel):
+    """
+    A clarification question ready to surface to the user.
+
+    Built by ClarificationService (pure, deterministic, no I/O) from
+    already-resolved inputs the orchestrator assembles — the reason/stage
+    determine wording; the option set is registry- and CSV-derived, never
+    hardcoded. See app/services/clarification/clarification_service.py.
+    """
+
+    reason: ClarificationReason = Field(description="Why clarification was needed")
+    stage: OrganismGroundingFailureStage = Field(
+        description="Which organism-grounding failure stage triggered this question"
+    )
+    question: str = Field(description="The question text, including preamble")
+    options: list[ClarificationOption] = Field(
+        description="Selectable options, including a free-text escape"
+    )
+
+
 class ClarificationRecord(BaseModel):
     """
     Record of a clarification exchange with the user.

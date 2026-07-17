@@ -1508,6 +1508,45 @@ class GroundingService:
             f"'{food_description}'. Pathogen ranked by CDC annual deaths."
         )
 
+    def rank_executable_organisms(
+        self, executable: list[ComBaseOrganism]
+    ) -> list[ComBaseOrganism]:
+        """
+        Rank a caller-supplied set of executable organisms by CDC annual death
+        toll, for presenting a derived option list when organism grounding
+        fails closed (see Orchestrator._build_organism_clarification) but the
+        model_type/factor4_type combination is otherwise resolvable.
+
+        Uses the same severity metric (annual_deaths_us from
+        pathogen_characteristics.csv, via self._pathogen_characteristics) and
+        the same ComBaseOrganism.from_text() name mapping that
+        _category_pathogen_fallback() uses — just inverted: that method ranks
+        candidate pathogen *names* pulled from a food category's associations
+        and then maps to organism; this ranks *organisms* the caller already
+        knows are executable, keeping only the ones this table can score. One
+        severity metric and one name-mapping function, not a second ranker.
+
+        Organisms absent from pathogen_characteristics.csv are excluded
+        entirely (absence of evidence != zero deaths — same convention as
+        _category_pathogen_fallback's Step 4).
+
+        Presentation order only — never a likelihood claim. The caller does
+        not know the food (that is why organism grounding failed), so CDC
+        death toll is the least-arbitrary deterministic order available, not
+        a prediction about which pathogen is likely for this food.
+        """
+        executable_set = set(executable)
+        seen: set[ComBaseOrganism] = set()
+        scored: list[tuple[ComBaseOrganism, int]] = []
+        for name, (deaths, _source_id) in self._pathogen_characteristics.items():
+            organism = ComBaseOrganism.from_text(name)
+            if organism is None or organism not in executable_set or organism in seen:
+                continue
+            seen.add(organism)
+            scored.append((organism, deaths))
+        scored.sort(key=lambda pair: pair[1], reverse=True)
+        return [organism for organism, _deaths in scored]
+
     # =========================================================================
     # INTERPRETATION RULES
     # =========================================================================

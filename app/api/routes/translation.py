@@ -12,6 +12,8 @@ from fastapi import APIRouter, HTTPException, Query, status
 from app.api.schemas.translation import (
     AuditDetail,
     AuditSummary,
+    ClarificationInfo,
+    ClarificationOptionInfo,
     ComBaseModelAuditInfo,
     DefaultImputedInfo,
     ExtractionAuditInfo,
@@ -621,6 +623,19 @@ async def translate_query(
         # Build field_audit once; both provenance list and verbose audit derive from it.
         field_audit = _build_field_audit(result)
 
+        clarification = None
+        question = result.state.clarification_question
+        if question is not None:
+            clarification = ClarificationInfo(
+                reason=question.reason,
+                stage=question.stage,
+                question=question.question,
+                options=[
+                    ClarificationOptionInfo(code=o.code, label=o.label)
+                    for o in question.options
+                ],
+            )
+
         return TranslationResponse(
             success=result.success,
             session_id=result.state.session_id,
@@ -633,6 +648,7 @@ async def translate_query(
             warnings=_build_warnings_list(result),
             error=result.error if not result.success else None,
             audit=_build_audit_detail(result, field_audit) if verbose else None,
+            clarification=clarification,
         )
 
     except LLMProviderError as e:

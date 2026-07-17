@@ -18,6 +18,7 @@ from app.engines.combase.engine import ComBaseEngine
 from app.models.enums import (
     ComBaseOrganism,
     ModelType,
+    OrganismGroundingFailureStage,
     SessionStatus,
 )
 from app.models.extraction import (
@@ -841,14 +842,22 @@ class TestRangeClampingEndToEnd:
 class TestDefaultOrganismFieldAudit:
     """
     B.2: Pathogen is a required field. When no pathogen is named and neither RAG
-    nor the category-level fallback can ground one, the pipeline returns
-    success=False with organism listed as a missing required field.
+    nor the category-level fallback can ground one, the pipeline never defaults
+    or substitutes an organism — but it no longer always dead-ends either.
 
     The category-level fallback successfully grounds organisms for most common
     foods (chicken → poultry → Salmonella, rice → grain → Salmonella).  To test
     the true "nothing grounds" path, we use a food that the fallback cannot
-    resolve: "frobnitz" (bridge returns None) and "mustard" (bridge → condiment,
-    no IFT mapping).
+    resolve: "frobnitz" (bridge returns None — FOOD_UNRECOGNISED) and "mustard"
+    (bridge → condiment, no IFT mapping — CATEGORY_HAS_NO_HAZARD_DATA).
+
+    As of A1a, both of those stages are clarifiable: since the reason organism
+    grounding failed is one a question can resolve, the pipeline asks instead
+    of dead-ending — success=False either way (status is never COMPLETED), but
+    status is AWAITING_CLARIFICATION with a derived option set, not FAILED.
+    See TestShigellaExecutability for a missing_required organism case that
+    remains an unchanged hard failure (organism grounded but not executable —
+    a question can't fix that).
     """
 
     @pytest.mark.asyncio
@@ -856,8 +865,11 @@ class TestDefaultOrganismFieldAudit:
         self, orchestrator, mock_semantic_parser
     ):
         """
-        Truly unresolvable food with no pathogen_mentioned must yield success=False
-        with field_audit["organism"].source == "missing".
+        Truly unresolvable food with no pathogen_mentioned must yield
+        success=False, field_audit["organism"].source == "missing", and (since
+        FOOD_UNRECOGNISED is clarifiable) AWAITING_CLARIFICATION with a
+        question naming the unrecognised food and a derived organism option
+        set — not a dead-end FAILED status.
 
         Uses "frobnitz" — TaxonomyBridge returns None (no FoodEx2 match), so
         the category fallback returns immediately without grounding organism.
@@ -877,6 +889,7 @@ class TestDefaultOrganismFieldAudit:
         )
 
         assert result.success is False
+        assert result.state.status == SessionStatus.AWAITING_CLARIFICATION
 
         from app.api.routes.translation import _build_field_audit
 
@@ -888,13 +901,32 @@ class TestDefaultOrganismFieldAudit:
         org_entry = field_audit["organism"]
         assert org_entry.source == "missing"
 
+        question = result.state.clarification_question
+        assert question is not None
+        assert question.stage == OrganismGroundingFailureStage.FOOD_UNRECOGNISED
+        assert "frobnitz" in question.question
+        # >=2: at least one derived organism option plus the free-text escape.
+        assert len(question.options) >= 2
+        assert question.options[-1].code == "other"
+
+        # Recorded to metadata.clarifications for audit traceability.
+        assert result.metadata is not None
+        assert len(result.metadata.clarifications) == 1
+        record = result.metadata.clarifications[0]
+        assert record.turn_number == 1
+        assert record.user_response is None
+        assert record.question_asked == question.question
+
     @pytest.mark.asyncio
     async def test_missing_pathogen_no_salmonella_in_defaults_imputed(
         self, orchestrator, mock_semantic_parser
     ):
         """
         When pathogen is missing AND unresolvable, defaults_imputed must NOT
-        contain a Salmonella entry — the silent default was removed.
+        contain a Salmonella entry — the silent default was removed — and,
+        since CATEGORY_HAS_NO_HAZARD_DATA is clarifiable, the pipeline asks a
+        question naming the resolved category ("condiment") and the source's
+        coverage limit instead of dead-ending.
 
         Uses "mustard" — bridge resolves to condiment, which has no IFT-2003-T1
         row, so the category fallback returns without grounding organism.
@@ -914,6 +946,7 @@ class TestDefaultOrganismFieldAudit:
         )
 
         assert result.success is False
+        assert result.state.status == SessionStatus.AWAITING_CLARIFICATION
 
         org_defaults = [
             d
@@ -921,6 +954,15 @@ class TestDefaultOrganismFieldAudit:
             if d.field_name == "organism"
         ]
         assert org_defaults == []
+
+        question = result.state.clarification_question
+        assert question is not None
+        assert (
+            question.stage == OrganismGroundingFailureStage.CATEGORY_HAS_NO_HAZARD_DATA
+        )
+        assert "mustard" in question.question
+        assert "condiment" in question.question
+        assert "IFT-2003-T1" in question.question
 
 
 class TestCategoryPathogenFallbackWarningPropagation:

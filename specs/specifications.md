@@ -199,6 +199,8 @@ Tier 2 can match category-level docs (e.g., `"fresh poultry water activity 0.99�
 - `pathogen_hazards_confidence = 0.75` — used by `query_pathogen_hazards()`
 - `global_min_confidence = 0.65` — default for other queries
 
+**`rank_executable_organisms(executable: list[ComBaseOrganism]) -> list[ComBaseOrganism]`** (A1a, 2026-07-16): ranks a caller-supplied set of executable organisms by CDC annual death toll, for the orchestrator's organism clarification gate (§3.5). Iterates `self._pathogen_characteristics` (the same table `_category_pathogen_fallback()` uses), maps each name to a `ComBaseOrganism` via `from_text()`, keeps only organisms present in the caller's `executable` list, dedupes, and sorts by `annual_deaths_us` descending. Organisms absent from `pathogen_characteristics.csv` are excluded (not zero-ranked) — same convention as the fallback's Step 4. One severity metric and one name-mapping function shared with `_category_pathogen_fallback()`, applied in the inverse direction (organism → filtered/ranked, rather than name → organism). Presentation order only, never a likelihood claim — the caller doesn't know the food, which is precisely why organism grounding failed.
+
 **Singleton:** `get_grounding_service()` / `reset_grounding_service()`
 
 ---
@@ -277,14 +279,14 @@ For multi-step scenarios, `_build_multi_step_profile()` iterates `grounded.steps
 **Duration pass-through:** Duration is passed unchanged. USER_INFERRED values carry their own conservatism via the rule's chosen point.
 
 **Missing required values:** `StandardizationResult.missing_required` is populated in exactly four reachable cases:
-- `organism` ungrounded after all grounding paths (user statement, food-specific RAG hazard lookup, category-level pathogen fallback) fail — `standardization_service.py:144`. Organism has no default.
+- `organism` ungrounded after all grounding paths (user statement, food-specific RAG hazard lookup, category-level pathogen fallback) fail — `standardization_service.py:144`. Organism has no default. As of A1a (2026-07-16), this case does not always reach `SessionStatus.FAILED`: the orchestrator's organism clarification gate (§3.5) intercepts it when `grounded.organism_failure.stage` is `FOOD_UNRECOGNISED` or `CATEGORY_HAS_NO_HAZARD_DATA` and asks a question instead (`AWAITING_CLARIFICATION`). Every other stage, and the organism-grounded-but-not-executable case below (a different `missing_required` string), still reach `FAILED` unchanged.
 - `organism` grounded but not executable for the resolved `(model_type, factor4_type)` — no `data/combase_models.csv` row exists for that exact combination (Phase A0.5b, 2026-07-16) — `standardization_service.py:157`, checked via `ComBaseModelRegistry.is_executable()`. The entry is `"organism ({name} is not supported for {model_type} predictions)"`, human-readable rather than a short code; `_missing_key_to_audit_key()` (`orchestrator.py`) maps both this and the plain ungrounded-organism case to the same `"organism"` audit key. See §5.4 for the current example (`sf`/Shigella flexneri, no plain-growth row).
 - A grounded factor4 field whose model row declares a factor4 type but has no `Factor4Min`/`Factor4Max` (2026-07-17) — `standardization_service.py:457` — see Operation 3b above. The entry is `"<field> (no declared valid range for <type> — cannot bound the input, not modelled)"`; `_missing_key_to_audit_key()` maps it to the field's own audit key. Unreachable with the current CSV — synthetic-registry-only, per the engine-agnostic design rule (nothing here may assume today's CSV is the only CSV).
 - A multi-step step with an unresolvable duration, recorded as `"duration (step N)"` — `standardization_service.py:918`. Multi-step temperature falls back to its conservative default; multi-step duration does not.
 
 Single-step duration can never populate `missing_required` — it always falls back to `LONG_WINDOW_DEFAULT` (see the table above). Single-step temperature likewise always falls back to a default and cannot populate it.
 
-Consequence: `orchestrator.py` sets `SessionStatus.FAILED`, `success=False`, `error="Missing required values: ..."`. These four cases are the only reachable end-user failure modes of the pipeline (excluding out-of-scope/information-query intent classification and unhandled exceptions) — three of the four reachable with today's CSV, the factor4-bounds case reachable only under a future engine's data.
+Consequence: `orchestrator.py` sets `SessionStatus.FAILED`, `success=False`, `error="Missing required values: ..."` — **except** the first case (bare `"organism"`) when the failure stage is clarifiable (A1a, §3.5), which instead sets `SessionStatus.AWAITING_CLARIFICATION`, `success=False`, `error=None`, `clarification={...}`. These four `missing_required` cases remain the only reachable end-user non-success outcomes of the pipeline (excluding out-of-scope/information-query intent classification and unhandled exceptions) — three of the four reachable with today's CSV, the factor4-bounds case reachable only under a future engine's data.
 
 **Singleton:** `get_standardization_service()` / `reset_standardization_service()`
 
@@ -366,9 +368,26 @@ Both are returned in `ComBaseExecutionResult` and exposed in the API response.
 5. Determine model type (`_determine_model_type()`)
 6. Ground values (`GroundingService.ground_scenario()`), store provenance in metadata
 7. Standardize (`StandardizationService.standardize()`), record defaults and clamps in metadata
+7a. If `std_result.missing_required` is non-empty, the organism clarification gate (below) runs before the generic failure path
 8. Execute model (`ComBaseEngine.execute()`)
 9. Record `ComBaseModelAudit` (post-execution, after organism is known)
 10. Transition to `COMPLETED`, attach `SystemAudit`
+
+**Organism clarification gate (A1a, 2026-07-16) — ask-only, no re-entry.** Sits between standardization and execution (step 7a) — the only seam where this fits: standardization is the last stage that knows what's missing, and the engine is the first that needs everything. Deliberately not inside `StandardizationService` — its job is filling gaps; the gate's job is noticing a gap can't be honestly filled and asking instead.
+
+*Trigger — narrow by construction:* fires only when `"organism"` (the bare string — organism entirely ungrounded) is in `std_result.missing_required` **and** `grounded.organism_failure.stage` is `FOOD_UNRECOGNISED` or `CATEGORY_HAS_NO_HAZARD_DATA`. The bare-string match is deliberate: `"organism (Shigella flexneri is not supported for growth predictions)"` (organism grounded but not executable, §3.3) does not equal `"organism"`, so that case — and every other `missing_required` reason (missing factor4 bounds, missing duration, `BRIDGE_DISABLED`, `INTERNAL_NO_MAPPABLE_CANDIDATE`) — is untouched and keeps today's hard-failure path.
+
+*`Orchestrator._build_organism_clarification()`:* assembles the inputs `ClarificationService` needs (it does no I/O or registry access itself) and returns `None` (→ unchanged failure path) when the stage isn't clarifiable or no viable option set could be derived:
+1. Reads `grounded.organism_failure` (stage, `resolved_category`).
+2. Derives the option set: `self._engine.registry.get_executable_organisms(model_type, factor4_type)` ∩ `GroundingService.rank_executable_organisms()` (§3.2) — using `std_result.factor4_type`, the actual factor4 candidate standardization picked for this request, not `NONE`. Top 5.
+3. Resolves display names via `StandardizationService.organism_display_name()` (registry `Org` name, factor4 qualifier stripped) — same helper `_get_organism`'s error messages use (§3.3), reused rather than reimplemented. Made public (no leading underscore) in A1a specifically because the orchestrator now calls it across the service boundary — a leading-underscore "private" method being relied on by another module has no type-level or import-level signal protecting the caller from a silent rename.
+4. Delegates wording to `ClarificationService.build_organism_question()` (`app/services/clarification/clarification_service.py`) — pure, deterministic, no I/O, no LLM, unit-testable in isolation. Raises `ValueError` if called with a stage it doesn't handle (belt-and-suspenders: the orchestrator gates the call, but the service validates independently).
+
+**`std_result.factor4_type`** (A1a): `StandardizationResult` now carries the factor4 candidate `_pick_factor4_candidate()` picked, set unconditionally near the top of `standardize()` — before the organism check — since the picker is pure (reads only grounded data, no organism/registry dependency) and organism grounding can fail before `_get_factor4()` would otherwise ever run. Defaults to `Factor4Type.NONE`.
+
+**On fire:** `state.clarification_question` (a `ClarificationQuestion`) is set, `state.status` → `AWAITING_CLARIFICATION` (not `FAILED` — `state.set_error()` is not called, so `state.error` stays `None`), and a `ClarificationRecord(turn_number=1, reason=..., question_asked=question.question, user_response=None)` is appended to `metadata.clarifications` — the first time this model/field/method have ever been populated. `TranslationResult.success` is `state.status == COMPLETED`, so `success=False` for a clarification exactly as for a hard failure — the two are told apart via `status`.
+
+**Non-goals (A1a is ask-only):** no re-entry, no `clarification_context`, no answer parsing (`SemanticParser.extract_clarification_response()` stays unwired) — that is a future phase. No organism default or substitution. No duration clarification. No advisory gates (a gate that would ask but still proceed with a default) — this gate always either asks or falls through to the unchanged failure path, never both.
 
 **Model type determination priority (`_determine_model_type()`):**
 1. Explicit `model_type` parameter (API caller override)
@@ -462,7 +481,7 @@ Top-level session audit container. Fields:
 | `range_clamps` | `list[RangeClamp]` | Structured range-clamp events |
 | `retrievals` | `list[RetrievalResult]` | All RAG calls |
 | `warnings` | `list[str]` | String warning messages |
-| `clarifications` | `list[ClarificationRecord]` | (Unused in current pipeline) |
+| `clarifications` | `list[ClarificationRecord]` | Populated by the A1a organism clarification gate (§3.5): one `ClarificationRecord(turn_number=1, reason, question_asked, user_response=None)` per fired gate. Ask-only — no re-entry yet, so every record currently has `user_response=None` and `default_used=False` |
 | `combase_model` | `ComBaseModelAudit \| None` | Model selection audit block |
 | `system` | `SystemAudit \| None` | Software/data state at prediction time |
 
@@ -832,6 +851,7 @@ When an embedding match fires, `ValueProvenance.extraction_method = "embedding_f
 | `warnings` | Yes | List of `WarningInfo` (type, message, field?) |
 | `error` | When success=False | Error message string |
 | `audit` | When verbose=True | `AuditDetail` (see below) |
+| `clarification` | When `status=awaiting_clarification` | `ClarificationInfo` (2026-07-16, A1a): `reason`, `stage`, `question`, `options` (list of `{code, label}`). `error` is `None` in this case — `state.set_error()` is not called, so this is not treated as an error. Ask-only: no field here yet for submitting an answer. |
 
 **`PredictionResult` fields:**
 
@@ -878,6 +898,8 @@ When an embedding match fires, `ValueProvenance.extraction_method = "embedding_f
 On orchestrator exception: returns `TranslationResponse(success=False, error=str(e))`.
 
 On missing required values: `success=False, error="Missing required values: organism"` (ungrounded), or `success=False, error="Missing required values: organism (Shigella flexneri is not supported for growth predictions)"` (grounded but not executable for the resolved model type/factor4 — Phase A0.5b; see §3.3), or `success=False, error="Missing required values: nitrite_ppm (no declared valid range for nitrite — cannot bound the input, not modelled)"` (the factor4 field is grounded but the resolved model row has no `Factor4Min`/`Factor4Max` — 2026-07-17; synthetic-registry-only with the current CSV; see §3.3).
+
+**Organism clarification instead of failure (A1a, 2026-07-16):** when the bare `"organism"` missing-required case's `organism_failure.stage` is `FOOD_UNRECOGNISED` or `CATEGORY_HAS_NO_HAZARD_DATA` and a viable option set can be derived (§3.5), the response is `status=AWAITING_CLARIFICATION, success=False, error=None, prediction=None, clarification={...}` instead of the generic missing-required error above. Example (unrecognised food): `question="I don't recognise \"frobnitz\" as a food I have safety data for. You could try rephrasing the food, or — if you already know it — tell me which pathogen you're concerned about:"`, `options=[{code: "ss", label: "Salmonella"}, ..., {code: "other", label: "Something else / I'm not sure"}]`.
 
 On intent classification failure: `success=False, error="Query is out of scope..."` or `"Information queries not yet implemented"`.
 
@@ -967,6 +989,8 @@ LiteLLM + Instructor. Model specified via `LLM_MODEL`. Supported providers inclu
 |---|---|
 | `aw` | Water activity — measure of free water available for microbial growth (0–1 scale) |
 | `bw` | Water activity term in the ComBase polynomial: `sqrt(1-aw)` for growth/non-thermal, `aw` for thermal inactivation |
+| `ClarificationOption` | (2026-07-16) One selectable option in a `ClarificationQuestion`: `code` (a `ComBaseOrganism` short code, or the fixed `"other"` free-text escape) and `label` (display text). Not consumed by anything yet — A1a is ask-only. |
+| `ClarificationQuestion` | (2026-07-16) Built by `ClarificationService.build_organism_question()` — `reason` (`ClarificationReason`), `stage` (`OrganismGroundingFailureStage`), `question` text, `options` (list of `ClarificationOption`, always ending in the free-text escape). Stored on `SessionState.clarification_question`; surfaced via `TranslationResponse.clarification` (§11.1). See §3.5. |
 | `ComBaseExecutionPayload` | The standardized, engine-ready payload produced by StandardizationService |
 | `ComBaseModelRegistry` | In-memory registry of all ComBase models loaded from CSV, keyed by `{model_id}_{organism_id}_{factor4_type}` |
 | `conservative_default` | A value substituted when the user's input is absent, chosen to predict the worst-case food safety outcome |
@@ -980,7 +1004,8 @@ LiteLLM + Instructor. Model specified via `LLM_MODEL`. Supported providers inclu
 | `InterpretationMetadata` | Session-level audit container accumulating provenance, defaults, clamps, warnings, and context blocks |
 | `μ_max` | Maximum specific growth rate (1/h); negative for inactivation models |
 | `OrganismGroundingFailure` | Structured record on `GroundedValues.organism_failure` of where organism grounding failed closed: `stage` (`OrganismGroundingFailureStage`), `detail`, and — for `CATEGORY_HAS_NO_HAZARD_DATA` only — `resolved_category`/`match_score`. The organism equivalent of `bridge_attempts`/`CategoryBridgeInfo`. `None` on success. Purely additive to the existing `mark_ungrounded()` warning string. |
-| `OrganismGroundingFailureStage` | Enum naming which of the six early-return points in `_category_pathogen_fallback()` fired: `BRIDGE_DISABLED`, `FOOD_UNRECOGNISED`, `CATEGORY_HAS_NO_HAZARD_DATA`, `INTERNAL_NO_MAPPABLE_CANDIDATE` (merges three branches unreachable with current CSVs — empty candidate union, all candidates absent from characteristics, all ranked candidates unmappable — distinguished only by `detail`) |
+| `OrganismGroundingFailureStage` | Enum naming which of the six early-return points in `_category_pathogen_fallback()` fired: `BRIDGE_DISABLED`, `FOOD_UNRECOGNISED`, `CATEGORY_HAS_NO_HAZARD_DATA`, `INTERNAL_NO_MAPPABLE_CANDIDATE` (merges three branches unreachable with current CSVs — empty candidate union, all candidates absent from characteristics, all ranked candidates unmappable — distinguished only by `detail`). As of A1a (2026-07-16), `FOOD_UNRECOGNISED` and `CATEGORY_HAS_NO_HAZARD_DATA` are *clarifiable* — the orchestrator's organism gate (§3.5) asks a question instead of failing closed; `BRIDGE_DISABLED` and `INTERNAL_NO_MAPPABLE_CANDIDATE` are not (no question would help) and keep the hard-failure path. |
+| `ClarificationReason` | Enum naming why a clarification question was asked. A1a (2026-07-16) added `ORGANISM_FOOD_UNRECOGNIZED` and `ORGANISM_CATEGORY_UNCOVERED`, one per clarifiable `OrganismGroundingFailureStage` — added rather than reusing an existing member (`AMBIGUOUS_FOOD`, `MISSING_CRITICAL_PARAMETER`) because those describe different failure shapes (multiple plausible interpretations; a generic missing value) and would have collapsed the stage distinction the differing preambles depend on. |
 | `range_pending` | Pipeline signal on `ValueProvenance`: True when the stored value is the range lower bound and bound selection has not yet occurred; always False in serialized output |
 | `RangeBoundSelection` | Structured record of a range-bound selection event (direction, before_value, after_value, reason) |
 | `RangeClamp` | Structured record of a range clamping event (original_value, clamped_value, valid_min, valid_max) |

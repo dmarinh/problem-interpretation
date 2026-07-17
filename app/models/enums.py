@@ -276,6 +276,8 @@ class ClarificationReason(str, Enum):
     OUT_OF_RANGE_VALUE = "out_of_range_value"
     COMPOSITE_FOOD = "composite_food"
     ORGANISM_NOT_SUPPORTED = "organism_not_supported"
+    ORGANISM_FOOD_UNRECOGNIZED = "organism_food_unrecognized"
+    ORGANISM_CATEGORY_UNCOVERED = "organism_category_uncovered"
 
 
 class OrganismGroundingFailureStage(str, Enum):

@@ -100,6 +100,13 @@ class StandardizationResult:
         self.range_clamps: list[RangeClamp] = []
         self.warnings: list[str] = []
         self.missing_required: list[str] = []
+        # Set unconditionally near the top of standardize(), before the
+        # organism check, so it is populated even when organism grounding
+        # fails and standardize() returns early — callers that need the
+        # factor4_type used for executability (e.g. the orchestrator's
+        # organism clarification gate, which needs it to derive the
+        # executable-organism option set) don't have to re-derive it.
+        self.factor4_type: Factor4Type = Factor4Type.NONE
 
 
 class StandardizationService:
@@ -138,24 +145,29 @@ class StandardizationService:
         """
         result = StandardizationResult()
 
+        # Peek at which factor4 candidate would win. Pure — reads only
+        # grounded data, no organism/registry dependency — so it can run
+        # before the organism check and be recorded unconditionally,
+        # including on the organism-missing early return below. The full
+        # pick — with clamping and audit — happens once constraints are
+        # known, via _get_factor4() further down; constraints depend on
+        # factor4_type, so this cheap lookup runs first and is repeated
+        # there (same grounded data, same winner — safe to call twice).
+        factor4_type, _, _, _ = self._pick_factor4_candidate(grounded)
+        result.factor4_type = factor4_type
+
         # Determine organism
         organism = self._get_organism(grounded)
         if organism is None:
             result.missing_required.append("organism")
             return result
 
-        # Peek at which factor4 candidate would win, to resolve is_executable()
-        # below. The full pick — with clamping and audit — happens once
-        # constraints are known, via _get_factor4() further down; constraints
-        # depend on factor4_type, so this cheap pure lookup runs first.
-        factor4_type, _, _, _ = self._pick_factor4_candidate(grounded)
-
         # Get model constraints if registry available
         model = None
         constraints = None
         if self._registry:
             if not self._registry.is_executable(organism, model_type, factor4_type):
-                organism_name = self._organism_display_name(organism)
+                organism_name = self.organism_display_name(organism)
                 result.missing_required.append(
                     f"organism ({organism_name} is not supported for "
                     f"{model_type.value.replace('_', ' ')} predictions)"
@@ -343,7 +355,7 @@ class StandardizationService:
         """Get organism; returns None when not grounded (caller adds to missing_required)."""
         return grounded.get("organism")
 
-    def _organism_display_name(self, organism: ComBaseOrganism) -> str:
+    def organism_display_name(self, organism: ComBaseOrganism) -> str:
         """Human-readable organism name for error messages — never a short code.
 
         Prefers the CSV's own Org name (correct casing, e.g. "Shigella flexneri"),

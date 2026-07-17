@@ -10,7 +10,9 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 from app.models.enums import (
+    ClarificationReason,
     ModelType,
+    OrganismGroundingFailureStage,
     SessionStatus,
 )
 
@@ -347,6 +349,26 @@ class AuditDetail(BaseModel):
     system: SystemAuditInfo | None
 
 
+class ClarificationOptionInfo(BaseModel):
+    """One selectable option in a ClarificationInfo question."""
+
+    code: str
+    label: str
+
+
+class ClarificationInfo(BaseModel):
+    """Present when status=awaiting_clarification (A1a organism gate).
+
+    Ask-only — A1a does not implement re-entry, so there is no field here
+    for submitting an answer yet (see A1b).
+    """
+
+    reason: ClarificationReason
+    stage: OrganismGroundingFailureStage
+    question: str
+    options: list[ClarificationOptionInfo]
+
+
 class TranslationResponse(BaseModel):
     """
     Response from translation endpoint.
@@ -392,6 +414,13 @@ class TranslationResponse(BaseModel):
     audit: "AuditDetail | None" = Field(
         default=None,
         description="Full per-field audit trail (populated only when verbose=true)",
+    )
+
+    # Clarification (only when status=awaiting_clarification)
+    clarification: "ClarificationInfo | None" = Field(
+        default=None,
+        description="Present when status=awaiting_clarification — the question "
+        "and options for the user to answer (ask-only; no re-entry yet)",
     )
 
     model_config = {

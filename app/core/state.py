@@ -12,7 +12,11 @@ from pydantic import BaseModel, Field
 from app.models.enums import IntentType, SessionStatus
 from app.models.execution.combase import ComBaseExecutionPayload, ComBaseExecutionResult
 from app.models.extraction import ExtractedIntent, ExtractedScenario
-from app.models.metadata import InterpretationMetadata, ValueProvenance
+from app.models.metadata import (
+    ClarificationQuestion,
+    InterpretationMetadata,
+    ValueProvenance,
+)
 
 
 class SessionState(BaseModel):
@@ -57,6 +61,11 @@ class SessionState(BaseModel):
     # Clarification state
     clarification_count: int = Field(default=0)
     pending_clarifications: list[str] = Field(default_factory=list)
+    clarification_question: ClarificationQuestion | None = Field(
+        default=None,
+        description="Set when status=awaiting_clarification (A1a organism gate); "
+        "the question and options for the route layer to surface",
+    )
 
     # Errors
     error: str | None = Field(default=None)

@@ -1616,3 +1616,137 @@ class TestCompositeFoodDefaultVariant:
 
     def test_variant_is_str_comparable(self) -> None:
         assert ValueSource.COMPOSITE_FOOD_DEFAULT == "composite_food_default"
+
+
+class TestRankExecutableOrganisms:
+    """
+    A1a: GroundingService.rank_executable_organisms() — the derived option
+    set for the organism clarification gate. Ranks a caller-supplied
+    executable-organism set by CDC annual death toll, using the same
+    pathogen_characteristics.csv table and ComBaseOrganism.from_text()
+    mapping _category_pathogen_fallback() uses.
+    """
+
+    @staticmethod
+    def _service(pathogen_characteristics: dict) -> GroundingService:
+        return GroundingService(
+            retrieval_service=MagicMock(),
+            llm_client=AsyncMock(),
+            use_llm_extraction=False,
+            pathogen_characteristics=pathogen_characteristics,
+        )
+
+    def test_ranks_by_annual_deaths_descending(self) -> None:
+        svc = self._service(
+            {
+                "listeria monocytogenes": (172, "CDC-2019-T1T2"),
+                "salmonella nontyphoidal": (238, "CDC-2019-T1T2"),
+                "staphylococcus aureus": (6, "CDC-2011-T3"),
+            }
+        )
+        executable = [
+            ComBaseOrganism.LISTERIA_MONOCYTOGENES,
+            ComBaseOrganism.SALMONELLA,
+            ComBaseOrganism.STAPHYLOCOCCUS_AUREUS,
+        ]
+
+        ranked = svc.rank_executable_organisms(executable)
+
+        assert ranked == [
+            ComBaseOrganism.SALMONELLA,
+            ComBaseOrganism.LISTERIA_MONOCYTOGENES,
+            ComBaseOrganism.STAPHYLOCOCCUS_AUREUS,
+        ]
+
+    def test_excludes_organisms_not_in_executable_set(self) -> None:
+        """Present in characteristics but not passed as executable -> excluded."""
+        svc = self._service(
+            {
+                "salmonella nontyphoidal": (238, "CDC-2019-T1T2"),
+                "listeria monocytogenes": (172, "CDC-2019-T1T2"),
+            }
+        )
+
+        ranked = svc.rank_executable_organisms([ComBaseOrganism.SALMONELLA])
+
+        assert ranked == [ComBaseOrganism.SALMONELLA]
+
+    def test_excludes_organisms_absent_from_characteristics(self) -> None:
+        """Executable but with no CDC death-toll entry -> excluded, not zero-ranked."""
+        svc = self._service({"salmonella nontyphoidal": (238, "CDC-2019-T1T2")})
+
+        ranked = svc.rank_executable_organisms(
+            [ComBaseOrganism.SALMONELLA, ComBaseOrganism.PSEUDOMONAS]
+        )
+
+        assert ranked == [ComBaseOrganism.SALMONELLA]
+
+    def test_unmappable_characteristics_entries_are_skipped(self) -> None:
+        """A characteristics-CSV name with no ComBaseOrganism.from_text() match
+        (e.g. Vibrio, not in the organism enum) must not raise or appear."""
+        svc = self._service(
+            {
+                "salmonella nontyphoidal": (238, "CDC-2019-T1T2"),
+                "vibrio vulnificus": (36, "CDC-2011-T3"),
+            }
+        )
+
+        ranked = svc.rank_executable_organisms(
+            [ComBaseOrganism.SALMONELLA, ComBaseOrganism.LISTERIA_MONOCYTOGENES]
+        )
+
+        assert ranked == [ComBaseOrganism.SALMONELLA]
+
+    def test_empty_executable_set_yields_empty_list(self) -> None:
+        svc = self._service({"salmonella nontyphoidal": (238, "CDC-2019-T1T2")})
+
+        assert svc.rank_executable_organisms([]) == []
+
+    def test_derived_against_real_csv_and_registry(self) -> None:
+        """
+        Deliberately does not hardcode names — recomputes the expected top-N
+        independently from the real registry + real pathogen_characteristics.csv
+        so this fails if the CSV or registry data changes, per A1a's "derived,
+        never hardcoded" requirement.
+        """
+        from pathlib import Path
+
+        from app.engines.combase.engine import ComBaseEngine
+        from app.models.enums import ModelType
+
+        engine = ComBaseEngine()
+        csv_path = Path("data/combase_models.csv")
+        if not csv_path.exists():
+            pytest.skip("ComBase models CSV not available")
+        engine.load_models(csv_path)
+
+        svc = GroundingService(
+            retrieval_service=MagicMock(),
+            llm_client=AsyncMock(),
+            use_llm_extraction=False,
+        )
+
+        executable = engine.registry.get_executable_organisms(ModelType.GROWTH)
+        ranked = svc.rank_executable_organisms(executable)
+
+        # Independently recompute via the same rule the method itself
+        # documents: executable ∩ mappable pathogen_characteristics.csv
+        # entries, sorted by annual_deaths_us descending.
+        executable_set = set(executable)
+        expected_scored = []
+        for name, (deaths, _source_id) in svc._pathogen_characteristics.items():
+            organism = ComBaseOrganism.from_text(name)
+            if organism is not None and organism in executable_set:
+                expected_scored.append((organism, deaths))
+        # Dedup keeping first occurrence, mirroring the method's `seen` set.
+        seen = set()
+        deduped = []
+        for organism, deaths in expected_scored:
+            if organism not in seen:
+                seen.add(organism)
+                deduped.append((organism, deaths))
+        deduped.sort(key=lambda pair: pair[1], reverse=True)
+        expected = [organism for organism, _ in deduped]
+
+        assert ranked == expected
+        assert len(ranked) >= 5, "sanity check: real data should yield >=5 candidates"
