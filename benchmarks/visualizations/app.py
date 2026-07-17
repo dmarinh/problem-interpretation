@@ -15,6 +15,7 @@ if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
 from dotenv import load_dotenv
+
 load_dotenv(_PROJECT_ROOT / ".env")
 
 import streamlit as st
@@ -47,27 +48,52 @@ def main():
     # st.sidebar.page_link() so URL pathnames are resolved. position="hidden"
     # suppresses the auto-rendered nav block, letting us control sidebar order.
     overview = st.Page(
-        "pages/1_overview.py", title="Overview", icon=":material/dashboard:", default=True
+        "pages/1_overview.py",
+        title="Overview",
+        icon=":material/dashboard:",
+        default=True,
     )
     model_comparison = st.Page(
-        "pages/2_model_comparison.py", title="Model Comparison", icon=":material/bar_chart:"
+        "pages/2_model_comparison.py",
+        title="Model Comparison",
+        icon=":material/bar_chart:",
     )
     run_experiments = st.Page(
-        "pages/3_run_experiments.py", title="Run Experiments", icon=":material/play_circle:"
+        "pages/3_run_experiments.py",
+        title="Run Experiments",
+        icon=":material/play_circle:",
     )
     ph_stochasticity = st.Page(
-        "pages/4_ph_stochasticity.py", title="pH Stochasticity", icon=":material/science:"
+        "pages/4_ph_stochasticity.py",
+        title="pH Stochasticity",
+        icon=":material/science:",
     )
     embedder_comparison = st.Page(
-        "pages/5_embedder_comparison.py", title="Embedder Comparison", icon=":material/compare:"
+        "pages/5_embedder_comparison.py",
+        title="Embedder Comparison",
+        icon=":material/compare:",
     )
     embedder_doc_format = st.Page(
-        "pages/6_embedder_doc_format.py", title="Embedder × Doc Format", icon=":material/text_fields:"
+        "pages/6_embedder_doc_format.py",
+        title="Embedder × Doc Format",
+        icon=":material/text_fields:",
+    )
+    clarification_fire_rate = st.Page(
+        "pages/7_clarification_fire_rate.py",
+        title="Clarification Fire Rate",
+        icon=":material/help_outline:",
     )
 
     nav = st.navigation(
-        [overview, model_comparison, ph_stochasticity, embedder_comparison,
-         embedder_doc_format, run_experiments],
+        [
+            overview,
+            model_comparison,
+            ph_stochasticity,
+            embedder_comparison,
+            embedder_doc_format,
+            clarification_fire_rate,
+            run_experiments,
+        ],
         position="hidden",
     )
 
@@ -85,19 +111,34 @@ def main():
         "pages/1_overview.py", label="Overview", icon=":material/dashboard:"
     )
     st.sidebar.page_link(
-        "pages/2_model_comparison.py", label="Model Comparison", icon=":material/bar_chart:"
+        "pages/2_model_comparison.py",
+        label="Model Comparison",
+        icon=":material/bar_chart:",
     )
     st.sidebar.page_link(
-        "pages/4_ph_stochasticity.py", label="pH Stochasticity", icon=":material/science:"
+        "pages/4_ph_stochasticity.py",
+        label="pH Stochasticity",
+        icon=":material/science:",
     )
     st.sidebar.page_link(
-        "pages/5_embedder_comparison.py", label="Embedder Comparison", icon=":material/compare:"
+        "pages/5_embedder_comparison.py",
+        label="Embedder Comparison",
+        icon=":material/compare:",
     )
     st.sidebar.page_link(
-        "pages/6_embedder_doc_format.py", label="Embedder × Doc Format", icon=":material/text_fields:"
+        "pages/6_embedder_doc_format.py",
+        label="Embedder × Doc Format",
+        icon=":material/text_fields:",
     )
     st.sidebar.page_link(
-        "pages/3_run_experiments.py", label="Run Experiments", icon=":material/play_circle:"
+        "pages/7_clarification_fire_rate.py",
+        label="Clarification Fire Rate",
+        icon=":material/help_outline:",
+    )
+    st.sidebar.page_link(
+        "pages/3_run_experiments.py",
+        label="Run Experiments",
+        icon=":material/play_circle:",
     )
 
     # ── Sidebar: per-experiment run selectors (auto-discovered) ──────────────
