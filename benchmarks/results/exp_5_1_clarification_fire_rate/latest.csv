@@ -1,0 +1,12 @@
+ptm_category,n,answered,answered_rate,clarification_total,clarification_rate,clarification_food_unrecognised,clarification_category_has_no_hazard_data,other_failure,other_failure_rate
+beverage,15,0,0.0,15,1.0,0,15,0,0.0
+condiment,15,0,0.0,15,1.0,0,15,0,0.0
+dairy,15,15,1.0,0,0.0,0,0,0,0.0
+eggs,15,15,1.0,0,0.0,0,0,0,0.0
+fish,15,15,1.0,0,0.0,0,0,0,0.0
+fruit,15,15,1.0,0,0.0,0,0,0,0.0
+grain,15,15,1.0,0,0.0,0,0,0,0.0
+meat,15,15,1.0,0,0.0,0,0,0,0.0
+poultry,15,15,1.0,0,0.0,0,0,0,0.0
+shellfish,15,15,1.0,0,0.0,0,0,0,0.0
+vegetable,15,15,1.0,0,0.0,0,0,0,0.0

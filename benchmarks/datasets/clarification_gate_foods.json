@@ -1,0 +1,1178 @@
+{
+  "seed": 42,
+  "n_per_category": 15,
+  "scenario_template": "{food} left out at room temperature for 3 hours",
+  "generated_at": "2026-07-17T13:40:59.812453",
+  "source_csv": "data\\rag\\food_taxonomy.csv",
+  "source_csv_row_count": 2917,
+  "categories": [
+    "beverage",
+    "condiment",
+    "dairy",
+    "eggs",
+    "fish",
+    "fruit",
+    "grain",
+    "meat",
+    "poultry",
+    "shellfish",
+    "vegetable"
+  ],
+  "entries": [
+    {
+      "id": "q0000",
+      "ptm_category": "beverage",
+      "food_name": "soft drink raspberry flavour",
+      "foodex2_code": "A03FM",
+      "query_text": "soft drink raspberry flavour left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0001",
+      "ptm_category": "beverage",
+      "food_name": "gingko infusion",
+      "foodex2_code": "A03LV",
+      "query_text": "gingko infusion left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0002",
+      "ptm_category": "beverage",
+      "food_name": "coffee beverage decaffeinated",
+      "foodex2_code": "A03KF",
+      "query_text": "coffee beverage decaffeinated left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0003",
+      "ptm_category": "beverage",
+      "food_name": "wine",
+      "foodex2_code": "A03MT",
+      "query_text": "wine left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0004",
+      "ptm_category": "beverage",
+      "food_name": "herb liqueur",
+      "foodex2_code": "A03NV",
+      "query_text": "herb liqueur left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0005",
+      "ptm_category": "beverage",
+      "food_name": "beer",
+      "foodex2_code": "A03MB",
+      "query_text": "beer left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0006",
+      "ptm_category": "beverage",
+      "food_name": "fennel infusion",
+      "foodex2_code": "A16GR",
+      "query_text": "fennel infusion left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0007",
+      "ptm_category": "beverage",
+      "food_name": "peppermint infusion",
+      "foodex2_code": "A16GQ",
+      "query_text": "peppermint infusion left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0008",
+      "ptm_category": "beverage",
+      "food_name": "bottled drinking water",
+      "foodex2_code": "A03DT",
+      "query_text": "bottled drinking water left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0009",
+      "ptm_category": "beverage",
+      "food_name": "fruit soft drink mango",
+      "foodex2_code": "A03EH",
+      "query_text": "fruit soft drink mango left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0010",
+      "ptm_category": "beverage",
+      "food_name": "hot chocolate with added ingredients",
+      "foodex2_code": "A03LA",
+      "query_text": "hot chocolate with added ingredients left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0011",
+      "ptm_category": "beverage",
+      "food_name": "fruit soft drink pomegranate",
+      "foodex2_code": "A03ES",
+      "query_text": "fruit soft drink pomegranate left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0012",
+      "ptm_category": "beverage",
+      "food_name": "madeira",
+      "foodex2_code": "A03NK",
+      "query_text": "madeira left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0013",
+      "ptm_category": "beverage",
+      "food_name": "coffee beverage",
+      "foodex2_code": "A03KD",
+      "query_text": "coffee beverage left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0014",
+      "ptm_category": "beverage",
+      "food_name": "coffee espresso",
+      "foodex2_code": "A03KB",
+      "query_text": "coffee espresso left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0015",
+      "ptm_category": "condiment",
+      "food_name": "tomato containing sauces",
+      "foodex2_code": "A044C",
+      "query_text": "tomato containing sauces left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0016",
+      "ptm_category": "condiment",
+      "food_name": "walnuts",
+      "foodex2_code": "A0DXJ",
+      "query_text": "walnuts left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0017",
+      "ptm_category": "condiment",
+      "food_name": "macadamias",
+      "foodex2_code": "A014M",
+      "query_text": "macadamias left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0018",
+      "ptm_category": "condiment",
+      "food_name": "cinnamon bark",
+      "foodex2_code": "A019V",
+      "query_text": "cinnamon bark left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0019",
+      "ptm_category": "condiment",
+      "food_name": "vanilla",
+      "foodex2_code": "A019H",
+      "query_text": "vanilla left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0020",
+      "ptm_category": "condiment",
+      "food_name": "salt fluoridated",
+      "foodex2_code": "A042S",
+      "query_text": "salt fluoridated left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0021",
+      "ptm_category": "condiment",
+      "food_name": "black caraway fruit",
+      "foodex2_code": "A0CHD",
+      "query_text": "black caraway fruit left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0022",
+      "ptm_category": "condiment",
+      "food_name": "nuts",
+      "foodex2_code": "A0EZH",
+      "query_text": "nuts left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0023",
+      "ptm_category": "condiment",
+      "food_name": "curry herb",
+      "foodex2_code": "A0DHV",
+      "query_text": "curry herb left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0024",
+      "ptm_category": "condiment",
+      "food_name": "holy basil",
+      "foodex2_code": "A0DHD",
+      "query_text": "holy basil left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0025",
+      "ptm_category": "condiment",
+      "food_name": "lemongrass",
+      "foodex2_code": "A00XR",
+      "query_text": "lemongrass left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0026",
+      "ptm_category": "condiment",
+      "food_name": "sage dry",
+      "foodex2_code": "A017L",
+      "query_text": "sage dry left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0027",
+      "ptm_category": "condiment",
+      "food_name": "turmeric roots",
+      "foodex2_code": "A0CGZ",
+      "query_text": "turmeric roots left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0028",
+      "ptm_category": "condiment",
+      "food_name": "coconuts",
+      "foodex2_code": "A0DYD",
+      "query_text": "coconuts left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0029",
+      "ptm_category": "condiment",
+      "food_name": "laurel",
+      "foodex2_code": "A0DGE",
+      "query_text": "laurel left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0030",
+      "ptm_category": "dairy",
+      "food_name": "cheese chaource",
+      "foodex2_code": "A02RY",
+      "query_text": "cheese chaource left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0031",
+      "ptm_category": "dairy",
+      "food_name": "buttermilk",
+      "foodex2_code": "A02MV",
+      "query_text": "buttermilk left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0032",
+      "ptm_category": "dairy",
+      "food_name": "milk from other milk producer animals",
+      "foodex2_code": "A02MH",
+      "query_text": "milk from other milk producer animals left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0033",
+      "ptm_category": "dairy",
+      "food_name": "cheese esrom",
+      "foodex2_code": "A02TX",
+      "query_text": "cheese esrom left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0034",
+      "ptm_category": "dairy",
+      "food_name": "cheese ossau iraty",
+      "foodex2_code": "A02VZ",
+      "query_text": "cheese ossau iraty left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0035",
+      "ptm_category": "dairy",
+      "food_name": "human milk",
+      "foodex2_code": "A02MJ",
+      "query_text": "human milk left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0036",
+      "ptm_category": "dairy",
+      "food_name": "firm ripened bloomy or washed rind cheese",
+      "foodex2_code": "A030P",
+      "query_text": "firm ripened bloomy or washed rind cheese left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0037",
+      "ptm_category": "dairy",
+      "food_name": "cheese marechal",
+      "foodex2_code": "A02VP",
+      "query_text": "cheese marechal left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0038",
+      "ptm_category": "dairy",
+      "food_name": "cheese curd",
+      "foodex2_code": "A0CRN",
+      "query_text": "cheese curd left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0039",
+      "ptm_category": "dairy",
+      "food_name": "skyr",
+      "foodex2_code": "A02QM",
+      "query_text": "skyr left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0040",
+      "ptm_category": "dairy",
+      "food_name": "cheese graddost",
+      "foodex2_code": "A02VB",
+      "query_text": "cheese graddost left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0041",
+      "ptm_category": "dairy",
+      "food_name": "cheese mizithra",
+      "foodex2_code": "A02QV",
+      "query_text": "cheese mizithra left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0042",
+      "ptm_category": "dairy",
+      "food_name": "cheese nokkelost",
+      "foodex2_code": "A02VX",
+      "query_text": "cheese nokkelost left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0043",
+      "ptm_category": "dairy",
+      "food_name": "cheese turunmaa",
+      "foodex2_code": "A02XY",
+      "query_text": "cheese turunmaa left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0044",
+      "ptm_category": "dairy",
+      "food_name": "cheese pouligny saint pierre",
+      "foodex2_code": "A02SD",
+      "query_text": "cheese pouligny saint pierre left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0045",
+      "ptm_category": "eggs",
+      "food_name": "eggs from other not listed eggs producer birds",
+      "foodex2_code": "A0CVL",
+      "query_text": "eggs from other not listed eggs producer birds left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0046",
+      "ptm_category": "eggs",
+      "food_name": "hardened egg products",
+      "foodex2_code": "A032A",
+      "query_text": "hardened egg products left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0047",
+      "ptm_category": "eggs",
+      "food_name": "seagull eggs",
+      "foodex2_code": "A031P",
+      "query_text": "seagull eggs left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0048",
+      "ptm_category": "eggs",
+      "food_name": "egg yolk",
+      "foodex2_code": "A0F6F",
+      "query_text": "egg yolk left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0049",
+      "ptm_category": "eggs",
+      "food_name": "hen egg white",
+      "foodex2_code": "A031Z",
+      "query_text": "hen egg white left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0050",
+      "ptm_category": "eggs",
+      "food_name": "liquid egg products",
+      "foodex2_code": "A031Q",
+      "query_text": "liquid egg products left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0051",
+      "ptm_category": "eggs",
+      "food_name": "duck eggs",
+      "foodex2_code": "A031H",
+      "query_text": "duck eggs left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0052",
+      "ptm_category": "eggs",
+      "food_name": "whole eggs",
+      "foodex2_code": "A031F",
+      "query_text": "whole eggs left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0053",
+      "ptm_category": "eggs",
+      "food_name": "nandu eggs",
+      "foodex2_code": "A0CVM",
+      "query_text": "nandu eggs left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0054",
+      "ptm_category": "eggs",
+      "food_name": "geese eggs",
+      "foodex2_code": "A031J",
+      "query_text": "geese eggs left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0055",
+      "ptm_category": "eggs",
+      "food_name": "common quail eggs",
+      "foodex2_code": "A0CVQ",
+      "query_text": "common quail eggs left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0056",
+      "ptm_category": "eggs",
+      "food_name": "hen egg mixed whole",
+      "foodex2_code": "A031X",
+      "query_text": "hen egg mixed whole left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0057",
+      "ptm_category": "eggs",
+      "food_name": "quail eggs",
+      "foodex2_code": "A031K",
+      "query_text": "quail eggs left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0058",
+      "ptm_category": "eggs",
+      "food_name": "fried eggs",
+      "foodex2_code": "A032C",
+      "query_text": "fried eggs left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0059",
+      "ptm_category": "eggs",
+      "food_name": "hen egg yolk",
+      "foodex2_code": "A031S",
+      "query_text": "hen egg yolk left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0060",
+      "ptm_category": "fish",
+      "food_name": "herring roe",
+      "foodex2_code": "A02ES",
+      "query_text": "herring roe left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0061",
+      "ptm_category": "fish",
+      "food_name": "sprat",
+      "foodex2_code": "A02DH",
+      "query_text": "sprat left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0062",
+      "ptm_category": "fish",
+      "food_name": "mandarine fish",
+      "foodex2_code": "A0F8X",
+      "query_text": "mandarine fish left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0063",
+      "ptm_category": "fish",
+      "food_name": "herring",
+      "foodex2_code": "A0FBX",
+      "query_text": "herring left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0064",
+      "ptm_category": "fish",
+      "food_name": "megrims",
+      "foodex2_code": "A0FAL",
+      "query_text": "megrims left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0065",
+      "ptm_category": "fish",
+      "food_name": "flounders halibuts soles",
+      "foodex2_code": "A02AR",
+      "query_text": "flounders halibuts soles left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0066",
+      "ptm_category": "fish",
+      "food_name": "ling",
+      "foodex2_code": "A02JV",
+      "query_text": "ling left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0067",
+      "ptm_category": "fish",
+      "food_name": "tench",
+      "foodex2_code": "A16GD",
+      "query_text": "tench left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0068",
+      "ptm_category": "fish",
+      "food_name": "bighead carp",
+      "foodex2_code": "A0F8B",
+      "query_text": "bighead carp left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0069",
+      "ptm_category": "fish",
+      "food_name": "barramundi",
+      "foodex2_code": "A028F",
+      "query_text": "barramundi left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0070",
+      "ptm_category": "fish",
+      "food_name": "weakfishes",
+      "foodex2_code": "A0FAY",
+      "query_text": "weakfishes left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0071",
+      "ptm_category": "fish",
+      "food_name": "halibut",
+      "foodex2_code": "A02JY",
+      "query_text": "halibut left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0072",
+      "ptm_category": "fish",
+      "food_name": "ayu sweetfish",
+      "foodex2_code": "A0FAF",
+      "query_text": "ayu sweetfish left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0073",
+      "ptm_category": "fish",
+      "food_name": "amberjack",
+      "foodex2_code": "A0FBN",
+      "query_text": "amberjack left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0074",
+      "ptm_category": "fish",
+      "food_name": "other billfishes",
+      "foodex2_code": "A0FBK",
+      "query_text": "other billfishes left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0075",
+      "ptm_category": "fruit",
+      "food_name": "guavas",
+      "foodex2_code": "A0CGD",
+      "query_text": "guavas left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0076",
+      "ptm_category": "fruit",
+      "food_name": "sweetsops",
+      "foodex2_code": "A01LL",
+      "query_text": "sweetsops left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0077",
+      "ptm_category": "fruit",
+      "food_name": "akee apples",
+      "foodex2_code": "A01KN",
+      "query_text": "akee apples left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0078",
+      "ptm_category": "fruit",
+      "food_name": "or jarred sweet cherry",
+      "foodex2_code": "A01NV",
+      "query_text": "or jarred sweet cherry left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0079",
+      "ptm_category": "fruit",
+      "food_name": "wingedstem passionflower fruits",
+      "foodex2_code": "A0DQV",
+      "query_text": "wingedstem passionflower fruits left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0080",
+      "ptm_category": "fruit",
+      "food_name": "pitayas",
+      "foodex2_code": "A0DQS",
+      "query_text": "pitayas left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0081",
+      "ptm_category": "fruit",
+      "food_name": "table grapes",
+      "foodex2_code": "A0DVE",
+      "query_text": "table grapes left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0082",
+      "ptm_category": "fruit",
+      "food_name": "malay pommarosas",
+      "foodex2_code": "A01HT",
+      "query_text": "malay pommarosas left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0083",
+      "ptm_category": "fruit",
+      "food_name": "ugli fruits",
+      "foodex2_code": "A01DE",
+      "query_text": "ugli fruits left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0084",
+      "ptm_category": "fruit",
+      "food_name": "pears",
+      "foodex2_code": "A01DP",
+      "query_text": "pears left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0085",
+      "ptm_category": "fruit",
+      "food_name": "other cane fruits",
+      "foodex2_code": "A01ES",
+      "query_text": "other cane fruits left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0086",
+      "ptm_category": "fruit",
+      "food_name": "rose hips",
+      "foodex2_code": "A0CFR",
+      "query_text": "rose hips left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0087",
+      "ptm_category": "fruit",
+      "food_name": "azaroles",
+      "foodex2_code": "A01FV",
+      "query_text": "azaroles left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0088",
+      "ptm_category": "fruit",
+      "food_name": "mirabelles",
+      "foodex2_code": "A01GS",
+      "query_text": "mirabelles left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0089",
+      "ptm_category": "fruit",
+      "food_name": "yellow pitayas",
+      "foodex2_code": "A170N",
+      "query_text": "yellow pitayas left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0090",
+      "ptm_category": "grain",
+      "food_name": "wheat bread and rolls white with maize",
+      "foodex2_code": "A004Z",
+      "query_text": "wheat bread and rolls white with maize left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0091",
+      "ptm_category": "grain",
+      "food_name": "rolled oats instant",
+      "foodex2_code": "A00DJ",
+      "query_text": "rolled oats instant left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0092",
+      "ptm_category": "grain",
+      "food_name": "khorasan wheat grain",
+      "foodex2_code": "A001T",
+      "query_text": "khorasan wheat grain left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0093",
+      "ptm_category": "grain",
+      "food_name": "wheat bread and rolls white with potato",
+      "foodex2_code": "A005A",
+      "query_text": "wheat bread and rolls white with potato left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0094",
+      "ptm_category": "grain",
+      "food_name": "millet groats",
+      "foodex2_code": "A002V",
+      "query_text": "millet groats left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0095",
+      "ptm_category": "grain",
+      "food_name": "muesli plain",
+      "foodex2_code": "A00EK",
+      "query_text": "muesli plain left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0096",
+      "ptm_category": "grain",
+      "food_name": "triticale grain",
+      "foodex2_code": "A001V",
+      "query_text": "triticale grain left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0097",
+      "ptm_category": "grain",
+      "food_name": "pasta like products",
+      "foodex2_code": "A04LF",
+      "query_text": "pasta like products left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0098",
+      "ptm_category": "grain",
+      "food_name": "rice semolina",
+      "foodex2_code": "A0F6Q",
+      "query_text": "rice semolina left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0099",
+      "ptm_category": "grain",
+      "food_name": "profiterole",
+      "foodex2_code": "A00AK",
+      "query_text": "profiterole left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0100",
+      "ptm_category": "grain",
+      "food_name": "foxtail millet grain",
+      "foodex2_code": "A000D",
+      "query_text": "foxtail millet grain left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0101",
+      "ptm_category": "grain",
+      "food_name": "buckwheat and other pseudo cereals",
+      "foodex2_code": "A04KH",
+      "query_text": "buckwheat and other pseudo cereals left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0102",
+      "ptm_category": "grain",
+      "food_name": "choux pastry dough",
+      "foodex2_code": "A009H",
+      "query_text": "choux pastry dough left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0103",
+      "ptm_category": "grain",
+      "food_name": "croissant filled with jam",
+      "foodex2_code": "A00BQ",
+      "query_text": "croissant filled with jam left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0104",
+      "ptm_category": "grain",
+      "food_name": "pita bread",
+      "foodex2_code": "A006S",
+      "query_text": "pita bread left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0105",
+      "ptm_category": "meat",
+      "food_name": "chorizo",
+      "foodex2_code": "A025C",
+      "query_text": "chorizo left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0106",
+      "ptm_category": "meat",
+      "food_name": "corned beef uncooked",
+      "foodex2_code": "A023D",
+      "query_text": "corned beef uncooked left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0107",
+      "ptm_category": "meat",
+      "food_name": "matured charcuterie products for cooking",
+      "foodex2_code": "A025H",
+      "query_text": "matured charcuterie products for cooking left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0108",
+      "ptm_category": "meat",
+      "food_name": "dromedary",
+      "foodex2_code": "A01RX",
+      "query_text": "dromedary left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0109",
+      "ptm_category": "meat",
+      "food_name": "cured",
+      "foodex2_code": "A022R",
+      "query_text": "cured left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0110",
+      "ptm_category": "meat",
+      "food_name": "camel bactrian",
+      "foodex2_code": "A01RV",
+      "query_text": "camel bactrian left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0111",
+      "ptm_category": "meat",
+      "food_name": "luncheon spiced ham type tinned",
+      "foodex2_code": "A024D",
+      "query_text": "luncheon spiced ham type tinned left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0112",
+      "ptm_category": "meat",
+      "food_name": "miscellaneous sausages",
+      "foodex2_code": "A025T",
+      "query_text": "miscellaneous sausages left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0113",
+      "ptm_category": "meat",
+      "food_name": "wiener sausage",
+      "foodex2_code": "A026D",
+      "query_text": "wiener sausage left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0114",
+      "ptm_category": "meat",
+      "food_name": "pork tongue",
+      "foodex2_code": "A023L",
+      "query_text": "pork tongue left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0115",
+      "ptm_category": "meat",
+      "food_name": "ham beef",
+      "foodex2_code": "A023C",
+      "query_text": "ham beef left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0116",
+      "ptm_category": "meat",
+      "food_name": "cured unripened sausages",
+      "foodex2_code": "A024Q",
+      "query_text": "cured unripened sausages left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0117",
+      "ptm_category": "meat",
+      "food_name": "preserved/ fat tissues",
+      "foodex2_code": "A0EYN",
+      "query_text": "preserved/ fat tissues left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0118",
+      "ptm_category": "meat",
+      "food_name": "italian type salami",
+      "foodex2_code": "A024Y",
+      "query_text": "italian type salami left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0119",
+      "ptm_category": "meat",
+      "food_name": "snack sausages",
+      "foodex2_code": "A025E",
+      "query_text": "snack sausages left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0120",
+      "ptm_category": "poultry",
+      "food_name": "grouse",
+      "foodex2_code": "A01TJ",
+      "query_text": "grouse left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0121",
+      "ptm_category": "poultry",
+      "food_name": "snipe",
+      "foodex2_code": "A01TH",
+      "query_text": "snipe left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0122",
+      "ptm_category": "poultry",
+      "food_name": "pate goose liver",
+      "foodex2_code": "A026P",
+      "query_text": "pate goose liver left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0123",
+      "ptm_category": "poultry",
+      "food_name": "turkey",
+      "foodex2_code": "A023T",
+      "query_text": "turkey left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0124",
+      "ptm_category": "poultry",
+      "food_name": "ptarmigan",
+      "foodex2_code": "A01TK",
+      "query_text": "ptarmigan left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0125",
+      "ptm_category": "poultry",
+      "food_name": "goose minced",
+      "foodex2_code": "A04EV",
+      "query_text": "goose minced left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0126",
+      "ptm_category": "poultry",
+      "food_name": "corned turkey",
+      "foodex2_code": "A023V",
+      "query_text": "corned turkey left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0127",
+      "ptm_category": "poultry",
+      "food_name": "cured poultry",
+      "foodex2_code": "A023S",
+      "query_text": "cured poultry left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0128",
+      "ptm_category": "poultry",
+      "food_name": "duck minced",
+      "foodex2_code": "A04EL",
+      "query_text": "duck minced left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0129",
+      "ptm_category": "poultry",
+      "food_name": "pigeon",
+      "foodex2_code": "A01TA",
+      "query_text": "pigeon left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0130",
+      "ptm_category": "poultry",
+      "food_name": "turkey minced",
+      "foodex2_code": "A04EC",
+      "query_text": "turkey minced left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0131",
+      "ptm_category": "poultry",
+      "food_name": "poultry",
+      "foodex2_code": "A01SN",
+      "query_text": "poultry left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0132",
+      "ptm_category": "poultry",
+      "food_name": "chicken",
+      "foodex2_code": "A01SP",
+      "query_text": "chicken left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0133",
+      "ptm_category": "poultry",
+      "food_name": "other poultry",
+      "foodex2_code": "A023X",
+      "query_text": "other poultry left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0134",
+      "ptm_category": "poultry",
+      "food_name": "guinea fowl",
+      "foodex2_code": "A01SX",
+      "query_text": "guinea fowl left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0135",
+      "ptm_category": "shellfish",
+      "food_name": "metapenaeus shrimps",
+      "foodex2_code": "A0FCV",
+      "query_text": "metapenaeus shrimps left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0136",
+      "ptm_category": "shellfish",
+      "food_name": "squids",
+      "foodex2_code": "A02JH",
+      "query_text": "squids left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0137",
+      "ptm_category": "shellfish",
+      "food_name": "prawn northern",
+      "foodex2_code": "A02FZ",
+      "query_text": "prawn northern left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0138",
+      "ptm_category": "shellfish",
+      "food_name": "molluscs",
+      "foodex2_code": "A02GM",
+      "query_text": "molluscs left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0139",
+      "ptm_category": "shellfish",
+      "food_name": "cockles",
+      "foodex2_code": "A02HE",
+      "query_text": "cockles left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0140",
+      "ptm_category": "shellfish",
+      "food_name": "lobster norway",
+      "foodex2_code": "A02FS",
+      "query_text": "lobster norway left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0141",
+      "ptm_category": "shellfish",
+      "food_name": "oysters",
+      "foodex2_code": "A02HG",
+      "query_text": "oysters left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0142",
+      "ptm_category": "shellfish",
+      "food_name": "prawn giant tiger",
+      "foodex2_code": "A02FY",
+      "query_text": "prawn giant tiger left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0143",
+      "ptm_category": "shellfish",
+      "food_name": "giant river prawn",
+      "foodex2_code": "A0FCG",
+      "query_text": "giant river prawn left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0144",
+      "ptm_category": "shellfish",
+      "food_name": "cockle and arkshell",
+      "foodex2_code": "A02HC",
+      "query_text": "cockle and arkshell left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0145",
+      "ptm_category": "shellfish",
+      "food_name": "red swamp crawfish",
+      "foodex2_code": "A0FCE",
+      "query_text": "red swamp crawfish left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0146",
+      "ptm_category": "shellfish",
+      "food_name": "squid european flying",
+      "foodex2_code": "A02JK",
+      "query_text": "squid european flying left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0147",
+      "ptm_category": "shellfish",
+      "food_name": "scallop bay",
+      "foodex2_code": "A02HQ",
+      "query_text": "scallop bay left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0148",
+      "ptm_category": "shellfish",
+      "food_name": "limpet",
+      "foodex2_code": "A02GV",
+      "query_text": "limpet left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0149",
+      "ptm_category": "shellfish",
+      "food_name": "cephalopods",
+      "foodex2_code": "A0FDE",
+      "query_text": "cephalopods left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0150",
+      "ptm_category": "vegetable",
+      "food_name": "climbing wattle",
+      "foodex2_code": "A0DJP",
+      "query_text": "climbing wattle left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0151",
+      "ptm_category": "vegetable",
+      "food_name": "patisson",
+      "foodex2_code": "A00JT",
+      "query_text": "patisson left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0152",
+      "ptm_category": "vegetable",
+      "food_name": "flowering brassica",
+      "foodex2_code": "A00FL",
+      "query_text": "flowering brassica left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0153",
+      "ptm_category": "vegetable",
+      "food_name": "angelica roots",
+      "foodex2_code": "A00QM",
+      "query_text": "angelica roots left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0154",
+      "ptm_category": "vegetable",
+      "food_name": "or jarred chickpea",
+      "foodex2_code": "A01BE",
+      "query_text": "or jarred chickpea left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0155",
+      "ptm_category": "vegetable",
+      "food_name": "scurvy grass",
+      "foodex2_code": "A00NZ",
+      "query_text": "scurvy grass left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0156",
+      "ptm_category": "vegetable",
+      "food_name": "runner beans",
+      "foodex2_code": "A0DCJ",
+      "query_text": "runner beans left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0157",
+      "ptm_category": "vegetable",
+      "food_name": "choi sum",
+      "foodex2_code": "A00GK",
+      "query_text": "choi sum left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0158",
+      "ptm_category": "vegetable",
+      "food_name": "other procaryotes organisms",
+      "foodex2_code": "A0DCN",
+      "query_text": "other procaryotes organisms left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0159",
+      "ptm_category": "vegetable",
+      "food_name": "orchid",
+      "foodex2_code": "A185R",
+      "query_text": "orchid left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0160",
+      "ptm_category": "vegetable",
+      "food_name": "cutting lettuces",
+      "foodex2_code": "A00LA",
+      "query_text": "cutting lettuces left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0161",
+      "ptm_category": "vegetable",
+      "food_name": "radicchio",
+      "foodex2_code": "A00LG",
+      "query_text": "radicchio left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0162",
+      "ptm_category": "vegetable",
+      "food_name": "summer truffles",
+      "foodex2_code": "A0DCZ",
+      "query_text": "summer truffles left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0163",
+      "ptm_category": "vegetable",
+      "food_name": "baby leaf escaroles",
+      "foodex2_code": "A0DKL",
+      "query_text": "baby leaf escaroles left out at room temperature for 3 hours"
+    },
+    {
+      "id": "q0164",
+      "ptm_category": "vegetable",
+      "food_name": "moringa",
+      "foodex2_code": "A0DFC",
+      "query_text": "moringa left out at room temperature for 3 hours"
+    }
+  ]
+}
