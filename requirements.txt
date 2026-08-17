@@ -7,6 +7,7 @@ python-multipart>=0.0.9
 # Data Validation
 pydantic>=2.6.0
 pydantic-settings>=2.1.0
+annotated-types>=0.7.0  # direct dependency as of the duration clarification gate (orchestrator.py) -- previously only a transitive pydantic dependency
 
 # LLM Integration (model-agnostic)
 litellm>=1.23.0

@@ -15,7 +15,7 @@ from app.models.enums import (
     OrganismGroundingFailureStage,
     SessionStatus,
 )
-from app.models.metadata import ClarificationTranscript
+from app.models.metadata import ClarificationTranscript, DurationClarificationReply
 
 # =============================================================================
 # REQUEST
@@ -49,6 +49,16 @@ class TranslationRequest(BaseModel):
         "answering a prior status=awaiting_clarification response. PTM is "
         "stateless — the caller carries this, not a server-side session. "
         "Omit on a first-turn request.",
+    )
+    duration_reply: DurationClarificationReply | None = Field(
+        default=None,
+        description="Multi-step duration gate re-entry: the round-1 "
+        "original_query plus a numeric {step_order, hours} answer per "
+        "missing step, when this request is answering a prior "
+        "duration_clarification response. Structurally separate from "
+        "transcript — a duration reply is never free text and never routed "
+        "through an LLM, so it does not share ClarificationTranscript's "
+        "shape. Omit on a first-turn request.",
     )
 
     model_config = {
@@ -378,6 +388,29 @@ class ClarificationInfo(BaseModel):
     options: list[ClarificationOptionInfo]
 
 
+class DurationClarificationStepInfo(BaseModel):
+    """One missing step named in a DurationClarificationInfo question."""
+
+    step_order: int
+    duration_phrase: str | None = None
+
+
+class DurationClarificationInfo(BaseModel):
+    """Present when status=awaiting_clarification (multi-step duration gate).
+
+    Mutually exclusive with `clarification` — a single response is never
+    awaiting both an organism answer and a duration answer at once (see
+    Orchestrator._handle_missing_required). No `options` field (unlike
+    ClarificationInfo): duration is an open numeric quantity, answered via
+    TranslationRequest.duration_reply — a structured {step_order, hours} list,
+    never free text.
+    """
+
+    reason: ClarificationReason
+    question: str
+    steps: list[DurationClarificationStepInfo]
+
+
 class TranslationResponse(BaseModel):
     """
     Response from translation endpoint.
@@ -430,6 +463,15 @@ class TranslationResponse(BaseModel):
         default=None,
         description="Present when status=awaiting_clarification — the question "
         "and options for the user to answer (ask-only; no re-entry yet)",
+    )
+
+    # Duration clarification (only when status=awaiting_clarification, multi-step
+    # duration gate — mutually exclusive with `clarification`)
+    duration_clarification: "DurationClarificationInfo | None" = Field(
+        default=None,
+        description="Present when status=awaiting_clarification and the gate "
+        "is the multi-step duration gate, not the organism gate — answer via "
+        "TranslationRequest.duration_reply",
     )
 
     model_config = {

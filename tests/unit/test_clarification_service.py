@@ -10,6 +10,7 @@ from app.models.enums import (
     ComBaseOrganism,
     OrganismGroundingFailureStage,
 )
+from app.models.metadata import DurationClarificationStep
 from app.services.clarification.clarification_service import (
     FREE_TEXT_ESCAPE_CODE,
     ClarificationService,
@@ -201,6 +202,69 @@ class TestOptionAssembly:
         q1 = service.build_organism_question(**args)
         q2 = service.build_organism_question(**args)
         assert q1 == q2
+
+
+class TestBuildDurationQuestion:
+    """2026-08-17: multi-step duration clarification gate — question
+    construction only. No LLM, no I/O, deterministic given the same steps —
+    same discipline as build_organism_question(), but no `options` field:
+    duration is an open numeric quantity, not a closed menu."""
+
+    def test_single_step_with_phrase_is_quoted(
+        self, service: ClarificationService
+    ) -> None:
+        question = service.build_duration_question(
+            [DurationClarificationStep(step_order=2, duration_phrase="a while")]
+        )
+        assert "step 2" in question.question
+        assert '"a while"' in question.question
+        assert question.reason == ClarificationReason.AMBIGUOUS_DURATION
+        assert question.steps == [
+            DurationClarificationStep(step_order=2, duration_phrase="a while")
+        ]
+
+    def test_single_step_without_phrase_names_step_only(
+        self, service: ClarificationService
+    ) -> None:
+        question = service.build_duration_question(
+            [DurationClarificationStep(step_order=1, duration_phrase=None)]
+        )
+        assert "step 1" in question.question
+        assert '"' not in question.question
+
+    def test_multiple_steps_all_named_in_one_question(
+        self, service: ClarificationService
+    ) -> None:
+        question = service.build_duration_question(
+            [
+                DurationClarificationStep(step_order=1, duration_phrase="a while"),
+                DurationClarificationStep(step_order=2, duration_phrase=None),
+                DurationClarificationStep(step_order=3, duration_phrase="ages"),
+            ]
+        )
+        assert "step 1" in question.question
+        assert "step 2" in question.question
+        assert "step 3" in question.question
+        assert [s.step_order for s in question.steps] == [1, 2, 3]
+
+    def test_empty_steps_raises(self, service: ClarificationService) -> None:
+        with pytest.raises(ValueError):
+            service.build_duration_question([])
+
+    def test_deterministic_given_same_inputs(
+        self, service: ClarificationService
+    ) -> None:
+        steps = [DurationClarificationStep(step_order=1, duration_phrase="a while")]
+        q1 = service.build_duration_question(steps)
+        q2 = service.build_duration_question(steps)
+        assert q1 == q2
+
+    def test_no_options_field(self, service: ClarificationService) -> None:
+        """Unlike ClarificationQuestion, there is nothing to select from."""
+        question = service.build_duration_question(
+            [DurationClarificationStep(step_order=1, duration_phrase=None)]
+        )
+        assert not hasattr(question, "options")
 
 
 class TestSingleton:

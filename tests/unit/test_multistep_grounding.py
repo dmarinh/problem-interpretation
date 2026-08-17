@@ -502,11 +502,37 @@ class TestStandardizeMultiStep:
         assert result.payload is None
 
     def test_missing_duration_mid_sequence_fails(self):
-        """Missing duration on the second of three steps must still fail."""
-        g = self._make_grounded((28.0, 45.0), (22.0, None), (4.0, 120.0))
+        """Missing duration on the second of three steps must still fail --
+        but the loop must now run to completion rather than bailing at step 2.
+
+        Changed from the pre-clarification-gate behavior: step 3 (after the
+        missing step) used to never be evaluated at all -- the old
+        `return None` inside the loop exited before step 3's temperature was
+        even looked at. Step 3 here has temperature=None specifically to
+        prove the new complete-then-fail behavior: step 3's temperature
+        default must fire (proving the loop reached it), while
+        missing_required must contain *only* step 2's duration (proving step
+        3's own explicit duration is correctly NOT reported as missing).
+        """
+        g = self._make_grounded((28.0, 45.0), (22.0, None), (None, 120.0))
         result = self.svc.standardize(g, ModelType.GROWTH)
 
-        assert any("step 2" in m.lower() for m in result.missing_required)
+        assert result.missing_required == ["duration (step 2)"]
+        assert result.payload is None
+        assert any(
+            d.field_name == "temperature_celsius (step 3)"
+            for d in result.defaults_imputed
+        ), "step 3 must still be evaluated (temperature defaulted) even though step 2 fails"
+
+    def test_all_missing_durations_collected_before_failing(self):
+        """Two-step scenario with both durations vague: missing_required must
+        name both steps in one pass, not just the first -- this is the
+        prerequisite for a clarification gate that asks about every missing
+        step in a single round instead of dragging the user through N."""
+        g = self._make_grounded((28.0, None), (22.0, None))
+        result = self.svc.standardize(g, ModelType.GROWTH)
+
+        assert result.missing_required == ["duration (step 1)", "duration (step 2)"]
         assert result.payload is None
 
     def test_total_duration_is_sum_of_steps(self):

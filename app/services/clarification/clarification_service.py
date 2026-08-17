@@ -1,6 +1,6 @@
 """
-Organism clarification gate — question construction (A1a) + reason lookup
-for re-entry (A1b).
+Clarification gate question construction: organism (A1a asks, A1b answers)
+and multi-step duration (build_duration_question, see below).
 
 Builds a user-facing clarification question when organism grounding fails
 closed for a reason a question can actually resolve: the food description
@@ -8,11 +8,10 @@ matched nothing (FOOD_UNRECOGNISED), or it resolved to a food category the
 hazard source doesn't cover (CATEGORY_HAS_NO_HAZARD_DATA). Every other
 organism-grounding failure stage (BRIDGE_DISABLED,
 INTERNAL_NO_MAPPABLE_CANDIDATE) and every other missing_required reason
-(non-executable organism, missing factor4 bounds, missing duration, ...)
-keeps the existing fail-closed path unchanged — see
-Orchestrator._build_organism_clarification (round 1, asking) and
-Orchestrator._resolve_organism_from_transcript (round 2, re-entry) for the
-trigger conditions.
+(non-executable organism, missing factor4 bounds) keeps the existing
+fail-closed path unchanged — see Orchestrator._build_organism_clarification
+(round 1, asking) and Orchestrator._resolve_organism_from_transcript (round
+2, re-entry) for the trigger conditions.
 
 Pure and deterministic: given the same stage, food description, resolved
 category, and ranked organism list, this always produces the same question.
@@ -25,6 +24,16 @@ calling in, so this module never derives or reorders anything itself.
 Non-goals (A1b is still one round only): no multi-round, no
 clarification_context, no server-side session — the caller carries the
 round-1 exchange back on the request (ClarificationTranscript).
+
+build_duration_question() (2026-08-17) is a second, independent gate for
+multi-step scenarios missing one or more step durations. It shares this
+module for the same "pure wording construction, no I/O" discipline, but is
+not a variant of the organism flow: duration has no closed option set to
+select from (it's an open numeric quantity), so its question has no
+`options` field, and its acceptance check (Orchestrator._resolve_duration_reply)
+is a structural number-and-range check, not an LLM-extract-then-set-membership
+check. See specs/lessons.md for why the two gates are safe for different
+reasons.
 """
 
 from app.models.enums import (
@@ -32,7 +41,12 @@ from app.models.enums import (
     ComBaseOrganism,
     OrganismGroundingFailureStage,
 )
-from app.models.metadata import ClarificationOption, ClarificationQuestion
+from app.models.metadata import (
+    ClarificationOption,
+    ClarificationQuestion,
+    DurationClarificationQuestion,
+    DurationClarificationStep,
+)
 
 # The free-text escape option's code, checked by
 # Orchestrator._resolve_organism_from_transcript on re-entry: a reply that
@@ -162,6 +176,58 @@ class ClarificationService:
                 f"CATEGORY_HAS_NO_HAZARD_DATA have a reason mapping."
             )
         return _STAGE_TO_REASON[stage]
+
+    def build_duration_question(
+        self, steps: list[DurationClarificationStep]
+    ) -> DurationClarificationQuestion:
+        """
+        Build a multi-step duration clarification question — pure and
+        deterministic, same discipline as build_organism_question(): given
+        the same step list, always produces the same question. No I/O, no
+        LLM call. The caller (Orchestrator) derives `steps` from
+        grounded.steps (GroundedStep.step_order / duration_phrase) before
+        calling in; this method never touches grounding internals.
+
+        Args:
+            steps: every step still missing a duration, already resolved by
+                the caller — not re-derived or re-filtered here. Must be
+                non-empty (the caller only calls this when at least one step
+                is missing).
+
+        Returns:
+            A DurationClarificationQuestion naming every missing step, quoting
+            its duration_phrase where the user said something we couldn't
+            resolve, or just naming the step number where they said nothing.
+        """
+        if not steps:
+            raise ValueError(
+                "build_duration_question requires at least one missing step "
+                "— the caller should only call this when the duration gate "
+                "has actually fired."
+            )
+
+        def _describe(step: DurationClarificationStep) -> str:
+            if step.duration_phrase:
+                return f'step {step.step_order} (you said "{step.duration_phrase}")'
+            return f"step {step.step_order}"
+
+        described = [_describe(s) for s in steps]
+        if len(described) == 1:
+            steps_clause = described[0]
+        else:
+            steps_clause = ", ".join(described[:-1]) + f", and {described[-1]}"
+
+        question_text = (
+            f"I need an exact duration to run this prediction, but {steps_clause} "
+            "didn't resolve to a specific length. Please provide the duration "
+            "in hours for each listed step."
+        )
+
+        return DurationClarificationQuestion(
+            reason=ClarificationReason.AMBIGUOUS_DURATION,
+            question=question_text,
+            steps=steps,
+        )
 
 
 _clarification_service: ClarificationService | None = None

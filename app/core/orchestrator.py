@@ -12,6 +12,9 @@ Coordinates the full translation pipeline:
 import logging
 import re
 from dataclasses import dataclass
+from typing import cast
+
+from annotated_types import Le
 
 _log = logging.getLogger(__name__)
 
@@ -31,6 +34,8 @@ from app.models.metadata import (
     ClarificationRecord,
     ClarificationTranscript,
     ComBaseModelAudit,
+    DurationClarificationReply,
+    DurationClarificationStep,
     OrganismGroundingFailure,
     SystemAudit,
     ValueProvenance,
@@ -43,6 +48,7 @@ from app.services.clarification.clarification_service import (
 )
 from app.services.extraction.semantic_parser import SemanticParser, get_semantic_parser
 from app.services.grounding.grounding_service import (
+    GroundedStep,
     GroundedValues,
     GroundingService,
     get_grounding_service,
@@ -75,6 +81,20 @@ _CLARIFIABLE_ORGANISM_STAGES = frozenset(
 # the two can never drift apart.
 _MODEL_TYPE_FALLTHROUGH_REASON = "default (no thermal/non-thermal signals detected)"
 
+# The multi-step duration clarification gate's plausibility ceiling, in
+# minutes — derived (not duplicated) from ExtractedDuration.value_minutes's
+# own Field(le=...) so the two can never silently drift apart the way a
+# hand-copied literal could. A duration reply is USER_EXPLICIT at the same
+# trust level as any value in the original query (see specs/lessons.md), so
+# it gets the exact same ceiling the original extraction enforces — not a
+# looser or stricter one.
+_le_bound = next(
+    m.le
+    for m in ExtractedDuration.model_fields["value_minutes"].metadata
+    if isinstance(m, Le)
+)
+_MAX_DURATION_MINUTES: float = float(cast(int, _le_bound))
+
 
 @dataclass
 class _TranscriptResolution:
@@ -86,6 +106,21 @@ class _TranscriptResolution:
     """
 
     organism: ComBaseOrganism | None
+    failure_reason: str | None
+
+
+@dataclass
+class _DurationReplyResolution:
+    """Outcome of Orchestrator._resolve_duration_reply.
+
+    values is a step_order -> minutes mapping iff every answered step
+    resolved (structural + range check only — no LLM anywhere in this path);
+    failure_reason is a plain-language string otherwise. Exactly one of the
+    two is populated. All-or-nothing: values is never partially populated —
+    either every step in the reply passed, or none of them are applied.
+    """
+
+    values: dict[int, float] | None
     failure_reason: str | None
 
 
@@ -178,6 +213,7 @@ class Orchestrator:
         user_input: str,
         model_type: ModelType | None = None,
         transcript: ClarificationTranscript | None = None,
+        duration_reply: DurationClarificationReply | None = None,
     ) -> TranslationResult:
         """
         Run the full translation pipeline.
@@ -194,16 +230,31 @@ class Orchestrator:
                 only when it reaches the same clarifiable organism gap does
                 the transcript's reply get a chance to resolve it — see
                 _handle_missing_required.
+            duration_reply: multi-step duration gate re-entry (2026-08-17).
+                Same statelessness rationale as transcript, but a distinct
+                field: a numeric {step_order, hours} reply is never free text
+                and never touched by an LLM, so it doesn't share
+                ClarificationTranscript's shape. Mutually exclusive with
+                transcript in practice — organism-missing and
+                duration-missing can never co-occur in the same
+                missing_required list (see _handle_missing_required) — but
+                both are accepted as parameters unconditionally; which one
+                (if either) actually applies is decided entirely by which
+                gate the request lands on this round, not by which field the
+                caller populated.
 
         Returns:
             TranslationResult with execution result and metadata
         """
-        # Create session. When a transcript is present it is the source of
-        # truth for what to (re)process — there is no session to resume, so
-        # the original query is reprocessed from scratch each time.
-        effective_input = (
-            transcript.original_query if transcript is not None else user_input
-        )
+        # Create session. When a transcript or duration_reply is present it is
+        # the source of truth for what to (re)process — there is no session to
+        # resume, so the original query is reprocessed from scratch each time.
+        if transcript is not None:
+            effective_input = transcript.original_query
+        elif duration_reply is not None:
+            effective_input = duration_reply.original_query
+        else:
+            effective_input = user_input
         state = self._sessions.create_session(effective_input)
 
         try:
@@ -272,7 +323,12 @@ class Orchestrator:
 
             if std_result.missing_required:
                 outcome = await self._handle_missing_required(
-                    state, grounded, transcript, effective_model_type, std_result
+                    state,
+                    grounded,
+                    transcript,
+                    duration_reply,
+                    effective_model_type,
+                    std_result,
                 )
                 if isinstance(outcome, TranslationResult):
                     return outcome
@@ -523,6 +579,7 @@ class Orchestrator:
         state: SessionState,
         grounded: "GroundedValues",
         transcript: ClarificationTranscript | None,
+        duration_reply: DurationClarificationReply | None,
         model_type: ModelType,
         std_result: StandardizationResult,
     ) -> "TranslationResult | StandardizationResult":
@@ -530,18 +587,30 @@ class Orchestrator:
         Handle a standardize() result with missing_required populated.
 
         Returns a StandardizationResult when transcript-driven organism
-        resolution (A1b) succeeded and standardize() was re-run — the caller
-        (translate()) should continue the pipeline with it, exactly as if
-        organism had been grounded from the start. Returns a terminal
-        TranslationResult for every other outcome: a hard failure, or (round
-        1, no transcript) a fresh clarification question was asked.
+        resolution (A1b) or a duration_reply-driven duration resolution
+        succeeded and standardize() was re-run — the caller (translate())
+        should continue the pipeline with it, exactly as if the value had
+        been grounded from the start. Returns a terminal TranslationResult
+        for every other outcome: a hard failure, or (round 1, no reply yet)
+        a fresh clarification question was asked.
 
-        Narrow trigger, same as A1a: only the bare "organism" spec (organism
-        entirely ungrounded) with a clarifiable failure stage reaches either
-        the ask path or the re-entry path below. "organism (...)" (grounded
-        but not executable), missing factor4 bounds, missing duration, and
-        every non-clarifiable organism-failure stage keep the unchanged
-        fail-closed path regardless of whether a transcript is present.
+        Two independent gates, mutually exclusive by construction (see
+        StandardizationService.standardize(): the organism check returns
+        immediately on failure, strictly before _build_multi_step_profile()
+        is ever called, so std_result.missing_required can never mix
+        organism and duration entries):
+          - organism: narrow trigger, unchanged since A1a — only the bare
+            "organism" spec (organism entirely ungrounded) with a clarifiable
+            failure stage reaches either the ask path or the re-entry path
+            below. "organism (...)" (grounded but not executable) and every
+            non-clarifiable organism-failure stage keep the unchanged
+            fail-closed path regardless of whether a transcript is present.
+          - duration (2026-08-17): fires when every entry in missing_required
+            is a "duration (step N)" spec (multi-step step durations that
+            never resolved — 2a runs the profile-builder loop to completion
+            first, so this set is complete, not just the first miss). Missing
+            factor4 bounds and any other non-duration missing_required reason
+            keep the fail-closed path.
 
         _record_missing_required(state, std_result) is deliberately NOT
         called unconditionally up front — only on branches that are actually
@@ -552,7 +621,7 @@ class Orchestrator:
         must never be recorded once organism is later resolved). Each
         terminal branch below records the *result it is actually failing on*
         (std_result for round 1 / non-clarifiable, new_result for a retry
-        that still fails) instead.
+        that still fails) instead. The duration gate mirrors this discipline.
         """
         failure: OrganismGroundingFailure | None = (
             grounded.organism_failure
@@ -657,13 +726,213 @@ class Orchestrator:
             # `if clarifiable:` branch is terminal either way), so the
             # non-clarifiable branch's record call below must not double it.
 
-        if not clarifiable:
+        # Duration gate (2026-08-17). Fires only when every missing_required
+        # entry is a "duration (step N)" spec — mutually exclusive with the
+        # organism gate above by construction (see docstring).
+        duration_missing_specs = [
+            f for f in std_result.missing_required if f.startswith("duration (step ")
+        ]
+        duration_clarifiable = len(duration_missing_specs) > 0 and len(
+            duration_missing_specs
+        ) == len(std_result.missing_required)
+
+        if duration_clarifiable:
+            # Re-derive the missing-step list from grounded.steps (structured,
+            # not parsed from the missing_required strings) — the same
+            # underlying condition std_result.missing_required's duration
+            # entries were built from (GroundedStep.duration_minutes is None),
+            # so this can never disagree with duration_missing_specs above.
+            missing_steps = sorted(
+                (gs for gs in grounded.steps if gs.duration_minutes is None),
+                key=lambda gs: gs.step_order,
+            )
+            question = self._clarifier.build_duration_question(
+                [
+                    DurationClarificationStep(
+                        step_order=gs.step_order, duration_phrase=gs.duration_phrase
+                    )
+                    for gs in missing_steps
+                ]
+            )
+
+            if duration_reply is not None:
+                duration_resolution = self._resolve_duration_reply(
+                    duration_reply, missing_steps
+                )
+                if state.metadata:
+                    state.metadata.add_clarification(
+                        ClarificationRecord(
+                            turn_number=1,
+                            reason=question.reason,
+                            question_asked=question.question,
+                            user_response="; ".join(
+                                f"step {s.step_order}: {s.hours}h"
+                                for s in duration_reply.steps
+                            ),
+                            extracted_value=(
+                                "; ".join(
+                                    f"step {order}: {minutes}min"
+                                    for order, minutes in sorted(
+                                        duration_resolution.values.items()
+                                    )
+                                )
+                                if duration_resolution.values is not None
+                                else None
+                            ),
+                        )
+                    )
+
+                if duration_resolution.values is None:
+                    self._record_missing_required(state, std_result)
+                    assert duration_resolution.failure_reason is not None
+                    state.set_error(duration_resolution.failure_reason)
+                    return TranslationResult(state)
+
+                # Apply the reply — mirrors organism's grounded.set() +
+                # add_provenance() re-entry pattern. Both grounded.steps (read
+                # by _build_multi_step_profile on the re-run below) and the
+                # step-qualified metadata.provenance/grounded_values entries
+                # (bridged once at grounding time in _ground_values, now
+                # stale MISSING placeholders from _record_missing_required
+                # calls in earlier rounds) must be updated together, or the
+                # audit would show the new value in one place and the old
+                # MISSING placeholder in the other.
+                for step_reply in duration_reply.steps:
+                    minutes = duration_resolution.values[step_reply.step_order]
+                    gs = next(
+                        g
+                        for g in grounded.steps
+                        if g.step_order == step_reply.step_order
+                    )
+                    gs.duration_minutes = minutes
+                    gs.dur_provenance = ValueProvenance(
+                        source=ValueSource.CLARIFICATION_RESPONSE,
+                        original_text=str(step_reply.hours),
+                        extraction_method="clarification_direct_entry",
+                    )
+                    if state.metadata:
+                        dur_key = f"duration_minutes (step {gs.step_order})"
+                        state.metadata.add_provenance(dur_key, gs.dur_provenance)
+                        state.grounded_values[dur_key] = minutes
+
+                new_result = self._standardizer.standardize(grounded, model_type)
+                if state.metadata:
+                    # Deduped, unlike the organism re-entry's plain extend
+                    # (orchestrator.py ~line 674): organism's first
+                    # standardize() call always returns before ph/aw/
+                    # inoculum/factor4 are ever processed (it fails at the
+                    # organism check, which runs first), so its
+                    # defaults_imputed/range_clamps/warnings are always empty
+                    # going into re-entry -- nothing to duplicate. Duration's
+                    # first call runs past all of those (organism/factor4
+                    # already resolved; only the multi-step profile fails),
+                    # so this second standardize() call re-defaults/re-clamps
+                    # every field that already succeeded the first time, and
+                    # a plain extend would double-count them in the audit.
+                    for d in new_result.defaults_imputed:
+                        if d not in state.metadata.defaults_imputed:
+                            state.metadata.defaults_imputed.append(d)
+                    for clamp in new_result.range_clamps:
+                        if clamp not in state.metadata.range_clamps:
+                            state.metadata.add_range_clamp(clamp)
+                    for w in new_result.warnings:
+                        if w not in state.metadata.warnings:
+                            state.metadata.warnings.append(w)
+
+                if new_result.missing_required:
+                    # One round only — same discipline as organism re-entry.
+                    self._record_missing_required(state, new_result)
+                    state.set_error(
+                        f"Missing required values: {', '.join(new_result.missing_required)}"
+                    )
+                    return TranslationResult(state)
+
+                return new_result
+
+            # Round 1: ask. Terminal either way, so record now (mirrors
+            # organism above).
+            self._record_missing_required(state, std_result)
+            state.duration_clarification_question = question
+            state.update_status(SessionStatus.AWAITING_CLARIFICATION)
+            if state.metadata:
+                state.metadata.add_clarification(
+                    ClarificationRecord(
+                        turn_number=1,
+                        reason=question.reason,
+                        question_asked=question.question,
+                        user_response=None,
+                    )
+                )
+            return TranslationResult(state)
+
+        if not clarifiable and not duration_clarifiable:
             self._record_missing_required(state, std_result)
 
         state.set_error(
             f"Missing required values: {', '.join(std_result.missing_required)}"
         )
         return TranslationResult(state)
+
+    @staticmethod
+    def _resolve_duration_reply(
+        duration_reply: DurationClarificationReply,
+        missing_steps: list[GroundedStep],
+    ) -> _DurationReplyResolution:
+        """
+        Validate a structured numeric duration reply against the currently
+        missing steps. No LLM call anywhere in this method — the reply is
+        already numeric (DurationStepReply.hours: float, Pydantic gt=0), so
+        this is pure structural + range validation, not extraction. Marked
+        @staticmethod because it touches no instance state at all — no
+        self._parser, no self._engine — which is itself a small, checkable
+        proof that this path really has no service dependency to distrust.
+
+        Contrast with _resolve_organism_from_transcript: organism's safety
+        lives in a closed-set membership check because its input is
+        LLM-extracted free text; duration's safety lives in this range check
+        because its input is a plain number the user typed directly — there
+        is no extraction step to distrust. See specs/lessons.md for the full
+        reasoning.
+
+        All-or-nothing (Part 1 Q2 of the design recon): the reply's
+        step_order set must exactly equal the currently-missing step_order
+        set — re-derived fresh from grounded.steps this round, not trusted
+        from whatever was asked in round 1, since a step that resolved
+        differently on retry shouldn't need re-answering. Any mismatch
+        (fewer steps answered, or an extra/stale step_order) fails closed the
+        same way an out-of-range value does: nothing is partially applied.
+        """
+        missing_orders = {gs.step_order for gs in missing_steps}
+        reply_orders = {s.step_order for s in duration_reply.steps}
+
+        if reply_orders != missing_orders:
+            missing_str = ", ".join(str(o) for o in sorted(missing_orders))
+            reply_str = ", ".join(str(o) for o in sorted(reply_orders))
+            return _DurationReplyResolution(
+                values=None,
+                failure_reason=(
+                    "This reply must answer exactly the steps that are "
+                    f"still missing a duration (step {missing_str}), but "
+                    f"named step {reply_str} instead — this can't proceed."
+                ),
+            )
+
+        values: dict[int, float] = {}
+        for step_reply in duration_reply.steps:
+            minutes = step_reply.hours * 60.0
+            if not (0 < minutes <= _MAX_DURATION_MINUTES):
+                max_hours = _MAX_DURATION_MINUTES / 60.0
+                return _DurationReplyResolution(
+                    values=None,
+                    failure_reason=(
+                        f"Step {step_reply.step_order}: {step_reply.hours} "
+                        f"hours is outside the valid range (0, {max_hours:g}] "
+                        "hours — this can't proceed."
+                    ),
+                )
+            values[step_reply.step_order] = minutes
+
+        return _DurationReplyResolution(values=values, failure_reason=None)
 
     async def _resolve_organism_from_transcript(
         self,

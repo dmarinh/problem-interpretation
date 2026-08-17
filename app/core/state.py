@@ -14,6 +14,7 @@ from app.models.execution.combase import ComBaseExecutionPayload, ComBaseExecuti
 from app.models.extraction import ExtractedIntent, ExtractedScenario
 from app.models.metadata import (
     ClarificationQuestion,
+    DurationClarificationQuestion,
     InterpretationMetadata,
     ValueProvenance,
 )
@@ -65,6 +66,13 @@ class SessionState(BaseModel):
         default=None,
         description="Set when status=awaiting_clarification (A1a organism gate); "
         "the question and options for the route layer to surface",
+    )
+    duration_clarification_question: DurationClarificationQuestion | None = Field(
+        default=None,
+        description="Set when status=awaiting_clarification (multi-step "
+        "duration gate); mutually exclusive with clarification_question — "
+        "organism-missing and duration-missing can never co-occur in the "
+        "same missing_required list, see Orchestrator._handle_missing_required",
     )
 
     # Errors

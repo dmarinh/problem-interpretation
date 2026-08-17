@@ -22,10 +22,12 @@ from app.models.extraction import (
 from app.models.metadata import (
     ClarificationOption,
     ClarificationTranscript,
+    DurationClarificationReply,
+    DurationStepReply,
     ValueProvenance,
     ValueSource,
 )
-from app.services.grounding.grounding_service import GroundedValues
+from app.services.grounding.grounding_service import GroundedStep, GroundedValues
 
 
 @pytest.fixture
@@ -235,7 +237,9 @@ class TestValidationFailureAuditCompleteness:
     """
     Verify that when standardization fails with missing_required, the
     orchestrator still populates metadata completely so _build_field_audit
-    can produce a useful audit trail.
+    can produce a useful audit trail — true regardless of whether the
+    terminal outcome is a hard FAILED or (2026-08-17, duration gate)
+    AWAITING_CLARIFICATION; _record_missing_required() fires on both paths.
 
     Uses the real StandardizationService (no registry — defaults/missing only)
     and a mock grounder that returns a multi-step GroundedValues where step 1
@@ -309,16 +313,30 @@ class TestValidationFailureAuditCompleteness:
         )
 
     @pytest.mark.asyncio
-    async def test_failure_result_is_failed(self, orchestrator_for_failure):
+    async def test_failure_result_is_awaiting_duration_clarification(
+        self, orchestrator_for_failure
+    ):
+        """2026-08-17: a single missing step duration (organism resolved) now
+        routes to the duration clarification gate (AWAITING_CLARIFICATION),
+        not a hard FAILED -- same as the organism gate's own convention.
+        Previously (before the duration gate existed) this asserted FAILED."""
         result = await orchestrator_for_failure.translate("A2-style multi-step query")
         assert result.success is False
-        assert result.state.status == SessionStatus.FAILED
+        assert result.state.status == SessionStatus.AWAITING_CLARIFICATION
 
     @pytest.mark.asyncio
-    async def test_error_names_missing_field(self, orchestrator_for_failure):
+    async def test_duration_clarification_question_names_missing_field(
+        self, orchestrator_for_failure
+    ):
+        """2026-08-17: replaces the old test_error_names_missing_field --
+        error stays None on the clarification path (state.set_error() is
+        never called), so the missing field now shows up on the duration
+        clarification question instead of the error string."""
         result = await orchestrator_for_failure.translate("A2-style multi-step query")
-        assert "duration" in result.error.lower()
-        assert "step 1" in result.error.lower()
+        assert result.error is None
+        question = result.state.duration_clarification_question
+        assert question is not None
+        assert [s.step_order for s in question.steps] == [1]
 
     @pytest.mark.asyncio
     async def test_organism_in_provenance(self, orchestrator_for_failure):
@@ -560,3 +578,90 @@ class TestResolveOrganismFromTranscript:
 
         assert resolution.organism is None
         assert "not supported for" in resolution.failure_reason.lower()
+
+
+class TestResolveDurationReply:
+    """
+    2026-08-17: Orchestrator._resolve_duration_reply() -- the duration gate's
+    validation layer, tested directly and in isolation. Unlike
+    TestResolveOrganismFromTranscript, no mocking is needed at all: the
+    method is @staticmethod, touches no service, and calls no LLM -- pure
+    structural + range validation over plain Python values.
+    """
+
+    @staticmethod
+    def _step(order: int) -> GroundedStep:
+        return GroundedStep(
+            step_order=order, temperature_celsius=25.0, duration_minutes=None
+        )
+
+    @staticmethod
+    def _reply(*pairs: tuple[int, float]) -> DurationClarificationReply:
+        return DurationClarificationReply(
+            original_query="q",
+            steps=[
+                DurationStepReply(step_order=order, hours=hours)
+                for order, hours in pairs
+            ],
+        )
+
+    def test_exact_match_resolves_verbatim(self):
+        resolution = Orchestrator._resolve_duration_reply(
+            self._reply((1, 2.0), (2, 8.0)), [self._step(1), self._step(2)]
+        )
+        assert resolution.failure_reason is None
+        assert resolution.values == {1: 120.0, 2: 480.0}
+
+    def test_partial_reply_fails_closed(self):
+        """Reply answers only step 1; step 2 is still missing -> reject,
+        nothing applied (all-or-nothing)."""
+        resolution = Orchestrator._resolve_duration_reply(
+            self._reply((1, 2.0)), [self._step(1), self._step(2)]
+        )
+        assert resolution.values is None
+        assert "step" in resolution.failure_reason.lower()
+
+    def test_extra_stale_step_order_fails_closed(self):
+        """Reply names a step that isn't currently missing -> reject, same
+        as an incomplete reply -- both directions of mismatch fail the same
+        way."""
+        resolution = Orchestrator._resolve_duration_reply(
+            self._reply((1, 2.0), (3, 1.0)), [self._step(1)]
+        )
+        assert resolution.values is None
+
+    def test_zero_missing_steps_now_resolved_on_retry_is_not_required(self):
+        """If grounding resolved a step differently between rounds, the
+        currently-missing set can shrink -- the reply must match THAT set,
+        not a stale round-1 set the caller might still be holding."""
+        resolution = Orchestrator._resolve_duration_reply(
+            self._reply((2, 8.0)), [self._step(2)]
+        )
+        assert resolution.failure_reason is None
+        assert resolution.values == {2: 480.0}
+
+    def test_out_of_range_value_fails_closed_not_clamped(self):
+        """5000 hours exceeds the 2190h/131400min ceiling."""
+        resolution = Orchestrator._resolve_duration_reply(
+            self._reply((1, 5000.0)), [self._step(1)]
+        )
+        assert resolution.values is None
+        assert "5000" in resolution.failure_reason
+
+    def test_ceiling_boundary_is_inclusive(self):
+        """Exactly 2190 hours (131400 min) is the documented boundary and
+        must be accepted, not rejected."""
+        resolution = Orchestrator._resolve_duration_reply(
+            self._reply((1, 2190.0)), [self._step(1)]
+        )
+        assert resolution.failure_reason is None
+        assert resolution.values == {1: 131400.0}
+
+    def test_no_llm_or_service_dependency(self):
+        """The method is callable with no Orchestrator instance at all --
+        proof there is no self._parser/self._engine dependency, i.e. no LLM
+        anywhere in this path."""
+        resolution = Orchestrator._resolve_duration_reply(
+            self._reply((1, 2.0)), [self._step(1)]
+        )
+        assert resolution.values == {1: 120.0}

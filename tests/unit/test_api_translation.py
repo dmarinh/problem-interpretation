@@ -410,6 +410,145 @@ class TestClarificationField:
         assert kwargs["transcript"] is None
 
 
+class TestDurationClarificationField:
+    """
+    2026-08-17: TranslationResponse.duration_clarification -- present when
+    status=awaiting_clarification and the fired gate is the duration gate,
+    not the organism gate; and duration_reply is passed through to
+    Orchestrator.translate(). Mirrors TestClarificationField's structure for
+    the organism gate's `clarification` field.
+    """
+
+    def test_duration_clarification_surfaced_when_awaiting(self, client):
+        from app.core.orchestrator import TranslationResult
+        from app.models.enums import ClarificationReason
+        from app.models.metadata import (
+            DurationClarificationQuestion,
+            DurationClarificationStep,
+        )
+
+        state = SessionState(user_input="chicken transported then stored")
+        state.status = SessionStatus.AWAITING_CLARIFICATION
+        state.duration_clarification_question = DurationClarificationQuestion(
+            reason=ClarificationReason.AMBIGUOUS_DURATION,
+            question='I need an exact duration... step 1 (you said "a while")...',
+            steps=[
+                DurationClarificationStep(step_order=1, duration_phrase="a while"),
+                DurationClarificationStep(step_order=2, duration_phrase=None),
+            ],
+        )
+        state.metadata = InterpretationMetadata(
+            session_id=state.session_id,
+            original_input=state.user_input,
+            status=state.status,
+        )
+
+        mock_result = MagicMock(spec=TranslationResult)
+        mock_result.success = False
+        mock_result.error = None
+        mock_result.state = state
+        mock_result.execution_result = None
+        mock_result.metadata = state.metadata
+
+        with patch("app.api.routes.translation.get_orchestrator") as mock_get:
+            mock_orch = MagicMock()
+            mock_orch.translate = AsyncMock(return_value=mock_result)
+            mock_get.return_value = mock_orch
+
+            response = client.post(
+                "/api/v1/translate",
+                json={"query": "chicken transported then stored"},
+            )
+
+        data = response.json()
+        assert data["status"] == "awaiting_clarification"
+        assert data["success"] is False
+        assert data["error"] is None
+        assert data["clarification"] is None
+        assert data["duration_clarification"] is not None
+        assert data["duration_clarification"]["reason"] == "ambiguous_duration"
+        assert [s["step_order"] for s in data["duration_clarification"]["steps"]] == [
+            1,
+            2,
+        ]
+        assert data["duration_clarification"]["steps"][0]["duration_phrase"] == (
+            "a while"
+        )
+        assert data["duration_clarification"]["steps"][1]["duration_phrase"] is None
+
+    def test_duration_clarification_absent_when_not_awaiting(
+        self, client, mock_translation_result
+    ):
+        with patch("app.api.routes.translation.get_orchestrator") as mock_get:
+            mock_orch = MagicMock()
+            mock_orch.translate = AsyncMock(return_value=mock_translation_result)
+            mock_get.return_value = mock_orch
+
+            response = client.post(
+                "/api/v1/translate",
+                json={"query": "Raw chicken left out for 3 hours"},
+            )
+
+        assert response.json()["duration_clarification"] is None
+
+    def test_duration_reply_passed_through_to_orchestrator(
+        self, client, mock_translation_result
+    ):
+        with patch("app.api.routes.translation.get_orchestrator") as mock_get:
+            mock_orch = MagicMock()
+            mock_orch.translate = AsyncMock(return_value=mock_translation_result)
+            mock_get.return_value = mock_orch
+
+            client.post(
+                "/api/v1/translate",
+                json={
+                    "query": "chicken transported then stored",
+                    "duration_reply": {
+                        "original_query": "chicken transported then stored",
+                        "steps": [
+                            {"step_order": 1, "hours": 2.0},
+                            {"step_order": 2, "hours": 8.0},
+                        ],
+                    },
+                },
+            )
+
+        _, kwargs = mock_orch.translate.call_args
+        assert kwargs["duration_reply"] is not None
+        assert [s.hours for s in kwargs["duration_reply"].steps] == [2.0, 8.0]
+
+    def test_duration_reply_omitted_defaults_to_none(
+        self, client, mock_translation_result
+    ):
+        with patch("app.api.routes.translation.get_orchestrator") as mock_get:
+            mock_orch = MagicMock()
+            mock_orch.translate = AsyncMock(return_value=mock_translation_result)
+            mock_get.return_value = mock_orch
+
+            client.post(
+                "/api/v1/translate",
+                json={"query": "Raw chicken left out for 3 hours"},
+            )
+
+        _, kwargs = mock_orch.translate.call_args
+        assert kwargs["duration_reply"] is None
+
+    def test_non_positive_hours_rejected_at_schema_level(self, client):
+        """hours must be > 0 -- structural sanity enforced by Pydantic, no
+        orchestrator call needed to reject it."""
+        response = client.post(
+            "/api/v1/translate",
+            json={
+                "query": "chicken transported then stored",
+                "duration_reply": {
+                    "original_query": "chicken transported then stored",
+                    "steps": [{"step_order": 1, "hours": 0}],
+                },
+            },
+        )
+        assert response.status_code == 422
+
+
 class TestVerboseAudit:
     """Tests for verbose=true audit output on /api/v1/translate."""
 

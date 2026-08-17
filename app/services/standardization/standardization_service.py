@@ -847,8 +847,14 @@ class StandardizationService:
         single-step path.  Duration values pass through unchanged — mapped
         values carry their own conservatism via the rule's chosen point.
 
-        Returns None and populates result.missing_required if any step is
-        missing a duration (temperature falls back to the conservative default).
+        Returns None and populates result.missing_required with every step
+        missing a duration (temperature is still evaluated/defaulted/clamped
+        for every step regardless — the loop runs to completion rather than
+        bailing on the first missing duration, so a future clarification gate
+        sees the complete set of what's missing in one pass instead of only
+        the first). Terminal outcome is unchanged from before this change:
+        still fails closed, still no multi-step duration default — a step
+        with an unresolved duration is never silently defaulted.
         """
         built_steps: list[TimeTemperatureStep] = []
         total_duration = 0.0
@@ -928,7 +934,7 @@ class StandardizationService:
 
             if dur is None:
                 result.missing_required.append(f"duration (step {gs.step_order})")
-                return None
+                continue
 
             total_duration += dur
             built_steps.append(
@@ -938,6 +944,9 @@ class StandardizationService:
                     step_order=new_order,
                 )
             )
+
+        if result.missing_required:
+            return None
 
         return TimeTemperatureProfile(
             is_multi_step=True,

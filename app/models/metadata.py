@@ -547,6 +547,87 @@ class ClarificationTranscript(BaseModel):
     )
 
 
+class DurationClarificationStep(BaseModel):
+    """One missing-duration step named in a DurationClarificationQuestion.
+
+    duration_phrase is the raw phrase the user originally used for this
+    step's duration (GroundedStep.duration_phrase — populated whether or not
+    it resolved, see the multi-step raw-text-preservation work), so the
+    question can quote it back ("you said 'a while'"). None when the user
+    said nothing about this step's duration at all.
+    """
+
+    step_order: int = Field(ge=1)
+    duration_phrase: str | None = Field(default=None)
+
+
+class DurationClarificationQuestion(BaseModel):
+    """
+    A multi-step duration clarification question, ready to surface to the
+    user — the duration-gate analogue of ClarificationQuestion.
+
+    Deliberately has no `options` field (unlike ClarificationQuestion):
+    duration is an open numeric quantity, not a closed menu, so there is
+    nothing to select from. Built by ClarificationService.build_duration_question()
+    (pure, deterministic) from the caller-derived list of currently-missing
+    steps — see Orchestrator._handle_missing_required.
+    """
+
+    reason: ClarificationReason = Field(description="Why clarification was needed")
+    question: str = Field(description="The question text, naming every missing step")
+    steps: list[DurationClarificationStep] = Field(
+        min_length=1,
+        description="Every step still missing a duration, in step_order order",
+    )
+
+
+class DurationStepReply(BaseModel):
+    """One step's answer in a DurationClarificationReply.
+
+    hours is a plain number typed by the user directly — never LLM-parsed.
+    There is no free-text path for duration clarification (unlike organism's
+    ClarificationTranscript.user_reply): a number is USER_EXPLICIT at the
+    same trust level as any value in the original query, because there is no
+    LLM extraction step to introduce the ambiguity organism's set-membership
+    check exists to police. See specs/lessons.md for the full reasoning.
+    """
+
+    step_order: int = Field(ge=1)
+    hours: float = Field(
+        gt=0,
+        description="Duration in hours, entered directly by the user. The "
+        "90-day plausibility ceiling (mirroring ExtractedDuration.value_minutes) "
+        "is enforced in Orchestrator._resolve_duration_reply, not here, so an "
+        "out-of-range reply fails closed with a plain message rather than a "
+        "generic 422 at the request-parsing layer.",
+    )
+
+
+class DurationClarificationReply(BaseModel):
+    """
+    The round-1 duration question's reply, carried on the request — the
+    duration-gate analogue of ClarificationTranscript.
+
+    No options_offered-equivalent: unlike organism's offered set (a closed
+    list that is itself a safety boundary a reply must not escape), "which
+    steps are still missing a duration" is recomputed fresh from grounded.steps
+    on every round rather than trusted from what was asked in round 1 — a
+    step that resolves differently on retry legitimately no longer needs an
+    answer. The reply's step_order set must equal that freshly-recomputed
+    set exactly (all-or-nothing; see specs/lessons.md) or the request fails
+    closed, so echoing back a stale round-1 set would only make the
+    validation stricter than it needs to be, not safer.
+    """
+
+    original_query: str = Field(
+        min_length=1,
+        max_length=2000,
+        description="The original query from round 1 — reprocessed from "
+        "scratch, since no session persists it server-side",
+    )
+    steps: list[DurationStepReply] = Field(min_length=1, max_length=10)
+
+
 class ClarificationRecord(BaseModel):
     """
     Record of a clarification exchange with the user.

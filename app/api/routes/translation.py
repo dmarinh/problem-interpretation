@@ -16,6 +16,8 @@ from app.api.schemas.translation import (
     ClarificationOptionInfo,
     ComBaseModelAuditInfo,
     DefaultImputedInfo,
+    DurationClarificationInfo,
+    DurationClarificationStepInfo,
     ExtractionAuditInfo,
     FieldAuditEntry,
     PathogenCandidateInfo,
@@ -589,6 +591,7 @@ async def translate_query(
             user_input=request.query,
             model_type=request.model_type,
             transcript=request.transcript,
+            duration_reply=request.duration_reply,
         )
         completed_at = datetime.utcnow()
 
@@ -668,6 +671,20 @@ async def translate_query(
                 ],
             )
 
+        duration_clarification = None
+        duration_question = result.state.duration_clarification_question
+        if duration_question is not None:
+            duration_clarification = DurationClarificationInfo(
+                reason=duration_question.reason,
+                question=duration_question.question,
+                steps=[
+                    DurationClarificationStepInfo(
+                        step_order=s.step_order, duration_phrase=s.duration_phrase
+                    )
+                    for s in duration_question.steps
+                ],
+            )
+
         return TranslationResponse(
             success=result.success,
             session_id=result.state.session_id,
@@ -681,6 +698,7 @@ async def translate_query(
             error=result.error if not result.success else None,
             audit=_build_audit_detail(result, field_audit) if verbose else None,
             clarification=clarification,
+            duration_clarification=duration_clarification,
         )
 
     except LLMProviderError as e:

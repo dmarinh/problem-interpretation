@@ -16,6 +16,7 @@ from app.core.orchestrator import Orchestrator
 from app.core.state import SessionManager
 from app.engines.combase.engine import ComBaseEngine
 from app.models.enums import (
+    ClarificationReason,
     ComBaseOrganism,
     ModelType,
     OrganismGroundingFailureStage,
@@ -30,7 +31,12 @@ from app.models.extraction import (
     ExtractedTemperature,
     ExtractedTimeTemperatureStep,
 )
-from app.models.metadata import ClarificationTranscript, ValueSource
+from app.models.metadata import (
+    ClarificationTranscript,
+    DurationClarificationReply,
+    DurationStepReply,
+    ValueSource,
+)
 from app.rag.retrieval import RetrievalService
 from app.rag.vector_store import VectorStore
 from app.services.grounding.grounding_service import GroundingService
@@ -504,10 +510,14 @@ class TestEdgeCases:
         )
 
     @pytest.mark.asyncio
-    async def test_multistep_missing_one_duration_fails(
+    async def test_multistep_missing_one_duration_routes_to_duration_gate(
         self, orchestrator, mock_semantic_parser
     ):
-        """Phase 9.7: multi-step with a missing step duration still fails (isolation check)."""
+        """2026-08-17: multi-step with a single missing step duration now
+        routes to the duration clarification gate (AWAITING_CLARIFICATION)
+        instead of hard-failing -- organism resolved, only step 1's duration
+        is missing. Previously (Phase 9.7, before the duration gate existed)
+        this hard-failed naming step 1 in the error string; now it asks."""
         multi_step_scenario = ExtractedScenario(
             food_description="chicken",
             pathogen_mentioned="Salmonella",
@@ -541,13 +551,22 @@ class TestEdgeCases:
         result = await orchestrator.translate("Chicken in two stages")
 
         assert result.success is False
-        assert "step 1" in result.error.lower()
+        assert result.state.status == SessionStatus.AWAITING_CLARIFICATION
+        assert result.error is None
+        question = result.state.duration_clarification_question
+        assert question is not None
+        assert [s.step_order for s in question.steps] == [1]
 
     @pytest.mark.asyncio
-    async def test_multistep_all_missing_duration_fails_at_step_1(
+    async def test_multistep_all_missing_duration_gate_names_every_step(
         self, orchestrator, mock_semantic_parser
     ):
-        """Phase 9.7: multi-step with all durations missing fails naming step 1 only."""
+        """2026-08-17: multi-step with both durations missing routes to the
+        duration gate naming BOTH steps in a single question -- proves 2a
+        (the profile-builder loop now runs to completion, collecting every
+        missing duration, not just the first). Previously (Phase 9.7) this
+        hard-failed naming step 1 only, because the old loop returned at the
+        first missing duration and never evaluated step 2 at all."""
         multi_step_scenario = ExtractedScenario(
             food_description="chicken",
             pathogen_mentioned="Salmonella",
@@ -581,7 +600,11 @@ class TestEdgeCases:
         result = await orchestrator.translate("Chicken in two stages")
 
         assert result.success is False
-        assert "step 1" in result.error.lower()
+        assert result.state.status == SessionStatus.AWAITING_CLARIFICATION
+        assert result.error is None
+        question = result.state.duration_clarification_question
+        assert question is not None
+        assert [s.step_order for s in question.steps] == [1, 2]
 
     @pytest.mark.asyncio
     async def test_defaults_applied_with_warnings(
@@ -1424,9 +1447,15 @@ class TestValidationFailureAudit:
         )
 
     @pytest.mark.asyncio
-    async def test_failure_response_names_missing_field(
+    async def test_missing_duration_routes_to_duration_gate_not_hard_failure(
         self, orchestrator, mock_semantic_parser
     ):
+        """2026-08-17: this A2-style query's missing step-1 duration is now
+        answerable via the duration clarification gate (AWAITING_CLARIFICATION),
+        not a hard failure -- error stays None, same as the organism gate's
+        own convention (state.set_error() is not called for a clarification).
+        Previously this asserted result.error named "duration"; that error
+        string no longer exists for this scenario since it no longer fails."""
         mock_semantic_parser.extract_scenario = AsyncMock(
             return_value=self._make_a2_scenario()
         )
@@ -1436,8 +1465,11 @@ class TestValidationFailureAudit:
             "segments separately."
         )
         assert result.success is False
-        assert result.error is not None
-        assert "duration" in result.error.lower()
+        assert result.state.status == SessionStatus.AWAITING_CLARIFICATION
+        assert result.error is None
+        question = result.state.duration_clarification_question
+        assert question is not None
+        assert [s.step_order for s in question.steps] == [1]
 
     @pytest.mark.asyncio
     async def test_organism_in_field_audit(self, orchestrator, mock_semantic_parser):
@@ -1984,3 +2016,221 @@ class TestModelTypeFallthroughDisclosure:
             f"Confident path {label!r} incorrectly emitted the fall-through "
             f"disclosure warning: {result.metadata.warnings}"
         )
+
+
+class TestDurationClarificationGate:
+    """
+    2026-08-17: multi-step duration clarification gate -- the duration-gate
+    analogue of TestClarificationReEntry (organism). Round 1 asks about every
+    step with an unresolvable duration (2a: the profile-builder loop runs to
+    completion, so the question can name all of them in one round, not just
+    the first). Round 2 answers with a structured numeric {step_order, hours}
+    reply per step -- validated structurally (no LLM anywhere in this path,
+    unlike organism's extract_clarification_response()) and applied verbatim.
+    """
+
+    QUERY = "Chicken transported then stored, two stages"
+
+    @staticmethod
+    def _scenario() -> ExtractedScenario:
+        return ExtractedScenario(
+            food_description="raw chicken",
+            pathogen_mentioned="Salmonella",
+            is_multi_step=True,
+            single_step_temperature=ExtractedTemperature(),
+            single_step_duration=ExtractedDuration(),
+            time_temperature_steps=[
+                ExtractedTimeTemperatureStep(
+                    sequence_order=1,
+                    temperature=ExtractedTemperature(value_celsius=25.0),
+                    duration=ExtractedDuration(
+                        description="xyz123"
+                    ),  # unresolvable phrase -- quoted in the question
+                ),
+                ExtractedTimeTemperatureStep(
+                    sequence_order=2,
+                    temperature=ExtractedTemperature(value_celsius=4.0),
+                    duration=ExtractedDuration(),  # no phrase at all
+                ),
+            ],
+            environmental_conditions=ExtractedEnvironmentalConditions(),
+            concern_type="safety",
+            is_storage_scenario=True,
+            implied_model_type=ModelType.GROWTH,
+        )
+
+    async def _ask(self, orchestrator, mock_semantic_parser):
+        """Round 1: get the real duration clarification question."""
+        mock_semantic_parser.extract_scenario = AsyncMock(return_value=self._scenario())
+        result = await orchestrator.translate(self.QUERY)
+        assert result.state.status == SessionStatus.AWAITING_CLARIFICATION
+        question = result.state.duration_clarification_question
+        assert question is not None
+        return question
+
+    def _reply(self, steps: list[tuple[int, float]]) -> DurationClarificationReply:
+        return DurationClarificationReply(
+            original_query=self.QUERY,
+            steps=[
+                DurationStepReply(step_order=order, hours=hours)
+                for order, hours in steps
+            ],
+        )
+
+    @pytest.mark.asyncio
+    async def test_round1_names_both_steps_quoting_phrase_where_present(
+        self, orchestrator, mock_semantic_parser
+    ):
+        """Proves 2a end-to-end: both steps named in ONE question, not just
+        the first. Step 1's unresolvable phrase is quoted; step 2 (no phrase
+        at all) is named by step number only."""
+        question = await self._ask(orchestrator, mock_semantic_parser)
+
+        assert [s.step_order for s in question.steps] == [1, 2]
+        assert question.steps[0].duration_phrase == "xyz123"
+        assert question.steps[1].duration_phrase is None
+        assert "xyz123" in question.question
+        assert question.reason == ClarificationReason.AMBIGUOUS_DURATION
+
+    @pytest.mark.asyncio
+    async def test_full_structured_reply_completes_prediction_verbatim(
+        self, orchestrator, mock_semantic_parser
+    ):
+        """Acceptance: [{step_order:1, hours:2}, {step_order:2, hours:8}] ->
+        full prediction, both durations source=clarification_response, and
+        the reply is used verbatim (2h=120min, 8h=480min exactly) -- no LLM
+        anywhere in this path, so no drift is possible."""
+        await self._ask(orchestrator, mock_semantic_parser)
+
+        mock_semantic_parser.extract_scenario = AsyncMock(return_value=self._scenario())
+        result = await orchestrator.translate(
+            self.QUERY,
+            duration_reply=self._reply([(1, 2.0), (2, 8.0)]),
+        )
+
+        assert result.success is True, f"Failed with error: {result.error}"
+        assert result.state.status == SessionStatus.COMPLETED
+        assert result.execution_result is not None
+
+        profile = result.state.execution_payload.time_temperature_profile
+        durations = {s.step_order: s.duration_minutes for s in profile.steps}
+        assert durations == {1: 120.0, 2: 480.0}
+
+        from app.api.routes.translation import _build_field_audit
+
+        field_audit = _build_field_audit(result)
+        assert field_audit["duration_minutes (step 1)"].source == (
+            "clarification_response"
+        )
+        assert field_audit["duration_minutes (step 2)"].source == (
+            "clarification_response"
+        )
+        assert field_audit["duration_minutes (step 1)"].final_value == 120.0
+        assert field_audit["duration_minutes (step 2)"].final_value == 480.0
+
+        # A resolved-and-executed request must not carry a stale "required
+        # value missing" warning from before the reply resolved it.
+        assert not any(
+            "required value missing" in w for w in result.metadata.warnings
+        ), result.metadata.warnings
+
+        assert len(result.metadata.clarifications) == 1
+        assert result.metadata.clarifications[0].turn_number == 1
+
+        # Regression: standardize() runs twice for this gate (once before
+        # the reply, once after) -- fields defaulted on the FIRST call (this
+        # scenario supplies no initial_inoculum_log_cfu, so it's always
+        # defaulted) must not be double-recorded when the second call
+        # defaults the same field again. Unlike the organism gate, whose
+        # first standardize() call always returns before ph/aw/inoculum are
+        # ever processed, duration's first call runs past all of them.
+        inoculum_defaults = [
+            d
+            for d in result.metadata.defaults_imputed
+            if d.field_name == "initial_inoculum_log_cfu"
+        ]
+        assert len(inoculum_defaults) == 1, (
+            f"initial_inoculum_log_cfu default recorded {len(inoculum_defaults)} "
+            f"times, expected exactly 1: {result.metadata.defaults_imputed}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_partial_reply_fails_closed(self, orchestrator, mock_semantic_parser):
+        """Reply answering only one of two missing steps -> fails closed per
+        the all-or-nothing multiplicity decision, plain message, nothing
+        partially applied."""
+        await self._ask(orchestrator, mock_semantic_parser)
+
+        mock_semantic_parser.extract_scenario = AsyncMock(return_value=self._scenario())
+        result = await orchestrator.translate(
+            self.QUERY,
+            duration_reply=self._reply([(1, 2.0)]),  # step 2 not answered
+        )
+
+        assert result.success is False
+        assert result.state.status == SessionStatus.FAILED
+        assert result.error is not None
+        assert "step" in result.error.lower()
+        assert result.state.execution_payload is None
+
+    @pytest.mark.asyncio
+    async def test_out_of_range_reply_fails_closed_not_clamped(
+        self, orchestrator, mock_semantic_parser
+    ):
+        """5000 hours (300000 min) exceeds the 2190h/131400min ceiling ->
+        fails closed with a plain message, not silently clamped to the max."""
+        await self._ask(orchestrator, mock_semantic_parser)
+
+        mock_semantic_parser.extract_scenario = AsyncMock(return_value=self._scenario())
+        result = await orchestrator.translate(
+            self.QUERY,
+            duration_reply=self._reply([(1, 5000.0), (2, 8.0)]),
+        )
+
+        assert result.success is False
+        assert result.state.status == SessionStatus.FAILED
+        assert result.error is not None
+        assert "5000" in result.error
+        assert result.state.execution_payload is None
+
+    @pytest.mark.asyncio
+    async def test_organism_missing_multistep_still_routes_to_organism_gate(
+        self, orchestrator, mock_semantic_parser
+    ):
+        """Multi-step scenario with an unrecognised food (organism ungrounded,
+        both step durations fully explicit) must still route to the organism
+        gate, unaffected by the duration gate existing alongside it."""
+        scenario = ExtractedScenario(
+            food_description="frobnitz",
+            pathogen_mentioned=None,
+            is_multi_step=True,
+            single_step_temperature=ExtractedTemperature(),
+            single_step_duration=ExtractedDuration(),
+            time_temperature_steps=[
+                ExtractedTimeTemperatureStep(
+                    sequence_order=1,
+                    temperature=ExtractedTemperature(value_celsius=25.0),
+                    duration=ExtractedDuration(value_minutes=120.0),
+                ),
+                ExtractedTimeTemperatureStep(
+                    sequence_order=2,
+                    temperature=ExtractedTemperature(value_celsius=4.0),
+                    duration=ExtractedDuration(value_minutes=60.0),
+                ),
+            ],
+            environmental_conditions=ExtractedEnvironmentalConditions(),
+            concern_type="safety",
+            is_storage_scenario=True,
+            implied_model_type=ModelType.GROWTH,
+        )
+        mock_semantic_parser.extract_scenario = AsyncMock(return_value=scenario)
+
+        result = await orchestrator.translate("Frobnitz transported then stored")
+
+        assert result.state.status == SessionStatus.AWAITING_CLARIFICATION
+        assert result.state.clarification_question is not None
+        assert (
+            result.state.clarification_question.stage
+            == OrganismGroundingFailureStage.FOOD_UNRECOGNISED
+        )
+        assert result.state.duration_clarification_question is None
