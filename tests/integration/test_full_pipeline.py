@@ -1850,3 +1850,137 @@ class TestPreservativeRoutingRemoved:
         assert result.metadata.combase_model.selection_reason == (
             "default (no thermal/non-thermal signals detected)"
         )
+
+        # A1c: the fall-through must disclose itself as a guess via the plain
+        # (non-verbose) response's warnings channel, not just the verbose-only
+        # combase_model.selection_reason asserted above.
+        assert any(
+            "growth was assumed by default" in w for w in result.metadata.warnings
+        ), f"No fall-through disclosure warning in metadata.warnings: {result.metadata.warnings}"
+
+        from app.api.routes.translation import _build_warnings_list
+
+        plain_warnings = _build_warnings_list(result)
+        assert any(
+            "growth was assumed by default" in w.message for w in plain_warnings
+        ), f"Fall-through disclosure did not reach the plain-response warnings list: {plain_warnings}"
+
+
+class TestModelTypeFallthroughDisclosure:
+    """A1c: _determine_model_type()'s fall-through (orchestrator.py) has no
+    conservative direction -- growth vs. inactivation is a binary choice about
+    scenario kind, not a worst-case floor/ceiling. A wrong guess here is
+    categorically wrong, not cautious, so it must be disclosed in the plain
+    response -- but only on the true fall-through. If the warning fired on
+    confident paths too, it would train users to ignore it (see prompt intent:
+    "must distinguish a guess from a decision")."""
+
+    _FALLTHROUGH_PHRASE = "growth was assumed by default"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "label,scenario_kwargs",
+        [
+            (
+                "explicit_model_type_param",
+                {
+                    "food_description": "cured meat",
+                    "pathogen_mentioned": "Salmonella",
+                    "temperature": ExtractedTemperature(value_celsius=25.0),
+                    "duration": ExtractedDuration(value_minutes=180.0),
+                    "is_storage_scenario": True,
+                },
+            ),
+            (
+                "llm_inferred",
+                {
+                    "food_description": "raw chicken",
+                    "pathogen_mentioned": "Salmonella",
+                    "temperature": ExtractedTemperature(value_celsius=25.0),
+                    "duration": ExtractedDuration(value_minutes=180.0),
+                    "is_storage_scenario": True,
+                    "implied_model_type": ModelType.GROWTH,
+                },
+            ),
+            (
+                "temperature_heuristic",
+                {
+                    "food_description": "raw chicken",
+                    "pathogen_mentioned": "Salmonella",
+                    "temperature": ExtractedTemperature(value_celsius=65.0),
+                    "duration": ExtractedDuration(value_minutes=10.0),
+                    "is_cooking_scenario": True,
+                },
+            ),
+            (
+                "cooking_flag",
+                {
+                    "food_description": "raw chicken",
+                    "pathogen_mentioned": "Salmonella",
+                    "temperature": ExtractedTemperature(value_celsius=25.0),
+                    "duration": ExtractedDuration(value_minutes=10.0),
+                    "is_cooking_scenario": True,
+                },
+            ),
+            (
+                "non_thermal_flag",
+                {
+                    "food_description": "pickled vegetables",
+                    "pathogen_mentioned": "Salmonella",
+                    "temperature": ExtractedTemperature(value_celsius=25.0),
+                    "duration": ExtractedDuration(value_minutes=180.0),
+                    "is_non_thermal_treatment": True,
+                },
+            ),
+            (
+                "low_ph_condition",
+                {
+                    "food_description": "pickled vegetables",
+                    "pathogen_mentioned": "Salmonella",
+                    "temperature": ExtractedTemperature(value_celsius=25.0),
+                    "duration": ExtractedDuration(value_minutes=180.0),
+                    "environmental_conditions": ExtractedEnvironmentalConditions(
+                        ph_value=4.0
+                    ),
+                    "is_storage_scenario": True,
+                },
+            ),
+            (
+                "low_aw_condition",
+                {
+                    "food_description": "beef jerky",
+                    "pathogen_mentioned": "Salmonella",
+                    "temperature": ExtractedTemperature(value_celsius=25.0),
+                    "duration": ExtractedDuration(value_minutes=180.0),
+                    "environmental_conditions": ExtractedEnvironmentalConditions(
+                        water_activity=0.80
+                    ),
+                    "is_storage_scenario": True,
+                },
+            ),
+        ],
+    )
+    async def test_confident_model_type_paths_do_not_warn(
+        self, orchestrator, mock_semantic_parser, label, scenario_kwargs
+    ):
+        """None of these branches is the fall-through -- each returns a
+        selection_reason distinct from _MODEL_TYPE_FALLTHROUGH_REASON -- so
+        none should emit the guess-disclosure warning."""
+        mock_semantic_parser.extract_scenario = AsyncMock(
+            return_value=create_scenario(**scenario_kwargs)
+        )
+
+        explicit_type = (
+            ModelType.GROWTH if label == "explicit_model_type_param" else None
+        )
+        result = await orchestrator.translate(
+            f"Test query for {label}", model_type=explicit_type
+        )
+
+        assert result.metadata is not None
+        assert not any(
+            self._FALLTHROUGH_PHRASE in w for w in result.metadata.warnings
+        ), (
+            f"Confident path {label!r} incorrectly emitted the fall-through "
+            f"disclosure warning: {result.metadata.warnings}"
+        )

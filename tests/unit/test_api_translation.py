@@ -212,6 +212,93 @@ class TestTranslationEndpoint:
         assert data["error"] is not None
 
 
+class TestPlainResponseDisclosureWarnings:
+    """A1c: the plain (non-verbose) response's top-level `warnings` array is
+    the existing "we answered, but here's what we assumed" channel. This
+    class proves both new/changed disclosures reach it through the real
+    route, end-to-end -- not just at the metadata layer."""
+
+    def test_model_type_fallthrough_and_temperature_warnings_reach_plain_response(
+        self, client, mock_translation_result
+    ):
+        mock_translation_result.state.metadata.warnings = [
+            "No thermal or non-thermal signal was found in this scenario — "
+            "growth was assumed by default. This is a guess, not a "
+            "decision: confirm this is a storage/holding scenario, not "
+            "a cooking or non-thermal preservation scenario, before "
+            "relying on this prediction.",
+            "temperature_celsius: Temperature description 'a bit weird' "
+            "could not be interpreted — a conservative default temperature "
+            "will be assumed for this prediction.",
+        ]
+
+        with patch("app.api.routes.translation.get_orchestrator") as mock_get:
+            mock_orch = MagicMock()
+            mock_orch.translate = AsyncMock(return_value=mock_translation_result)
+            mock_get.return_value = mock_orch
+
+            # No verbose=true -- this is the plain response.
+            response = client.post(
+                "/api/v1/translate", json={"query": "left it out for a while"}
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["audit"] is None, "This test must exercise the plain response"
+
+        warnings = data["warnings"]
+
+        fallthrough = [
+            w for w in warnings if "growth was assumed by default" in w["message"]
+        ]
+        assert len(fallthrough) == 1, warnings
+        assert fallthrough[0]["field"] is None
+
+        temp = [w for w in warnings if w["type"] == "unresolved_temperature"]
+        assert len(temp) == 1, warnings
+        assert temp[0]["field"] == "temperature_celsius"
+        assert "could not be interpreted" in temp[0]["message"]
+        assert not temp[0]["message"].startswith("temperature_celsius:"), (
+            "Field name should be carried structurally via `field`, not left "
+            "embedded as free text in `message`"
+        )
+
+    def test_verbose_audit_warnings_match_plain_response_wording(
+        self, client, mock_translation_result
+    ):
+        """The verbose audit's audit.audit.warnings must render the same
+        sentence as the plain response's warnings[].message for the same
+        event -- not the raw "field: reason" string mark_ungrounded()
+        produces internally. Both channels describing the same event with
+        different text would be a new audit inconsistency, not a feature."""
+        temp_warning = (
+            "temperature_celsius: Temperature description 'a bit weird' "
+            "could not be interpreted — a conservative default temperature "
+            "will be assumed for this prediction."
+        )
+        mock_translation_result.state.metadata.warnings = [temp_warning]
+
+        with patch("app.api.routes.translation.get_orchestrator") as mock_get:
+            mock_orch = MagicMock()
+            mock_orch.translate = AsyncMock(return_value=mock_translation_result)
+            mock_get.return_value = mock_orch
+
+            response = client.post(
+                "/api/v1/translate?verbose=true",
+                json={"query": "left it out for a while"},
+            )
+
+        data = response.json()
+        plain_message = data["warnings"][0]["message"]
+        verbose_message = data["audit"]["audit"]["warnings"][0]
+
+        assert plain_message == verbose_message, (
+            f"Plain and verbose channels disagree on wording for the same "
+            f"event: {plain_message!r} vs {verbose_message!r}"
+        )
+        assert not verbose_message.startswith("temperature_celsius:")
+
+
 class TestClarificationField:
     """
     A1a/A1b: TranslationResponse.clarification -- present (and unconditional,

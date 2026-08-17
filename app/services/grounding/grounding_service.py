@@ -1661,7 +1661,18 @@ class GroundingService:
         scenario: ExtractedScenario,
         grounded: GroundedValues,
     ) -> None:
-        """Ground single-step temperature into grounded.temperature_celsius."""
+        """Ground single-step temperature into grounded.temperature_celsius.
+
+        A1c: the two mark_ungrounded() reasons below are deliberately distinct
+        sentences, not a shared template — "user said something we couldn't
+        parse" and "user said nothing" are different epistemic states (see
+        specs/lessons.md, 2026-05-14 §2.4). Model type isn't known at
+        grounding time (ground_scenario() doesn't receive it), so neither
+        message names the eventual default's numeric value — that would be
+        wrong for THERMAL_INACTIVATION scenarios, whose default differs from
+        the GROWTH/NON_THERMAL_SURVIVAL abuse-temperature default applied in
+        StandardizationService._get_temperature().
+        """
         value, prov = self._resolve_temperature_value(scenario.single_step_temperature)
         if value is not None and prov is not None:
             grounded.set_with_prov("temperature_celsius", value, prov)
@@ -1669,11 +1680,16 @@ class GroundingService:
             desc = scenario.single_step_temperature.description
             if desc:
                 grounded.mark_ungrounded(
-                    "temperature_celsius", f"Could not interpret: '{desc}'"
+                    "temperature_celsius",
+                    f"Temperature description '{desc}' could not be interpreted "
+                    "— a conservative default temperature will be assumed for "
+                    "this prediction.",
                 )
             else:
                 grounded.mark_ungrounded(
-                    "temperature_celsius", "No temperature specified"
+                    "temperature_celsius",
+                    "No temperature was specified — a conservative default "
+                    "temperature will be assumed for this prediction.",
                 )
 
     def _ground_duration(

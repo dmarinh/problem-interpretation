@@ -66,6 +66,15 @@ _CLARIFIABLE_ORGANISM_STAGES = frozenset(
     }
 )
 
+# _determine_model_type()'s final fall-through reason (A1c). Unlike every
+# other default in this system, GROWTH-by-fall-through has no conservative
+# direction to fall back on — growth vs. inactivation is a binary choice
+# about what kind of scenario this is, not a worst-case numeric floor/ceiling.
+# Getting it wrong is categorically wrong, not cautious. This exact string is
+# shared between the return statement and the fall-through check below it so
+# the two can never drift apart.
+_MODEL_TYPE_FALLTHROUGH_REASON = "default (no thermal/non-thermal signals detected)"
+
 
 @dataclass
 class _TranscriptResolution:
@@ -229,6 +238,23 @@ class Orchestrator:
                 state.extracted_scenario,
             )
 
+            # A1c: the fall-through has no conservative direction to lean on
+            # (unlike temperature/pH/aw defaults), so it must be disclosed as
+            # a guess, not a decision. Fires only on the true fall-through —
+            # never on explicit/LLM-inferred/heuristic/flag-derived model
+            # types, all of which return a different selection_reason string.
+            # Matches how LONG_WINDOW_DEFAULT discloses via metadata.warnings
+            # (standardization_service.py) so this reaches the plain response
+            # through the same existing, unconditional channel.
+            if model_type_reason == _MODEL_TYPE_FALLTHROUGH_REASON and state.metadata:
+                state.metadata.warnings.append(
+                    "No thermal or non-thermal signal was found in this scenario "
+                    "— growth was assumed by default. This is a guess, not a "
+                    "decision: confirm this is a storage/holding scenario, not "
+                    "a cooking or non-thermal preservation scenario, before "
+                    "relying on this prediction."
+                )
+
             # Step 4: Ground values via RAG
             grounded = await self._ground_values(state)
 
@@ -368,7 +394,7 @@ class Orchestrator:
                 f"environmental condition: aw {env.water_activity} < 0.90",
             )
 
-        return ModelType.GROWTH, "default (no thermal/non-thermal signals detected)"
+        return ModelType.GROWTH, _MODEL_TYPE_FALLTHROUGH_REASON
 
     def _record_combase_model_audit(
         self,

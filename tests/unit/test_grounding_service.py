@@ -499,6 +499,52 @@ class TestGroundTemperature:
         assert not grounded.has("temperature_celsius")
         assert "temperature_celsius" in grounded.ungrounded_fields
 
+    def test_unparseable_description_warning_names_the_phrase(self, grounding_service):
+        """A1c: the warning for an unparseable description must name the
+        phrase and state that a default will be assumed -- distinct wording
+        from the silent (no description) case below."""
+        service, _, _ = grounding_service
+        grounded = GroundedValues()
+
+        scenario = ExtractedScenario(
+            single_step_temperature=ExtractedTemperature(description="xyz123"),
+            single_step_duration=ExtractedDuration(value_minutes=60.0),
+        )
+        service._ground_temperature(scenario, grounded)
+
+        matching = [
+            w for w in grounded.warnings if w.startswith("temperature_celsius:")
+        ]
+        assert len(matching) == 1, grounded.warnings
+        warning = matching[0]
+        assert "xyz123" in warning
+        assert "could not be interpreted" in warning
+        assert "conservative default" in warning
+
+    def test_silent_description_warning_differs_from_unparseable(
+        self, grounding_service
+    ):
+        """A1c: 'user said nothing' must remain a distinct message from
+        'user said something we couldn't parse' -- the grounding-level
+        distinction must not collapse."""
+        service, _, _ = grounding_service
+        grounded = GroundedValues()
+
+        scenario = ExtractedScenario(
+            single_step_temperature=ExtractedTemperature(),
+            single_step_duration=ExtractedDuration(value_minutes=60.0),
+        )
+        service._ground_temperature(scenario, grounded)
+
+        matching = [
+            w for w in grounded.warnings if w.startswith("temperature_celsius:")
+        ]
+        assert len(matching) == 1, grounded.warnings
+        warning = matching[0]
+        assert "No temperature was specified" in warning
+        assert "conservative default" in warning
+        assert "could not be interpreted" not in warning
+
 
 class TestNewTemperatureRules:
     """

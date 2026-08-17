@@ -418,6 +418,28 @@ def _build_provenance_list(
     return provenance
 
 
+# A1c: grounding's mark_ungrounded() formats every entry in
+# metadata.warnings as f"{field}: {reason}" (see GroundedValues.mark_ungrounded,
+# grounding_service.py). For the unresolved-temperature case specifically, the
+# reason itself is already a complete, well-formed sentence (see
+# _ground_temperature) — splitting off the known field prefix here lets that
+# sentence stand alone in `message` while `field` carries the field name
+# structurally, the same way the range_clamp branch below does, instead of
+# leaving the field name embedded in free text.
+_TEMPERATURE_UNGROUNDED_PREFIX = "temperature_celsius: "
+
+
+def _strip_temperature_warning_prefix(warning: str) -> str:
+    """Strip the "temperature_celsius: " prefix mark_ungrounded() always
+    produces, so both the plain-response warnings list and the verbose
+    audit's warnings list render the same human-readable sentence rather
+    than diverging (plain: field carried structurally; verbose: field
+    still embedded as prefix text)."""
+    if warning.startswith(_TEMPERATURE_UNGROUNDED_PREFIX):
+        return warning[len(_TEMPERATURE_UNGROUNDED_PREFIX) :]
+    return warning
+
+
 def _build_warnings_list(result: TranslationResult) -> list[WarningInfo]:
     """Build warnings list from translation result."""
     warnings = []
@@ -435,12 +457,21 @@ def _build_warnings_list(result: TranslationResult) -> list[WarningInfo]:
 
         # Add general warnings
         for warning in result.metadata.warnings:
-            warnings.append(
-                WarningInfo(
-                    type="warning",
-                    message=warning,
+            if warning.startswith(_TEMPERATURE_UNGROUNDED_PREFIX):
+                warnings.append(
+                    WarningInfo(
+                        type="unresolved_temperature",
+                        message=_strip_temperature_warning_prefix(warning),
+                        field="temperature_celsius",
+                    )
                 )
-            )
+            else:
+                warnings.append(
+                    WarningInfo(
+                        type="warning",
+                        message=warning,
+                    )
+                )
 
     return warnings
 
@@ -483,7 +514,7 @@ def _build_audit_detail(
     audit_summary = AuditSummary(
         range_clamps=clamp_list,
         defaults_imputed=defaults_list,
-        warnings=list(metadata.warnings),
+        warnings=[_strip_temperature_warning_prefix(w) for w in metadata.warnings],
     )
 
     # ── ComBase model block ────────────────────────────────────────────────────
