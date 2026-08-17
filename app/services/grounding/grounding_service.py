@@ -327,6 +327,15 @@ class GroundedStep:
     duration_minutes: float | None
     temp_provenance: ValueProvenance | None = None
     dur_provenance: ValueProvenance | None = None
+    # A1c multi-step recon (2026-08-17): the user's original phrasing, carried
+    # through unconditionally (populated whenever the parser captured a
+    # description, whether or not it resolved). Purely additive -- nothing
+    # reads these yet. They exist so a future duration/temperature
+    # clarification question can quote the user back rather than only
+    # naming the step number, the way _ground_multi_step_profile()'s
+    # unresolved-value warning strings do today but then discard.
+    duration_phrase: str | None = None
+    temperature_phrase: str | None = None
 
 
 class GroundedValues:
@@ -382,6 +391,8 @@ class GroundedValues:
         duration_minutes: float | None,
         temp_provenance: ValueProvenance | None = None,
         dur_provenance: ValueProvenance | None = None,
+        duration_phrase: str | None = None,
+        temperature_phrase: str | None = None,
     ) -> None:
         """Append a grounded time-temperature step."""
         self.steps.append(
@@ -391,6 +402,8 @@ class GroundedValues:
                 duration_minutes=duration_minutes,
                 temp_provenance=temp_provenance,
                 dur_provenance=dur_provenance,
+                duration_phrase=duration_phrase,
+                temperature_phrase=temperature_phrase,
             )
         )
 
@@ -1727,6 +1740,10 @@ class GroundingService:
 
         Steps with unresolvable values store None; the standardization service
         will apply defaults for temperature and flag missing durations.
+
+        Also carries the raw `description` phrase for each field onto
+        GroundedStep (duration_phrase/temperature_phrase), unconditionally,
+        for future clarification quoting.
         """
         sorted_steps = sorted(
             scenario.time_temperature_steps,
@@ -1762,6 +1779,8 @@ class GroundingService:
                 duration_minutes=dur_val,
                 temp_provenance=temp_prov,
                 dur_provenance=dur_prov,
+                duration_phrase=step.duration.description,
+                temperature_phrase=step.temperature.description,
             )
 
 

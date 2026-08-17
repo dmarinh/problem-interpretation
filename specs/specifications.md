@@ -479,7 +479,7 @@ A flat key-value store (not a Pydantic model):
 
 Key names in `values`: `"temperature_celsius"`, `"duration_minutes"`, `"ph"`, `"water_activity"`, `"organism"`, `"co2_percent"`, `"nitrite_ppm"`, `"lactic_acid_ppm"`, `"acetic_acid_ppm"`.
 
-`GroundedStep`: `step_order`, `temperature_celsius`, `duration_minutes`, `temp_provenance`, `dur_provenance`.
+`GroundedStep`: `step_order`, `temperature_celsius`, `duration_minutes`, `temp_provenance`, `dur_provenance`, `duration_phrase`, `temperature_phrase`. The last two (A1c multi-step recon, 2026-08-17) carry the user's original phrasing (`step.duration.description` / `step.temperature.description`) verbatim, populated unconditionally in `_ground_multi_step_profile()` regardless of whether the value resolved — purely additive, no consumer reads them yet. Before this, the phrase was read only to build `grounded.warnings`' free-text message (`f"Step {order} duration: {reason}"`) and then discarded; `GroundedStep` had nowhere to hold it. Exists so a future duration/temperature clarification question can quote the user's own words back rather than only naming the step number.
 
 ### 4.3 ComBaseExecutionPayload (`app/models/execution/combase.py`)
 

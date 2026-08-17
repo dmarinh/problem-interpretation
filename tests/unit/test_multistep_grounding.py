@@ -283,6 +283,52 @@ class TestGroundMultiStepProfile:
         assert grounded.steps[0].duration_minutes is None
         assert any("Step 1 duration" in w for w in grounded.warnings)
 
+    def test_unresolvable_duration_raw_phrase_survives_on_grounded_step(self):
+        """A1c multi-step recon: the raw duration phrase used to build the
+        warning string above must also survive structurally on GroundedStep
+        -- previously it was folded into the warning and discarded."""
+        scenario = make_multistep_scenario(
+            make_step(1, temp_celsius=25.0, dur_desc="xyz123"),
+        )
+        grounded = GroundedValues()
+        self.svc._ground_multi_step_profile(scenario, grounded)
+
+        assert grounded.steps[0].duration_minutes is None
+        assert grounded.steps[0].duration_phrase == "xyz123"
+
+    def test_resolved_duration_raw_phrase_also_carried(self):
+        """Populated unconditionally, not only on the unresolved path -- a
+        resolved-via-rule duration ('overnight') still carries its source
+        phrase for future quoting."""
+        scenario = make_multistep_scenario(
+            make_step(1, temp_celsius=25.0, dur_desc="overnight"),
+        )
+        grounded = GroundedValues()
+        self.svc._ground_multi_step_profile(scenario, grounded)
+
+        assert grounded.steps[0].duration_minutes is not None
+        assert grounded.steps[0].duration_phrase == "overnight"
+
+    def test_temperature_phrase_also_carried(self):
+        scenario = make_multistep_scenario(
+            make_step(1, temp_desc="a bit weird", dur_minutes=60.0),
+        )
+        grounded = GroundedValues()
+        self.svc._ground_multi_step_profile(scenario, grounded)
+
+        assert grounded.steps[0].temperature_celsius is None
+        assert grounded.steps[0].temperature_phrase == "a bit weird"
+
+    def test_no_description_leaves_phrase_none(self):
+        scenario = make_multistep_scenario(
+            make_step(1, temp_celsius=25.0, dur_minutes=60.0),  # no descriptions
+        )
+        grounded = GroundedValues()
+        self.svc._ground_multi_step_profile(scenario, grounded)
+
+        assert grounded.steps[0].duration_phrase is None
+        assert grounded.steps[0].temperature_phrase is None
+
     def test_does_not_set_flat_temperature_or_duration(self):
         """Multi-step grounding must not clobber single-step keys."""
         scenario = make_multistep_scenario(
