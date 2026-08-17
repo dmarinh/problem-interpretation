@@ -1,1 +1,1 @@
-- [Project Architecture & Safety Invariants](project_architecture.md) — Core pipeline, safety invariants, provenance model, and defect patterns found in Phase 2 review
+- [Project Architecture & Safety Invariants](project_architecture.md) — Core pipeline, safety invariants, provenance model, factor4 clamp/fail-closed review, A1a clarification-gate review (2026-07-17)
