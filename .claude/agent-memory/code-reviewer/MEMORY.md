@@ -1,1 +1,1 @@
-- [Project Architecture & Safety Invariants](project_architecture.md) — Core pipeline, safety invariants, provenance model, factor4 clamp/fail-closed review, A1a clarification-gate review (2026-07-17)
+- [Project Architecture & Safety Invariants](project_architecture.md) — Core pipeline, safety invariants, provenance model, factor4 clamp/fail-closed review, A1a clarification-gate, A1c disclosure-wiring review, GroundedStep phrase-carrying recon, duration clarification gate + confirmed audit-duplication bug (2026-08-17)
