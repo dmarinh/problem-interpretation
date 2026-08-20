@@ -1526,9 +1526,14 @@ class GroundingService:
     ) -> list[ComBaseOrganism]:
         """
         Rank a caller-supplied set of executable organisms by CDC annual death
-        toll, for presenting a derived option list when organism grounding
-        fails closed (see Orchestrator._build_organism_clarification) but the
-        model_type/factor4_type combination is otherwise resolvable.
+        toll. Originally built to derive the organism clarification gate's
+        options menu; that menu was deleted in the 2026-08-19 free-text
+        redesign (see specs/lessons.md), so this method currently has no
+        production caller — kept intentionally, not orphaned by oversight, as
+        a general-purpose severity-ranking utility (same treatment as
+        SemanticParser.extract_clarification_response(), also kept with no
+        production caller for the same reason). Still exercised directly by
+        its own unit tests (tests/unit/test_grounding_service.py).
 
         Uses the same severity metric (annual_deaths_us from
         pathogen_characteristics.csv, via self._pathogen_characteristics) and

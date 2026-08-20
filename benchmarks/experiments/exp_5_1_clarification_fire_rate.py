@@ -498,7 +498,6 @@ def build_orchestrator():
 async def run_one_query(orchestrator, entry: dict) -> dict:
     from app.api.schemas.translation import (
         ClarificationInfo,
-        ClarificationOptionInfo,
         TranslationResponse,
     )
 
@@ -540,10 +539,6 @@ async def run_one_query(orchestrator, entry: dict) -> dict:
             reason=question.reason,
             stage=question.stage,
             question=question.question,
-            options=[
-                ClarificationOptionInfo(code=o.code, label=o.label)
-                for o in question.options
-            ],
         )
 
     response = TranslationResponse(

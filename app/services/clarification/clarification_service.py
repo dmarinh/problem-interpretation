@@ -13,13 +13,19 @@ fail-closed path unchanged — see Orchestrator._build_organism_clarification
 (round 1, asking) and Orchestrator._resolve_organism_from_transcript (round
 2, re-entry) for the trigger conditions.
 
-Pure and deterministic: given the same stage, food description, resolved
-category, and ranked organism list, this always produces the same question.
-No I/O, no LLM call, no registry access — the orchestrator resolves the
-option set (registry executability ∩ pathogen_characteristics.csv, ranked by
-CDC annual deaths — see GroundingService.rank_executable_organisms) and
-display names (StandardizationService.organism_display_name) before
-calling in, so this module never derives or reorders anything itself.
+Free-text only (2026-08-19, see specs/lessons.md): the question names a few
+common, executable pathogens in prose rather than offering a selectable
+options menu. The prose is discoverability only — words in the question the
+frontend already renders verbatim — not a structured options list. The
+reply is resolved deterministically downstream (Orchestrator, via
+ComBaseOrganism.all_matches_in_text()), never through an LLM extraction
+step: routing a free-text reply through an LLM was the confirmed source of
+nondeterministic clarification failures (a clean one-word answer failed
+extraction ~50% of the time on identical runs).
+
+Pure and deterministic: given the same stage, food description, and resolved
+category, this always produces the same question. No I/O, no LLM call, no
+registry access.
 
 Non-goals (A1b is still one round only): no multi-round, no
 clarification_context, no server-side session — the caller carries the
@@ -38,22 +44,19 @@ reasons.
 
 from app.models.enums import (
     ClarificationReason,
-    ComBaseOrganism,
     OrganismGroundingFailureStage,
 )
 from app.models.metadata import (
-    ClarificationOption,
     ClarificationQuestion,
     DurationClarificationQuestion,
     DurationClarificationStep,
 )
 
-# The free-text escape option's code, checked by
-# Orchestrator._resolve_organism_from_transcript on re-entry: a reply that
-# resolves to no organism at all (including one that just names this escape
-# option back) fails closed the same way as any other unmappable reply.
-FREE_TEXT_ESCAPE_CODE = "other"
-FREE_TEXT_ESCAPE_LABEL = "Something else / I'm not sure"
+# Common, executable pathogens named in prose in the organism clarification
+# question — discoverability only (the frontend renders the question text
+# verbatim), not a structured options list. Any executable organism may be
+# named in the reply, not just these.
+_EXAMPLE_PATHOGENS = "Salmonella, Listeria, E. coli, or Staphylococcus aureus"
 
 # The only two OrganismGroundingFailureStage members a question can resolve.
 # Every other stage (BRIDGE_DISABLED, INTERNAL_NO_MAPPABLE_CANDIDATE) means
@@ -76,7 +79,6 @@ class ClarificationService:
         self,
         stage: OrganismGroundingFailureStage,
         food_description: str,
-        ranked_organisms: list[tuple[ComBaseOrganism, str]],
         resolved_category: str | None = None,
     ) -> ClarificationQuestion:
         """
@@ -86,15 +88,8 @@ class ClarificationService:
                 question is appropriate, it trusts the caller's gate and
                 validates only that it was called for a handled stage.
             food_description: the user's original food description, echoed
-                back in the FOOD_UNRECOGNISED preamble so the user can see
-                what wasn't recognised.
-            ranked_organisms: (organism, display_name) pairs, already
-                filtered to organisms executable for this request's
-                model_type/factor4_type and ranked by severity by the
-                caller (see GroundingService.rank_executable_organisms and
-                StandardizationService.organism_display_name). This method
-                does not re-derive, re-filter, or re-order them — ordering
-                here is presentation order only, not a recommendation.
+                back in the preamble so the user can see what wasn't
+                recognised (or what it resolved to).
             resolved_category: the ptm_category the taxonomy bridge
                 resolved to. Required (non-None) for
                 CATEGORY_HAS_NO_HAZARD_DATA so the preamble can name the
@@ -102,8 +97,10 @@ class ClarificationService:
                 for FOOD_UNRECOGNISED.
 
         Returns:
-            A ClarificationQuestion with a stage-appropriate preamble and
-            the given options plus a fixed free-text escape.
+            A ClarificationQuestion with a stage-appropriate preamble asking
+            the user to name a pathogen directly, in free text — no options
+            menu. The reply is resolved deterministically by the caller
+            (ComBaseOrganism.all_matches_in_text()), not by this method.
         """
         if stage not in _STAGE_TO_REASON:
             raise ValueError(
@@ -114,11 +111,16 @@ class ClarificationService:
             )
 
         if stage == OrganismGroundingFailureStage.FOOD_UNRECOGNISED:
+            # The food couldn't be used to infer a pathogen at all. Rephrasing
+            # the food *might* help (it's a recognition miss, not a proven
+            # coverage gap), but asking for the pathogen directly is the more
+            # reliable path, so it's offered first.
             question_text = (
                 f'I don\'t recognise "{food_description}" as a food I have '
-                "safety data for. You could try rephrasing the food, or — if "
-                "you already know it — tell me which pathogen you're "
-                "concerned about:"
+                "safety data for, so I can't infer which pathogen to model. "
+                "Please tell me directly which pathogen you're concerned "
+                f"about (for example {_EXAMPLE_PATHOGENS}) — rephrasing the "
+                "food description might also help."
             )
         else:
             if not resolved_category:
@@ -127,31 +129,26 @@ class ClarificationService:
                     "— OrganismGroundingFailure.resolved_category should always be "
                     "populated for this stage; the caller passed None/empty."
                 )
+            # The food WAS recognised, and its pH/water activity resolved
+            # fine — ComBase models are broth, so the food's only other job
+            # was pathogen inference. This stage is purely a hazard-source
+            # coverage gap for that inference, so rephrasing won't help;
+            # that's the whole reason this wording stays distinct from
+            # FOOD_UNRECOGNISED's.
             question_text = (
-                f'I resolved "{food_description}" to the category '
-                f"'{resolved_category}', but my hazard data source "
-                "(IFT-2003-T1) doesn't cover that category — that's a "
-                "coverage limit of the source, not a failure to understand "
-                "your query, so rephrasing won't help. If you know which "
-                "pathogen you're concerned about, tell me and I can "
-                "proceed:"
+                f"I recognised \"{food_description}\" as '{resolved_category}' "
+                "and resolved its pH and water activity fine, but my hazard "
+                "data source (IFT-2003-T1) doesn't cover which pathogens are "
+                "typically associated with that category — that's a data "
+                "coverage limit, not a misunderstanding, so rephrasing won't "
+                "help. Please tell me directly which pathogen you're "
+                f"concerned about (for example {_EXAMPLE_PATHOGENS})."
             )
-
-        options = [
-            ClarificationOption(code=organism.value, label=label)
-            for organism, label in ranked_organisms
-        ]
-        options.append(
-            ClarificationOption(
-                code=FREE_TEXT_ESCAPE_CODE, label=FREE_TEXT_ESCAPE_LABEL
-            )
-        )
 
         return ClarificationQuestion(
             reason=_STAGE_TO_REASON[stage],
             stage=stage,
             question=question_text,
-            options=options,
         )
 
     def reason_for_stage(
@@ -162,12 +159,11 @@ class ClarificationService:
         uses internally.
 
         A1b needs this on re-entry: it already has the round-1 question text
-        and options verbatim from the transcript (ClarificationTranscript), so
-        rebuilding a full ClarificationQuestion via build_organism_question()
-        just to read its .reason would be wasteful (and would require
-        re-deriving ranked_organisms, which A1b's re-entry path has no need
-        for). Raises the same ValueError as build_organism_question() for an
-        unhandled stage — one validation rule, not two.
+        verbatim from the transcript (ClarificationTranscript), so rebuilding
+        a full ClarificationQuestion via build_organism_question() just to
+        read its .reason would be wasteful. Raises the same ValueError as
+        build_organism_question() for an unhandled stage — one validation
+        rule, not two.
         """
         if stage not in _STAGE_TO_REASON:
             raise ValueError(

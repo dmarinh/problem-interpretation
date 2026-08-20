@@ -45,10 +45,10 @@ class TranslationRequest(BaseModel):
     transcript: ClarificationTranscript | None = Field(
         default=None,
         description="A1b re-entry: the round-1 exchange (original_query, "
-        "question_asked, options_offered, user_reply), when this request is "
-        "answering a prior status=awaiting_clarification response. PTM is "
-        "stateless — the caller carries this, not a server-side session. "
-        "Omit on a first-turn request.",
+        "question_asked, user_reply — free text, no options to echo back), "
+        "when this request is answering a prior status=awaiting_clarification "
+        "response. PTM is stateless — the caller carries this, not a "
+        "server-side session. Omit on a first-turn request.",
     )
     duration_reply: DurationClarificationReply | None = Field(
         default=None,
@@ -368,24 +368,18 @@ class AuditDetail(BaseModel):
     system: SystemAuditInfo | None
 
 
-class ClarificationOptionInfo(BaseModel):
-    """One selectable option in a ClarificationInfo question."""
-
-    code: str
-    label: str
-
-
 class ClarificationInfo(BaseModel):
-    """Present when status=awaiting_clarification (A1a organism gate).
+    """Present when status=awaiting_clarification (organism gate).
 
-    Ask-only — A1a does not implement re-entry, so there is no field here
-    for submitting an answer yet (see A1b).
+    Free-text only (2026-08-19, see specs/lessons.md): no options array —
+    `question` contains prose pathogen examples for discoverability, and the
+    frontend renders a free-text input, not a menu. Answer via
+    TranslationRequest.transcript.user_reply.
     """
 
     reason: ClarificationReason
     stage: OrganismGroundingFailureStage
     question: str
-    options: list[ClarificationOptionInfo]
 
 
 class DurationClarificationStepInfo(BaseModel):

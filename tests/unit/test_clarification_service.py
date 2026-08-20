@@ -1,18 +1,17 @@
 """
-Unit tests for ClarificationService (A1a organism clarification gate,
+Unit tests for ClarificationService (organism clarification gate,
 question construction only — no re-entry/answer handling).
+
+Free-text only (2026-08-19): no options menu, so build_organism_question()
+no longer takes ranked_organisms. Its question names a few example
+pathogens in prose instead.
 """
 
 import pytest
 
-from app.models.enums import (
-    ClarificationReason,
-    ComBaseOrganism,
-    OrganismGroundingFailureStage,
-)
+from app.models.enums import ClarificationReason, OrganismGroundingFailureStage
 from app.models.metadata import DurationClarificationStep
 from app.services.clarification.clarification_service import (
-    FREE_TEXT_ESCAPE_CODE,
     ClarificationService,
     get_clarification_service,
     reset_clarification_service,
@@ -31,7 +30,6 @@ class TestFoodUnrecognisedQuestion:
         question = service.build_organism_question(
             stage=OrganismGroundingFailureStage.FOOD_UNRECOGNISED,
             food_description="frobnitz",
-            ranked_organisms=[(ComBaseOrganism.SALMONELLA, "Salmonella")],
         )
 
         assert "frobnitz" in question.question
@@ -48,10 +46,28 @@ class TestFoodUnrecognisedQuestion:
         question = service.build_organism_question(
             stage=OrganismGroundingFailureStage.FOOD_UNRECOGNISED,
             food_description="frobnitz",
-            ranked_organisms=[(ComBaseOrganism.SALMONELLA, "Salmonella")],
             resolved_category="should be ignored",
         )
         assert "should be ignored" not in question.question
+
+    def test_question_names_example_pathogens_in_prose(
+        self, service: ClarificationService
+    ) -> None:
+        """Discoverability without a menu: the question itself names a few
+        common, executable pathogens as examples."""
+        question = service.build_organism_question(
+            stage=OrganismGroundingFailureStage.FOOD_UNRECOGNISED,
+            food_description="frobnitz",
+        )
+        assert "Salmonella" in question.question
+        assert "Listeria" in question.question
+
+    def test_has_no_options_field(self, service: ClarificationService) -> None:
+        question = service.build_organism_question(
+            stage=OrganismGroundingFailureStage.FOOD_UNRECOGNISED,
+            food_description="frobnitz",
+        )
+        assert not hasattr(question, "options")
 
 
 class TestCategoryUncoveredQuestion:
@@ -61,7 +77,6 @@ class TestCategoryUncoveredQuestion:
         question = service.build_organism_question(
             stage=OrganismGroundingFailureStage.CATEGORY_HAS_NO_HAZARD_DATA,
             food_description="mustard",
-            ranked_organisms=[(ComBaseOrganism.SALMONELLA, "Salmonella")],
             resolved_category="condiment",
         )
 
@@ -82,9 +97,19 @@ class TestCategoryUncoveredQuestion:
             service.build_organism_question(
                 stage=OrganismGroundingFailureStage.CATEGORY_HAS_NO_HAZARD_DATA,
                 food_description="mustard",
-                ranked_organisms=[(ComBaseOrganism.SALMONELLA, "Salmonella")],
                 resolved_category=None,
             )
+
+    def test_question_names_example_pathogens_in_prose(
+        self, service: ClarificationService
+    ) -> None:
+        question = service.build_organism_question(
+            stage=OrganismGroundingFailureStage.CATEGORY_HAS_NO_HAZARD_DATA,
+            food_description="mustard",
+            resolved_category="condiment",
+        )
+        assert "Salmonella" in question.question
+        assert "Listeria" in question.question
 
 
 class TestUnhandledStagesRejected:
@@ -102,7 +127,6 @@ class TestUnhandledStagesRejected:
             service.build_organism_question(
                 stage=stage,
                 food_description="anything",
-                ranked_organisms=[(ComBaseOrganism.SALMONELLA, "Salmonella")],
             )
 
 
@@ -148,56 +172,18 @@ class TestReasonForStage:
             question = service.build_organism_question(
                 stage=stage,
                 food_description="frobnitz",
-                ranked_organisms=[(ComBaseOrganism.SALMONELLA, "Salmonella")],
                 resolved_category="condiment",
             )
             assert question.reason == service.reason_for_stage(stage)
 
 
-class TestOptionAssembly:
-    def test_options_preserve_caller_order_and_append_free_text_escape(
-        self, service: ClarificationService
-    ) -> None:
-        question = service.build_organism_question(
-            stage=OrganismGroundingFailureStage.FOOD_UNRECOGNISED,
-            food_description="frobnitz",
-            ranked_organisms=[
-                (ComBaseOrganism.SALMONELLA, "Salmonella"),
-                (ComBaseOrganism.LISTERIA_MONOCYTOGENES, "Listeria monocytogenes"),
-            ],
-        )
-
-        codes = [o.code for o in question.options]
-        labels = [o.label for o in question.options]
-
-        assert codes == [
-            ComBaseOrganism.SALMONELLA.value,
-            ComBaseOrganism.LISTERIA_MONOCYTOGENES.value,
-            FREE_TEXT_ESCAPE_CODE,
-        ]
-        assert labels[:2] == ["Salmonella", "Listeria monocytogenes"]
-        assert (
-            "something else" in labels[-1].lower() or "not sure" in labels[-1].lower()
-        )
-
-    def test_empty_ranked_organisms_still_offers_free_text_escape(
-        self, service: ClarificationService
-    ) -> None:
-        question = service.build_organism_question(
-            stage=OrganismGroundingFailureStage.FOOD_UNRECOGNISED,
-            food_description="frobnitz",
-            ranked_organisms=[],
-        )
-        assert len(question.options) == 1
-        assert question.options[0].code == FREE_TEXT_ESCAPE_CODE
-
+class TestOrganismQuestionDeterminism:
     def test_deterministic_given_same_inputs(
         self, service: ClarificationService
     ) -> None:
         args = {
             "stage": OrganismGroundingFailureStage.FOOD_UNRECOGNISED,
             "food_description": "frobnitz",
-            "ranked_organisms": [(ComBaseOrganism.SALMONELLA, "Salmonella")],
         }
         q1 = service.build_organism_question(**args)
         q2 = service.build_organism_question(**args)

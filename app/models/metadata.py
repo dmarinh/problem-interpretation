@@ -468,36 +468,25 @@ class RetrievalResult(BaseModel):
 # =============================================================================
 
 
-class ClarificationOption(BaseModel):
-    """One selectable option offered in a ClarificationQuestion."""
-
-    code: str = Field(
-        description="Machine-readable identifier for this option — a "
-        "ComBaseOrganism short code (e.g. 'ss') for a derived organism "
-        "option, or a fixed escape code (e.g. 'other') for the free-text "
-        "fallback. Echoed back in ClarificationTranscript.options_offered "
-        "on re-entry (A1b) and checked for membership there."
-    )
-    label: str = Field(description="Human-readable display text for this option")
-
-
 class ClarificationQuestion(BaseModel):
     """
     A clarification question ready to surface to the user.
 
     Built by ClarificationService (pure, deterministic, no I/O) from
-    already-resolved inputs the orchestrator assembles — the reason/stage
-    determine wording; the option set is registry- and CSV-derived, never
-    hardcoded. See app/services/clarification/clarification_service.py.
+    already-resolved inputs the orchestrator assembles. Free-text only
+    (2026-08-19, see specs/lessons.md): no options array — the question
+    names a few example pathogens in prose instead of offering a menu, and
+    the reply is resolved deterministically (ComBaseOrganism.all_matches_in_text)
+    rather than through an LLM extraction + set-membership check. See
+    app/services/clarification/clarification_service.py.
     """
 
     reason: ClarificationReason = Field(description="Why clarification was needed")
     stage: OrganismGroundingFailureStage = Field(
         description="Which organism-grounding failure stage triggered this question"
     )
-    question: str = Field(description="The question text, including preamble")
-    options: list[ClarificationOption] = Field(
-        description="Selectable options, including a free-text escape"
+    question: str = Field(
+        description="The question text, including prose pathogen examples"
     )
 
 
@@ -513,10 +502,15 @@ class ClarificationTranscript(BaseModel):
     round-1 question and echoing it back verbatim alongside the user's reply.
 
     Structurally caps the exchange to one round: this is a single object with
-    four scalar/list fields, not a list of turns, so there is no representable
+    three scalar fields, not a list of turns, so there is no representable
     way to accumulate a second round within it. Field-level max_length bounds
     additionally cap payload size. If grounding still fails after a transcript
     is present, the orchestrator fails closed rather than asking again.
+
+    No options_offered field (2026-08-19, free-text-only redesign, see
+    specs/lessons.md): there is no menu to echo back, and the reply is
+    resolved by ComBaseOrganism.all_matches_in_text() rather than validated
+    against an offered set.
     """
 
     original_query: str = Field(
@@ -530,15 +524,6 @@ class ClarificationTranscript(BaseModel):
         max_length=2000,
         description="The exact question text from the round-1 response "
         "(ClarificationQuestion.question), echoed back for the audit record",
-    )
-    options_offered: list[ClarificationOption] = Field(
-        min_length=1,
-        max_length=10,
-        description="The exact options from the round-1 response "
-        "(ClarificationQuestion.options), echoed back. This is the "
-        "authoritative offered set the reply is validated against — not a "
-        "freshly re-derived one, since re-deriving could drift from what the "
-        "user actually saw",
     )
     user_reply: str = Field(
         min_length=1,

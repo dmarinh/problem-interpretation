@@ -281,7 +281,16 @@ class ComBaseModelRegistry:
         model_type: ModelType,
         factor4_type: Factor4Type = Factor4Type.NONE,
     ) -> list[ComBaseOrganism]:
-        """All organisms with a loaded row for this (model_type, factor4_type) combination."""
+        """All organisms with a loaded row for this (model_type, factor4_type)
+        combination. General-purpose registry query, derived from the loaded
+        CSV rather than a hardcoded organism list — no hardcoded list to drift
+        out of sync. Was consumed by the organism clarification gate's options
+        menu until that menu was deleted in the 2026-08-19 free-text redesign
+        (see specs/lessons.md); currently has no production caller but is
+        kept, not orphaned, as the same kind of general registry accessor as
+        list_organisms()/get_models_by_type() below. Exercised directly by
+        tests/unit/test_combase_models.py::TestExecutableOrganisms.
+        """
         return [
             organism
             for organism in self._by_organism

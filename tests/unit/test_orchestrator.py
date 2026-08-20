@@ -13,14 +13,12 @@ from app.core.orchestrator import (
 from app.core.state import SessionManager
 from app.models.enums import ComBaseOrganism, Factor4Type, ModelType, SessionStatus
 from app.models.extraction import (
-    ExtractedClarificationResponse,
     ExtractedDuration,
     ExtractedIntent,
     ExtractedScenario,
     ExtractedTemperature,
 )
 from app.models.metadata import (
-    ClarificationOption,
     ClarificationTranscript,
     DurationClarificationReply,
     DurationStepReply,
@@ -393,24 +391,20 @@ class TestValidationFailureAuditCompleteness:
 
 class TestResolveOrganismFromTranscript:
     """
-    A1b: Orchestrator._resolve_organism_from_transcript() -- the validation
-    layer for a round-2 re-entry reply, tested directly and in isolation
-    from the rest of the pipeline. Tests mock the LLM
-    (extract_clarification_response) and the registry's executability
-    check; the point is the validation layer, not extraction accuracy.
+    Free-text organism clarification reply resolution (2026-08-19, see
+    specs/lessons.md): Orchestrator._resolve_organism_from_transcript() runs
+    transcript.user_reply directly through
+    ComBaseOrganism.all_matches_in_text() -- the same deterministic
+    substring-alias path a first-turn pathogen_mentioned uses. No LLM call
+    anywhere in this method (it replaced the old
+    SemanticParser.extract_clarification_response() round-trip, confirmed
+    live to fail extraction on a clean answer ~50% of the time), so tests
+    mock only the registry's executability check -- there is nothing else
+    to mock.
     """
 
     @staticmethod
-    def _make_orchestrator(
-        *,
-        extracted_response: ExtractedClarificationResponse,
-        is_executable: bool = True,
-    ) -> Orchestrator:
-        parser = MagicMock()
-        parser.extract_clarification_response = AsyncMock(
-            return_value=extracted_response
-        )
-
+    def _make_orchestrator(*, is_executable: bool = True) -> Orchestrator:
         engine = MagicMock()
         engine.registry.is_executable = MagicMock(return_value=is_executable)
 
@@ -421,158 +415,85 @@ class TestResolveOrganismFromTranscript:
 
         return Orchestrator(
             session_manager=SessionManager(),
-            semantic_parser=parser,
+            semantic_parser=MagicMock(),
             grounding_service=MagicMock(),
             standardization_service=standardizer,
             combase_engine=engine,
         )
 
     @staticmethod
-    def _transcript(
-        *, options_offered: list[ClarificationOption], user_reply: str = "my reply"
-    ) -> ClarificationTranscript:
+    def _transcript(user_reply: str) -> ClarificationTranscript:
         return ClarificationTranscript(
             original_query="frobnitz left out for 3 hours",
             question_asked="Which pathogen are you concerned about?",
-            options_offered=options_offered,
             user_reply=user_reply,
         )
 
-    @pytest.mark.asyncio
-    async def test_resolves_offered_executable_organism(self):
-        orch = self._make_orchestrator(
-            extracted_response=ExtractedClarificationResponse(
-                selected_option="Salmonella", wants_to_skip=False
-            ),
-        )
-        transcript = self._transcript(
-            options_offered=[ClarificationOption(code="ss", label="Salmonella")]
-        )
+    def test_resolves_named_executable_organism(self):
+        orch = self._make_orchestrator()
+        transcript = self._transcript("Salmonellae")
 
-        resolution = await orch._resolve_organism_from_transcript(
+        resolution = orch._resolve_organism_from_transcript(
             transcript, ModelType.GROWTH, Factor4Type.NONE
         )
 
         assert resolution.organism == ComBaseOrganism.SALMONELLA
         assert resolution.failure_reason is None
 
-    @pytest.mark.asyncio
-    async def test_wants_to_skip_fails_closed(self):
-        orch = self._make_orchestrator(
-            extracted_response=ExtractedClarificationResponse(wants_to_skip=True),
-        )
-        transcript = self._transcript(
-            options_offered=[ClarificationOption(code="ss", label="Salmonella")]
-        )
+    def test_organism_not_in_old_top5_still_resolves(self):
+        """A free-text reply naming any executable organism resolves --
+        not limited to a menu of the top 5 by CDC deaths."""
+        orch = self._make_orchestrator()
+        transcript = self._transcript("Staphylococcus aureus")
 
-        resolution = await orch._resolve_organism_from_transcript(
+        resolution = orch._resolve_organism_from_transcript(
             transcript, ModelType.GROWTH, Factor4Type.NONE
         )
 
-        assert resolution.organism is None
-        assert "no organism default exists" in resolution.failure_reason.lower()
+        assert resolution.organism == ComBaseOrganism.STAPHYLOCOCCUS_AUREUS
+        assert resolution.failure_reason is None
 
-    @pytest.mark.asyncio
-    async def test_unmapped_reply_fails_closed(self):
-        orch = self._make_orchestrator(
-            extracted_response=ExtractedClarificationResponse(
-                selected_option="something else", wants_to_skip=False
-            ),
-        )
-        transcript = self._transcript(
-            options_offered=[ClarificationOption(code="ss", label="Salmonella")]
+    def test_reply_in_a_sentence_still_resolves(self):
+        orch = self._make_orchestrator()
+        transcript = self._transcript("I think it's probably Listeria")
+
+        resolution = orch._resolve_organism_from_transcript(
+            transcript, ModelType.GROWTH, Factor4Type.NONE
         )
 
-        resolution = await orch._resolve_organism_from_transcript(
+        assert resolution.organism == ComBaseOrganism.LISTERIA_MONOCYTOGENES
+        assert resolution.failure_reason is None
+
+    def test_empty_or_irrelevant_reply_fails_closed(self):
+        orch = self._make_orchestrator()
+        transcript = self._transcript("I don't know, just use a default")
+
+        resolution = orch._resolve_organism_from_transcript(
             transcript, ModelType.GROWTH, Factor4Type.NONE
         )
 
         assert resolution.organism is None
         assert "didn't name a pathogen" in resolution.failure_reason.lower()
 
-    @pytest.mark.asyncio
-    async def test_ambiguous_multi_match_fails_closed(self):
-        orch = self._make_orchestrator(
-            extracted_response=ExtractedClarificationResponse(
-                selected_option="Salmonella or Listeria", wants_to_skip=False
-            ),
-        )
-        transcript = self._transcript(
-            options_offered=[
-                ClarificationOption(code="ss", label="Salmonella"),
-                ClarificationOption(code="lm", label="Listeria monocytogenes"),
-            ]
-        )
+    def test_ambiguous_multi_organism_reply_fails_closed(self):
+        orch = self._make_orchestrator()
+        transcript = self._transcript("Salmonella or Listeria, not sure")
 
-        resolution = await orch._resolve_organism_from_transcript(
+        resolution = orch._resolve_organism_from_transcript(
             transcript, ModelType.GROWTH, Factor4Type.NONE
         )
 
         assert resolution.organism is None
         assert "more than one" in resolution.failure_reason.lower()
 
-    @pytest.mark.asyncio
-    async def test_disagreement_between_fields_is_ambiguous(self):
-        """selected_option and understood_value naming different organisms
-        is scanned as one combined text -- surfaces as ambiguous multi-match,
-        not resolved by picking either field as authoritative."""
-        orch = self._make_orchestrator(
-            extracted_response=ExtractedClarificationResponse(
-                selected_option="Salmonella",
-                understood_value="Actually I meant Listeria",
-                wants_to_skip=False,
-            ),
-        )
-        transcript = self._transcript(
-            options_offered=[
-                ClarificationOption(code="ss", label="Salmonella"),
-                ClarificationOption(code="lm", label="Listeria monocytogenes"),
-            ]
-        )
+    def test_non_executable_organism_fails_closed(self):
+        """Names a real, unambiguous organism, but it isn't executable for
+        this (model_type, factor4_type) -- the executability check is the
+        real safety boundary now that there's no offered-set gate."""
+        orch = self._make_orchestrator(is_executable=False)
+        transcript = self._transcript("Shigella")
 
-        resolution = await orch._resolve_organism_from_transcript(
-            transcript, ModelType.GROWTH, Factor4Type.NONE
-        )
-
-        assert resolution.organism is None
-        assert "more than one" in resolution.failure_reason.lower()
-
-    @pytest.mark.asyncio
-    async def test_resolved_but_not_offered_fails_closed(self):
-        """Names a real organism the LLM can map, but it wasn't in
-        transcript.options_offered -- not silently substituted."""
-        orch = self._make_orchestrator(
-            extracted_response=ExtractedClarificationResponse(
-                selected_option="Shigella", wants_to_skip=False
-            ),
-        )
-        transcript = self._transcript(
-            options_offered=[ClarificationOption(code="ss", label="Salmonella")]
-        )
-
-        resolution = await orch._resolve_organism_from_transcript(
-            transcript, ModelType.GROWTH, Factor4Type.NONE
-        )
-
-        assert resolution.organism is None
-        assert "wasn't one of the options" in resolution.failure_reason.lower()
-
-    @pytest.mark.asyncio
-    async def test_offered_but_no_longer_executable_fails_closed(self):
-        """Defense in depth: even though the organism was offered, a fresh
-        executability re-check (registry.is_executable) can still say no --
-        checked, not trusted, per the A1b spec."""
-        orch = self._make_orchestrator(
-            extracted_response=ExtractedClarificationResponse(
-                selected_option="Salmonella", wants_to_skip=False
-            ),
-            is_executable=False,
-        )
-        transcript = self._transcript(
-            options_offered=[ClarificationOption(code="ss", label="Salmonella")]
-        )
-
-        resolution = await orch._resolve_organism_from_transcript(
+        resolution = orch._resolve_organism_from_transcript(
             transcript, ModelType.GROWTH, Factor4Type.NONE
         )
 

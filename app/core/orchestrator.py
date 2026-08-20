@@ -511,41 +511,27 @@ class Orchestrator:
         self,
         grounded: "GroundedValues",
         food_description: str,
-        model_type: ModelType,
-        factor4_type: Factor4Type,
     ) -> ClarificationQuestion | None:
         """
-        Build the organism clarification question, or None when no question
-        should be asked — either the failure stage isn't one a question can
-        resolve, or no viable option set could be derived. None means the
-        caller falls back to today's unchanged failure path.
+        Build the organism clarification question, or None when the failure
+        stage isn't one a question can resolve — None means the caller falls
+        back to the unchanged failure path.
 
-        Assembles the inputs ClarificationService needs (it does no I/O or
-        registry access itself): the executable-organism option set is
-        derived from the registry ∩ pathogen_characteristics.csv via
-        GroundingService.rank_executable_organisms, using the actual
-        factor4_type standardization computed for this request — not NONE.
+        Free-text only (2026-08-19, see specs/lessons.md): no options menu,
+        so no registry/executable-organism lookup is needed here — the
+        question just names a few example pathogens in prose
+        (ClarificationService.build_organism_question). The reply is
+        resolved deterministically on re-entry
+        (_resolve_organism_from_transcript), not validated against anything
+        derived at ask-time.
         """
         failure = grounded.organism_failure
         if failure is None or failure.stage not in _CLARIFIABLE_ORGANISM_STAGES:
             return None
 
-        executable = self._engine.registry.get_executable_organisms(
-            model_type, factor4_type
-        )
-        ranked = self._grounder.rank_executable_organisms(executable)
-        if not ranked:
-            return None
-
-        ranked_organisms = [
-            (organism, self._standardizer.organism_display_name(organism))
-            for organism in ranked[:5]
-        ]
-
         return self._clarifier.build_organism_question(
             stage=failure.stage,
             food_description=food_description,
-            ranked_organisms=ranked_organisms,
             resolved_category=failure.resolved_category,
         )
 
@@ -634,7 +620,7 @@ class Orchestrator:
 
         if clarifiable and transcript is not None:
             assert failure is not None  # narrowed by `clarifiable`
-            resolution = await self._resolve_organism_from_transcript(
+            resolution = self._resolve_organism_from_transcript(
                 transcript, model_type, std_result.factor4_type
             )
             if state.metadata:
@@ -705,8 +691,6 @@ class Orchestrator:
                     else None
                 )
                 or "",
-                model_type,
-                std_result.factor4_type,
             )
             if clarification is not None:
                 state.clarification_question = clarification
@@ -721,9 +705,14 @@ class Orchestrator:
                         )
                     )
                 return TranslationResult(state)
-            # clarification is None (no viable option set) — falls through
-            # to the hard failure below. Already recorded above (this whole
-            # `if clarifiable:` branch is terminal either way), so the
+            # clarification is None only if grounded.organism_failure.stage
+            # is no longer clarifiable by the time _build_organism_clarification
+            # re-reads it — unreachable in the normal flow, since `clarifiable`
+            # above was computed from that same (unmutated) field one line
+            # earlier, but not assumed impossible: defense in depth, the same
+            # discipline the executability re-check on re-entry uses. Falls
+            # through to the hard failure below. Already recorded above (this
+            # whole `if clarifiable:` branch is terminal either way), so the
             # non-clarifiable branch's record call below must not double it.
 
         # Duration gate (2026-08-17). Fires only when every missing_required
@@ -934,66 +923,44 @@ class Orchestrator:
 
         return _DurationReplyResolution(values=values, failure_reason=None)
 
-    async def _resolve_organism_from_transcript(
+    def _resolve_organism_from_transcript(
         self,
         transcript: ClarificationTranscript,
         model_type: ModelType,
         factor4_type: Factor4Type,
     ) -> _TranscriptResolution:
         """
-        Attempt to resolve an organism from the user's reply to a round-1
-        clarification question, carried on the request (ClarificationTranscript
-        — see its docstring for why PTM does this instead of a server-side
-        session).
+        Attempt to resolve an organism from the user's free-text reply to a
+        round-1 clarification question, carried on the request
+        (ClarificationTranscript — see its docstring for why PTM does this
+        instead of a server-side session).
+
+        Free-text only (2026-08-19, see specs/lessons.md): transcript.user_reply
+        is run directly through ComBaseOrganism.all_matches_in_text() — the
+        same deterministic substring-alias path a first-turn pathogen_mentioned
+        uses. No LLM call anywhere in this method (confirmed live: routing the
+        reply through SemanticParser.extract_clarification_response() produced
+        an empty extraction ~50% of the time for a clean, unambiguous answer —
+        LLM nondeterminism on data that was never ambiguous). Not async: this
+        method touches no I/O at all, which is itself a small, checkable proof
+        there's no LLM round-trip in this path (contrast with
+        _resolve_duration_reply's @staticmethod, the same signal for a method
+        that also touches no instance state).
 
         Fails closed (organism=None with a plain-language failure_reason)
         rather than guessing, on any of:
-          - wants_to_skip=True: no organism default exists, so skipping is a
-            refusal, not a fallback.
-          - The reply names zero organisms (free-text escape, unrecognised
-            name, or nothing identifiable at all).
+          - The reply names zero organisms — this also covers a skip/refusal
+            ("I don't know", "skip"), since that never names a pathogen
+            either; there is no separate wants_to_skip flag to detect, since
+            there is no LLM extraction step to produce one.
           - The reply names more than one distinct organism — ambiguous, not
             resolved to an arbitrary one of them.
-          - The resolved organism is not among transcript.options_offered — a
-            near-miss is not a match, and this is never silently substituted.
           - The resolved organism is not executable for (model_type,
-            factor4_type) when re-checked now — the option set was derived at
-            some point in the past; the reply is new input, so this is
-            checked, not trusted.
-
-        Both selected_option and understood_value are scanned together for
-        organism aliases (ComBaseOrganism.all_matches_in_text). Neither field
-        is guaranteed by CLARIFICATION_RESPONSE_PROMPT to be an index or an
-        exact copy of an offered option string — it is free text — so
-        exact-string matching (e.g. from_string()) would reject perfectly
-        good answers wrapped in a sentence. If the two fields name different
-        organisms, that surfaces as an ambiguous multi-match rather than an
-        unresolvable disagreement between fields, since there is no way to
-        know which field is authoritative — this is the correct fail-closed
-        outcome, not a special case.
+            factor4_type) — the real safety boundary. There is no offered-set
+            to check membership against: any executable organism may be
+            named, not just ones from a prior menu.
         """
-        extracted = await self._parser.extract_clarification_response(
-            user_response=transcript.user_reply,
-            original_question=transcript.question_asked,
-            options=[opt.label for opt in transcript.options_offered],
-        )
-
-        if extracted.wants_to_skip:
-            return _TranscriptResolution(
-                organism=None,
-                failure_reason=(
-                    "You indicated you'd like to skip naming a pathogen, but "
-                    "no organism default exists — a pathogen is required to "
-                    "run a prediction, so this can't proceed without one."
-                ),
-            )
-
-        search_text = " ".join(
-            part
-            for part in (extracted.selected_option, extracted.understood_value)
-            if part
-        )
-        matches = ComBaseOrganism.all_matches_in_text(search_text)
+        matches = ComBaseOrganism.all_matches_in_text(transcript.user_reply)
 
         if not matches:
             return _TranscriptResolution(
@@ -1017,15 +984,6 @@ class Orchestrator:
             )
 
         candidate = next(iter(matches))
-        offered_codes = {opt.code for opt in transcript.options_offered}
-        if candidate.value not in offered_codes:
-            return _TranscriptResolution(
-                organism=None,
-                failure_reason=(
-                    f"{self._standardizer.organism_display_name(candidate)} "
-                    "wasn't one of the options offered, so it can't be used."
-                ),
-            )
 
         if not self._engine.registry.is_executable(candidate, model_type, factor4_type):
             name = self._standardizer.organism_display_name(candidate)

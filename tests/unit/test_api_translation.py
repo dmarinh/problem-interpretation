@@ -309,20 +309,15 @@ class TestClarificationField:
     def test_clarification_surfaced_when_awaiting(self, client):
         from app.core.orchestrator import TranslationResult
         from app.models.enums import OrganismGroundingFailureStage
-        from app.models.metadata import ClarificationOption, ClarificationQuestion
+        from app.models.metadata import ClarificationQuestion
 
         state = SessionState(user_input="frobnitz left out for 3 hours")
         state.status = SessionStatus.AWAITING_CLARIFICATION
         state.clarification_question = ClarificationQuestion(
             reason="organism_food_unrecognized",
             stage=OrganismGroundingFailureStage.FOOD_UNRECOGNISED,
-            question='I don\'t recognise "frobnitz"...',
-            options=[
-                ClarificationOption(code="ss", label="Salmonella"),
-                ClarificationOption(
-                    code="other", label="Something else / I'm not sure"
-                ),
-            ],
+            question='I don\'t recognise "frobnitz"... (for example Salmonella, '
+            "Listeria, E. coli, or Staphylococcus aureus)",
         )
         state.metadata = InterpretationMetadata(
             session_id=state.session_id,
@@ -353,7 +348,8 @@ class TestClarificationField:
         assert data["error"] is None
         assert data["clarification"] is not None
         assert data["clarification"]["stage"] == "food_unrecognised"
-        assert data["clarification"]["options"][0]["code"] == "ss"
+        assert "options" not in data["clarification"]
+        assert "Salmonella" in data["clarification"]["question"]
 
     def test_clarification_absent_when_not_awaiting(
         self, client, mock_translation_result
@@ -385,7 +381,6 @@ class TestClarificationField:
                     "transcript": {
                         "original_query": "frobnitz left out for 3 hours",
                         "question_asked": "Which pathogen?",
-                        "options_offered": [{"code": "ss", "label": "Salmonella"}],
                         "user_reply": "Salmonella",
                     },
                 },

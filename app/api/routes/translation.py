@@ -13,7 +13,6 @@ from app.api.schemas.translation import (
     AuditDetail,
     AuditSummary,
     ClarificationInfo,
-    ClarificationOptionInfo,
     ComBaseModelAuditInfo,
     DefaultImputedInfo,
     DurationClarificationInfo,
@@ -665,10 +664,6 @@ async def translate_query(
                 reason=question.reason,
                 stage=question.stage,
                 question=question.question,
-                options=[
-                    ClarificationOptionInfo(code=o.code, label=o.label)
-                    for o in question.options
-                ],
             )
 
         duration_clarification = None

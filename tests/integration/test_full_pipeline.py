@@ -23,7 +23,6 @@ from app.models.enums import (
     SessionStatus,
 )
 from app.models.extraction import (
-    ExtractedClarificationResponse,
     ExtractedDuration,
     ExtractedEnvironmentalConditions,
     ExtractedIntent,
@@ -878,8 +877,9 @@ class TestDefaultOrganismFieldAudit:
     As of A1a, both of those stages are clarifiable: since the reason organism
     grounding failed is one a question can resolve, the pipeline asks instead
     of dead-ending — success=False either way (status is never COMPLETED), but
-    status is AWAITING_CLARIFICATION with a derived option set, not FAILED.
-    See TestShigellaExecutability for a missing_required organism case that
+    status is AWAITING_CLARIFICATION with a free-text question (2026-08-19:
+    no options menu — see specs/lessons.md), not FAILED. See
+    TestShigellaExecutability for a missing_required organism case that
     remains an unchanged hard failure (organism grounded but not executable —
     a question can't fix that).
     """
@@ -929,9 +929,9 @@ class TestDefaultOrganismFieldAudit:
         assert question is not None
         assert question.stage == OrganismGroundingFailureStage.FOOD_UNRECOGNISED
         assert "frobnitz" in question.question
-        # >=2: at least one derived organism option plus the free-text escape.
-        assert len(question.options) >= 2
-        assert question.options[-1].code == "other"
+        # Free-text only: no options menu, just prose pathogen examples.
+        assert not hasattr(question, "options")
+        assert "Salmonella" in question.question
 
         # Recorded to metadata.clarifications for audit traceability.
         assert result.metadata is not None
@@ -991,14 +991,20 @@ class TestDefaultOrganismFieldAudit:
 
 class TestClarificationReEntry:
     """
-    A1b (2026-07-17): the round-1 organism clarification gate is followed
-    by a round-2 request carrying a ClarificationTranscript, resolving to a
-    full prediction, a fail-closed refusal, or (never) a second question.
+    Free-text organism clarification (2026-08-19, see specs/lessons.md): the
+    round-1 organism clarification gate is followed by a round-2 request
+    carrying a ClarificationTranscript, resolving to a full prediction, a
+    fail-closed refusal, or (never) a second question. The reply is free
+    text, resolved deterministically (ComBaseOrganism.all_matches_in_text())
+    -- no LLM call, no options menu, no offered-set gate. This replaced the
+    old LLM-extraction round trip, which was confirmed to fail extraction on
+    a clean, unambiguous answer ("Salmonellae") ~50% of the time across
+    identical runs.
 
     PTM is stateless, so round 2 reprocesses "frobnitz left out for 3 hours"
     from scratch via the same mocked extract_scenario — round 1's real
-    question/options are captured and echoed back on the transcript, exactly
-    as a real stateless client would.
+    question is captured and echoed back on the transcript, exactly as a
+    real stateless client would.
     """
 
     QUERY = "How long before frobnitz left out at 25°C becomes unsafe?"
@@ -1014,7 +1020,7 @@ class TestClarificationReEntry:
         )
 
     async def _ask(self, orchestrator, mock_semantic_parser):
-        """Round 1: get the real question/options for this query."""
+        """Round 1: get the real question for this query."""
         mock_semantic_parser.extract_scenario = AsyncMock(return_value=self._scenario())
         result = await orchestrator.translate(self.QUERY)
         assert result.state.status == SessionStatus.AWAITING_CLARIFICATION
@@ -1026,32 +1032,24 @@ class TestClarificationReEntry:
         return ClarificationTranscript(
             original_query=self.QUERY,
             question_asked=question.question,
-            options_offered=question.options,
             user_reply=user_reply,
         )
 
     @pytest.mark.asyncio
-    async def test_offered_organism_completes_prediction(
+    async def test_named_organism_completes_prediction(
         self, orchestrator, mock_semantic_parser
     ):
-        """Reply naming an offered organism -> full prediction, source:
-        clarification_response, final_value = the organism actually executed."""
+        """Free-text reply naming an executable organism -> full prediction,
+        source: clarification_response, final_value = the organism actually
+        executed. Uses "Salmonellae" -- the exact input confirmed live to be
+        nondeterministic under the old LLM-extraction path."""
         question = await self._ask(orchestrator, mock_semantic_parser)
-        offered = question.options[0]  # first real organism option, not the escape
-        assert offered.code != "other"
 
         mock_semantic_parser.extract_scenario = AsyncMock(return_value=self._scenario())
-        mock_semantic_parser.extract_clarification_response = AsyncMock(
-            return_value=ExtractedClarificationResponse(
-                selected_option=offered.label,
-                understood_value=offered.label,
-                wants_to_skip=False,
-            )
-        )
 
         result = await orchestrator.translate(
             self.QUERY,
-            transcript=self._transcript(question, f"Let's go with {offered.label}"),
+            transcript=self._transcript(question, "Salmonellae"),
         )
 
         assert result.success is True, f"Failed with error: {result.error}"
@@ -1062,7 +1060,6 @@ class TestClarificationReEntry:
 
         field_audit = _build_field_audit(result)
         assert field_audit["organism"].source == "clarification_response"
-        assert field_audit["organism"].final_value == offered.label
 
         # A resolved-and-executed request must not carry a stale "required
         # value missing" warning from before the transcript resolved it.
@@ -1074,25 +1071,66 @@ class TestClarificationReEntry:
         assert len(result.metadata.clarifications) == 1
         record = result.metadata.clarifications[0]
         assert record.turn_number == 1
-        assert (
-            record.user_response is not None and offered.label in record.user_response
+        assert record.user_response == "Salmonellae"
+        assert record.extracted_value == ComBaseOrganism.SALMONELLA.value
+
+    @pytest.mark.asyncio
+    async def test_named_organism_resolves_deterministically_across_runs(
+        self, orchestrator, mock_semantic_parser
+    ):
+        """The flakiness that motivated this redesign, made explicit: the
+        same reply resolves to the same organism every time, not ~50% of
+        the time (the confirmed failure rate of the old LLM-extraction
+        path)."""
+        question = await self._ask(orchestrator, mock_semantic_parser)
+        mock_semantic_parser.extract_scenario = AsyncMock(return_value=self._scenario())
+
+        for _ in range(6):
+            result = await orchestrator.translate(
+                self.QUERY,
+                transcript=self._transcript(question, "Salmonellae"),
+            )
+            assert result.success is True, f"Failed with error: {result.error}"
+
+            from app.api.routes.translation import _build_field_audit
+
+            field_audit = _build_field_audit(result)
+            assert "salmonella" in field_audit["organism"].final_value.lower()
+
+    @pytest.mark.asyncio
+    async def test_organism_outside_old_top5_menu_completes_prediction(
+        self, orchestrator, mock_semantic_parser
+    ):
+        """A free-text reply naming an executable organism that would not
+        have been in the old top-5-by-CDC-deaths menu still resolves and
+        predicts -- there is no menu to be excluded from anymore."""
+        question = await self._ask(orchestrator, mock_semantic_parser)
+        mock_semantic_parser.extract_scenario = AsyncMock(return_value=self._scenario())
+
+        result = await orchestrator.translate(
+            self.QUERY,
+            transcript=self._transcript(question, "Staphylococcus aureus"),
         )
-        assert record.extracted_value == offered.code
+
+        assert result.success is True, f"Failed with error: {result.error}"
+        assert result.state.status == SessionStatus.COMPLETED
+        assert result.execution_result is not None
+
+        from app.api.routes.translation import _build_field_audit
+
+        field_audit = _build_field_audit(result)
+        assert "staphylococcus" in field_audit["organism"].final_value.lower()
 
     @pytest.mark.asyncio
     async def test_skip_fails_closed_no_default(
         self, orchestrator, mock_semantic_parser
     ):
-        """wants_to_skip=True -> fail closed, plain language, no organism default."""
+        """A reply that names no pathogen -> fail closed, plain language, no
+        organism default. There is no separate wants_to_skip flag anymore --
+        this is just the empty-match case, since there's no LLM to produce
+        such a flag."""
         question = await self._ask(orchestrator, mock_semantic_parser)
-
         mock_semantic_parser.extract_scenario = AsyncMock(return_value=self._scenario())
-        mock_semantic_parser.extract_clarification_response = AsyncMock(
-            return_value=ExtractedClarificationResponse(
-                understood_value=None,
-                wants_to_skip=True,
-            )
-        )
 
         result = await orchestrator.translate(
             self.QUERY,
@@ -1102,7 +1140,7 @@ class TestClarificationReEntry:
         assert result.success is False
         assert result.state.status == SessionStatus.FAILED
         assert result.error is not None
-        assert "default" in result.error.lower()
+        assert "didn't name a pathogen" in result.error.lower()
 
         org_defaults = [
             d
@@ -1112,24 +1150,16 @@ class TestClarificationReEntry:
         assert org_defaults == []
 
     @pytest.mark.asyncio
-    async def test_organism_not_offered_fails_closed_not_substituted(
+    async def test_non_executable_organism_fails_closed_not_substituted(
         self, orchestrator, mock_semantic_parser
     ):
-        """Reply names a real organism (Shigella) that was NOT among the
-        options offered for this growth scenario -> fail closed, not
-        silently substituted."""
+        """Reply names a real, unambiguous organism (Shigella flexneri) that
+        isn't executable for this growth scenario (no plain-growth row in
+        data/combase_models.csv) -> fail closed, not silently substituted.
+        There is no offered-set to check anymore -- executability is the
+        actual safety boundary."""
         question = await self._ask(orchestrator, mock_semantic_parser)
-        offered_codes = {o.code for o in question.options}
-        assert "sf" not in offered_codes, "test assumes Shigella wasn't offered"
-
         mock_semantic_parser.extract_scenario = AsyncMock(return_value=self._scenario())
-        mock_semantic_parser.extract_clarification_response = AsyncMock(
-            return_value=ExtractedClarificationResponse(
-                selected_option="Shigella",
-                understood_value="Shigella",
-                wants_to_skip=False,
-            )
-        )
 
         result = await orchestrator.translate(
             self.QUERY,
@@ -1140,23 +1170,15 @@ class TestClarificationReEntry:
         assert result.state.status == SessionStatus.FAILED
         assert result.error is not None
         assert "shigella" in result.error.lower()
-        assert "wasn't one of the options" in result.error.lower()
+        assert "not supported for" in result.error.lower()
 
     @pytest.mark.asyncio
     async def test_unmappable_reply_fails_closed(
         self, orchestrator, mock_semantic_parser
     ):
-        """Reply the LLM can't map to any organism at all -> fail closed."""
+        """Reply that can't be mapped to any organism at all -> fail closed."""
         question = await self._ask(orchestrator, mock_semantic_parser)
-
         mock_semantic_parser.extract_scenario = AsyncMock(return_value=self._scenario())
-        mock_semantic_parser.extract_clarification_response = AsyncMock(
-            return_value=ExtractedClarificationResponse(
-                selected_option="Something else / I'm not sure",
-                understood_value=None,
-                wants_to_skip=False,
-            )
-        )
 
         result = await orchestrator.translate(
             self.QUERY,
@@ -1175,15 +1197,7 @@ class TestClarificationReEntry:
         """Reply naming more than one organism -> ambiguous, fail closed
         rather than resolved to an arbitrary one of them."""
         question = await self._ask(orchestrator, mock_semantic_parser)
-
         mock_semantic_parser.extract_scenario = AsyncMock(return_value=self._scenario())
-        mock_semantic_parser.extract_clarification_response = AsyncMock(
-            return_value=ExtractedClarificationResponse(
-                selected_option="Salmonella or Listeria",
-                understood_value="Salmonella or Listeria",
-                wants_to_skip=False,
-            )
-        )
 
         result = await orchestrator.translate(
             self.QUERY,
@@ -1202,14 +1216,7 @@ class TestClarificationReEntry:
         """One round only: if resolution fails, status must be FAILED, never
         AWAITING_CLARIFICATION again — no second question."""
         question = await self._ask(orchestrator, mock_semantic_parser)
-
         mock_semantic_parser.extract_scenario = AsyncMock(return_value=self._scenario())
-        mock_semantic_parser.extract_clarification_response = AsyncMock(
-            return_value=ExtractedClarificationResponse(
-                understood_value=None,
-                wants_to_skip=True,
-            )
-        )
 
         result = await orchestrator.translate(
             self.QUERY,
@@ -2025,8 +2032,11 @@ class TestDurationClarificationGate:
     step with an unresolvable duration (2a: the profile-builder loop runs to
     completion, so the question can name all of them in one round, not just
     the first). Round 2 answers with a structured numeric {step_order, hours}
-    reply per step -- validated structurally (no LLM anywhere in this path,
-    unlike organism's extract_clarification_response()) and applied verbatim.
+    reply per step -- validated structurally and applied verbatim. Organism's
+    reply is free text resolved by a deterministic alias matcher (2026-08-19,
+    see specs/lessons.md); duration's is a plain number with no matching step
+    at all -- the two gates are still safe for different reasons, not
+    variants of one mechanism (§8.16).
     """
 
     QUERY = "Chicken transported then stored, two stages"
