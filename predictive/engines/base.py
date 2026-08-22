@@ -7,7 +7,7 @@ Allows swapping between local and API implementations.
 
 from abc import ABC, abstractmethod
 
-from app.models.execution.base import BaseExecutionPayload, BaseExecutionResult
+from predictive.models.execution.base import BaseExecutionPayload, BaseExecutionResult
 
 
 class BaseEngine(ABC):

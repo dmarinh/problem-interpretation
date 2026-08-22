@@ -7,7 +7,7 @@ New engines should inherit from these bases.
 
 from pydantic import BaseModel, Field, model_validator
 
-from app.models.enums import EngineType, ModelType
+from predictive.models.enums import EngineType, ModelType
 
 # =============================================================================
 # TIME-TEMPERATURE PROFILE (Shared across all engines)

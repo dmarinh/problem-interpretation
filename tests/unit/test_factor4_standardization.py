@@ -10,18 +10,18 @@ from pathlib import Path
 
 import pytest
 
-from app.engines.combase.models import (
-    ComBaseModel,
-    ComBaseModelConstraints,
-    ComBaseModelDefaults,
-    ComBaseModelRegistry,
-)
-from app.models.enums import ComBaseOrganism, Factor4Type, ModelType
 from app.models.metadata import ValueSource
 from app.services.grounding.grounding_service import GroundedValues
 from app.services.standardization.standardization_service import (
     StandardizationService,
 )
+from predictive.engines.combase.models import (
+    ComBaseModel,
+    ComBaseModelConstraints,
+    ComBaseModelDefaults,
+    ComBaseModelRegistry,
+)
+from predictive.models.enums import ComBaseOrganism, Factor4Type, ModelType
 
 # =============================================================================
 # FIXTURES

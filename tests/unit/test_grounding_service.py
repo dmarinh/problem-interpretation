@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.models.enums import ComBaseOrganism
 from app.models.extraction import (
     ExtractedDuration,
     ExtractedEnvironmentalConditions,
@@ -22,6 +21,7 @@ from app.services.grounding.grounding_service import (
     get_grounding_service,
     reset_grounding_service,
 )
+from predictive.models.enums import ComBaseOrganism
 
 
 @pytest.fixture
@@ -1757,8 +1757,8 @@ class TestRankExecutableOrganisms:
         """
         from pathlib import Path
 
-        from app.engines.combase.engine import ComBaseEngine
-        from app.models.enums import ModelType
+        from predictive.engines.combase.engine import ComBaseEngine
+        from predictive.models.enums import ModelType
 
         engine = ComBaseEngine()
         csv_path = Path("data/combase_models.csv")

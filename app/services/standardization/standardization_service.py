@@ -55,22 +55,6 @@ from collections.abc import Callable
 from pydantic import ValidationError
 
 from app.config import settings
-from app.engines.combase.models import (
-    ComBaseModel,
-    ComBaseModelConstraints,
-    ComBaseModelRegistry,
-)
-from app.models.enums import (
-    ComBaseOrganism,
-    Factor4Type,
-    ModelType,
-)
-from app.models.execution.base import TimeTemperatureProfile, TimeTemperatureStep
-from app.models.execution.combase import (
-    ComBaseExecutionPayload,
-    ComBaseModelSelection,
-    ComBaseParameters,
-)
 from app.models.metadata import (
     CategoryBridgeInfo,
     DefaultImputed,
@@ -79,6 +63,22 @@ from app.models.metadata import (
     ValueSource,
 )
 from app.services.grounding.grounding_service import GroundedValues
+from predictive.engines.combase.models import (
+    ComBaseModel,
+    ComBaseModelConstraints,
+    ComBaseModelRegistry,
+)
+from predictive.models.enums import (
+    ComBaseOrganism,
+    Factor4Type,
+    ModelType,
+)
+from predictive.models.execution.base import TimeTemperatureProfile, TimeTemperatureStep
+from predictive.models.execution.combase import (
+    ComBaseExecutionPayload,
+    ComBaseModelSelection,
+    ComBaseParameters,
+)
 
 
 # Imported at the bottom of this module to break the circular-import chain:
@@ -86,7 +86,7 @@ from app.services.grounding.grounding_service import GroundedValues
 # get_combase_engine is used only inside get_standardization_service(), not at
 # module load time, so the deferred import is safe.
 def _get_engine_registry() -> "ComBaseModelRegistry":
-    from app.engines.combase.engine import get_combase_engine  # noqa: PLC0415
+    from predictive.engines.combase.engine import get_combase_engine  # noqa: PLC0415
 
     return get_combase_engine().registry
 

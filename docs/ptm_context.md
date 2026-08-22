@@ -375,7 +375,7 @@ Organism has no default — it is a required field (see §8.13). Duration (singl
 - `range_clamp` — field_name, original_value, clamped_value, valid_min, valid_max, reason. Recorded both on the per-field block AND in the top-level `range_clamps` list (as `RangeClampInfo`). Also emits a warning string.
 
 ### 5.4 ComBase Engine
-**Location:** `app/engines/combase/`
+**Location:** `predictive/engines/combase/` — part of the top-level `predictive/` library (a peer of `app/`, relocated from `app/engines/` — see specs/lessons.md), which imports nothing from `app.*`. `app/` consumes it as a library.
 
 - `engine.py` — entry point. Singleton via `get_combase_engine()`. Loads models at startup.
 - `calculator.py` — mathematical core (`bw` computation, μ_max, doubling time, log change). Different `bw` formulas for growth vs. thermal inactivation: growth uses `bw = √(1 − aw)`, thermal inactivation uses `bw = aw`.

@@ -467,8 +467,8 @@ def build_orchestrator():
     it cost to notice.
     """
     from app.core.orchestrator import Orchestrator
-    from app.engines.combase.engine import get_combase_engine
     from app.rag.vector_store import get_vector_store
+    from predictive.engines.combase.engine import get_combase_engine
 
     engine = get_combase_engine()
     if not engine.is_available:

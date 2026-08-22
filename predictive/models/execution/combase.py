@@ -6,13 +6,13 @@ Models specific to the ComBase broth model engine.
 
 from pydantic import BaseModel, Field, model_validator
 
-from app.models.enums import (
+from predictive.models.enums import (
     ComBaseOrganism,
     EngineType,
     Factor4Type,
     ModelType,
 )
-from app.models.execution.base import (
+from predictive.models.execution.base import (
     BaseExecutionPayload,
     BaseExecutionResult,
     BaseModelResult,

@@ -43,9 +43,7 @@ from httpx import ASGITransport, AsyncClient
 import app.api.routes.translation as route_module
 from app.core.orchestrator import Orchestrator
 from app.core.state import SessionManager
-from app.engines.combase.engine import ComBaseEngine
 from app.main import app
-from app.models.enums import ModelType
 from app.models.extraction import (
     ExtractedDuration,
     ExtractedEnvironmentalConditions,
@@ -58,12 +56,22 @@ from app.rag.retrieval import RetrievalService
 from app.rag.vector_store import VectorStore
 from app.services.grounding.grounding_service import GroundingService
 from app.services.standardization.standardization_service import StandardizationService
+from predictive.engines.combase.engine import ComBaseEngine
+from predictive.models.enums import ModelType
 
 FIXTURE_PATH = Path("tests/fixtures/expected_outputs.json")
 
 # Fields whose value is nondeterministic per-run (wall-clock time, random
 # session id) and must be masked before comparing against the pinned body.
-_MASKED_FIELDS = {"session_id", "created_at", "completed_at"}
+# ptm_version is `git rev-parse --short HEAD` (app/services/audit/system.py
+# ::_git_sha()), computed live at request time -- it changes on every commit
+# by design, unrelated to prediction/audit behaviour, so it belongs here
+# alongside the timestamps and session id. Originally missed: the fixture
+# baked in whatever commit was HEAD at capture time, which broke the moment
+# the very next commit landed. Confirmed via a masked re-diff against the
+# committed fixture that this was the *only* divergence across all 4
+# scenarios, before and after the engine-relocation move.
+_MASKED_FIELDS = {"session_id", "created_at", "completed_at", "ptm_version"}
 
 
 def _mask(obj):

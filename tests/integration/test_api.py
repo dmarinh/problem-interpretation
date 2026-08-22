@@ -9,19 +9,19 @@ from httpx import AsyncClient
 
 from app.core.orchestrator import TranslationResult
 from app.core.state import SessionState
-from app.models.enums import (
+from app.models.enums import SessionStatus
+from predictive.models.enums import (
     ComBaseOrganism,
     EngineType,
     Factor4Type,
     ModelType,
-    SessionStatus,
 )
-from app.models.execution.base import (
+from predictive.models.execution.base import (
     GrowthPrediction,
     TimeTemperatureProfile,
     TimeTemperatureStep,
 )
-from app.models.execution.combase import (
+from predictive.models.execution.combase import (
     ComBaseExecutionPayload,
     ComBaseExecutionResult,
     ComBaseModelResult,

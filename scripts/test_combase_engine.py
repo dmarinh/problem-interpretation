@@ -11,10 +11,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.engines.combase.engine import ComBaseEngine
-from app.models.enums import ModelType, ComBaseOrganism, Factor4Type
-from app.models.execution.base import TimeTemperatureStep, TimeTemperatureProfile
-from app.models.execution.combase import (
+from predictive.engines.combase.engine import ComBaseEngine
+from predictive.models.enums import ModelType, ComBaseOrganism, Factor4Type
+from predictive.models.execution.base import TimeTemperatureStep, TimeTemperatureProfile
+from predictive.models.execution.combase import (
     ComBaseParameters,
     ComBaseModelSelection,
     ComBaseExecutionPayload,

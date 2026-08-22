@@ -6,14 +6,14 @@ from pathlib import Path
 
 import pytest
 
-from app.engines.combase.engine import (
+from predictive.engines.combase.engine import (
     ComBaseEngine,
     get_combase_engine,
     reset_combase_engine,
 )
-from app.models.enums import ComBaseOrganism, EngineType, Factor4Type, ModelType
-from app.models.execution.base import TimeTemperatureProfile, TimeTemperatureStep
-from app.models.execution.combase import (
+from predictive.models.enums import ComBaseOrganism, EngineType, Factor4Type, ModelType
+from predictive.models.execution.base import TimeTemperatureProfile, TimeTemperatureStep
+from predictive.models.execution.combase import (
     ComBaseExecutionPayload,
     ComBaseModelSelection,
     ComBaseParameters,

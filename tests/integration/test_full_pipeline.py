@@ -14,11 +14,8 @@ import pytest
 
 from app.core.orchestrator import Orchestrator
 from app.core.state import SessionManager
-from app.engines.combase.engine import ComBaseEngine
 from app.models.enums import (
     ClarificationReason,
-    ComBaseOrganism,
-    ModelType,
     OrganismGroundingFailureStage,
     SessionStatus,
 )
@@ -40,6 +37,8 @@ from app.rag.retrieval import RetrievalService
 from app.rag.vector_store import VectorStore
 from app.services.grounding.grounding_service import GroundingService
 from app.services.standardization.standardization_service import StandardizationService
+from predictive.engines.combase.engine import ComBaseEngine
+from predictive.models.enums import ComBaseOrganism, ModelType
 
 
 def create_scenario(

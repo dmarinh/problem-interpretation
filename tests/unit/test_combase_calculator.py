@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from app.engines.combase.calculator import ComBaseCalculator
-from app.engines.combase.models import ComBaseModelRegistry
-from app.models.enums import ComBaseOrganism, Factor4Type, ModelType
+from predictive.engines.combase.calculator import ComBaseCalculator
+from predictive.engines.combase.models import ComBaseModelRegistry
+from predictive.models.enums import ComBaseOrganism, Factor4Type, ModelType
 
 
 @pytest.fixture

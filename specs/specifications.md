@@ -300,7 +300,7 @@ Consequence: `orchestrator.py` sets `SessionStatus.FAILED`, `success=False`, `er
 
 ### 3.4 ComBase Engine
 
-**Location:** `app/engines/combase/`
+**Location:** `predictive/engines/combase/` — part of the top-level `predictive/` library (a peer of `app/`, relocated from `app/engines/` — see specs/lessons.md), which imports nothing from `app.*`. `app/` consumes it as a library.
 
 **Responsibilities:** Execute ComBase polynomial model predictions. Loads model coefficients from CSV at startup. Executes predictions for each time-temperature step. Returns `ComBaseExecutionResult` with per-step and total log change.
 
@@ -325,8 +325,8 @@ where:
 - `b0`–`b14` = model coefficients from CSV
 
 **Water activity term `bw` (model-type dependent):**
-- GROWTH: `bw = sqrt(max(0, 1 - aw))` (`app/engines/combase/calculator.py:170`)
-- THERMAL_INACTIVATION: `bw = aw` (`app/engines/combase/calculator.py:170`)
+- GROWTH: `bw = sqrt(max(0, 1 - aw))` (`predictive/engines/combase/calculator.py:170`)
+- THERMAL_INACTIVATION: `bw = aw` (`predictive/engines/combase/calculator.py:170`)
 - NON_THERMAL_SURVIVAL: `bw = sqrt(max(0, 1 - aw))` (same as GROWTH)
 
 **μ_max sign (model-type dependent):**
@@ -348,7 +348,7 @@ where:
 
 Both are returned in `ComBaseExecutionResult` and exposed in the API response.
 
-**Note on model form:** The secondary model is a second-order polynomial. The `app/engines/combase/engine.py` comment describes this as "ComBase broth models". The ptm_context.md (§8.2) states the model is "Baranyi primary with second-order polynomial secondary". The calculator code implements the secondary model polynomial but does not implement a primary model (lag-phase dynamics). The `h0` and `y_max` values are present in the CSV and loaded into `ComBaseModel` but are not used in any calculation in `calculator.py`. This is a discrepancy between the model's metadata and the current calculator implementation.
+**Note on model form:** The secondary model is a second-order polynomial. The `predictive/engines/combase/engine.py` comment describes this as "ComBase broth models". The ptm_context.md (§8.2) states the model is "Baranyi primary with second-order polynomial secondary". The calculator code implements the secondary model polynomial but does not implement a primary model (lag-phase dynamics). The `h0` and `y_max` values are present in the CSV and loaded into `ComBaseModel` but are not used in any calculation in `calculator.py`. This is a discrepancy between the model's metadata and the current calculator implementation.
 
 **Validation:** `engine.execute()` raises `ValueError` if the requested organism/model_type/factor4_type combination is not found in the registry. `ComBaseEngine.is_available` is `True` only after `load_models()` has loaded at least one model.
 
@@ -491,7 +491,7 @@ Key names in `values`: `"temperature_celsius"`, `"duration_minutes"`, `"ph"`, `"
 
 `GroundedStep`: `step_order`, `temperature_celsius`, `duration_minutes`, `temp_provenance`, `dur_provenance`, `duration_phrase`, `temperature_phrase`. The last two (A1c multi-step recon, 2026-08-17) carry the user's original phrasing (`step.duration.description` / `step.temperature.description`) verbatim, populated unconditionally in `_ground_multi_step_profile()` regardless of whether the value resolved — purely additive, no consumer reads them yet. Before this, the phrase was read only to build `grounded.warnings`' free-text message (`f"Step {order} duration: {reason}"`) and then discarded; `GroundedStep` had nowhere to hold it. Exists so a future duration/temperature clarification question can quote the user's own words back rather than only naming the step number.
 
-### 4.3 ComBaseExecutionPayload (`app/models/execution/combase.py`)
+### 4.3 ComBaseExecutionPayload (`predictive/models/execution/combase.py`)
 
 | Field | Type |
 |---|---|
@@ -566,7 +566,7 @@ The `field_audit` map includes both grounded fields (from `metadata.provenance`)
 
 ## 5. ComBase Model Registry
 
-**Location:** `app/engines/combase/models.py`, `data/combase_models.csv`
+**Location:** `predictive/engines/combase/models.py`, `data/combase_models.csv`
 
 ### 5.1 CSV Schema
 
@@ -604,7 +604,7 @@ Registry key: `f"{model_id}_{organism_id}_{factor4_type.value}"` (e.g., `"1_ss_c
 
 `ComBaseModelConstraints` provides `is_temperature_valid()`, `is_ph_valid()`, `is_aw_valid()`, `is_factor4_valid()`, `clamp_temperature()`, `clamp_ph()`, `clamp_aw()`, `clamp_factor4()`. Clamping is `max(min_val, min(value, max_val))`.
 
-Clamping is applied by StandardizationService before payload construction — as of 2026-07-17, for all four scalar inputs (temperature, pH, aw, factor4) via a single shared helper, `_clamp_to_constraints()`, rather than four hand-rolled copies (see §3.3 Operations 1–3b). The engine's `ComBaseCalculator.calculate()` also validates ranges and can clamp internally when `clamp_to_range=True`, but the engine is called with `clamp_to_range=False` (`app/engines/combase/engine.py:117`) for every input including factor4 — meaning the engine relies on StandardizationService having already clamped. Warning messages from the calculator are still appended to `ComBaseExecutionResult.warnings` as a defensive backstop.
+Clamping is applied by StandardizationService before payload construction — as of 2026-07-17, for all four scalar inputs (temperature, pH, aw, factor4) via a single shared helper, `_clamp_to_constraints()`, rather than four hand-rolled copies (see §3.3 Operations 1–3b). The engine's `ComBaseCalculator.calculate()` also validates ranges and can clamp internally when `clamp_to_range=True`, but the engine is called with `clamp_to_range=False` (`predictive/engines/combase/engine.py:117`) for every input including factor4 — meaning the engine relies on StandardizationService having already clamped. Warning messages from the calculator are still appended to `ComBaseExecutionResult.warnings` as a defensive backstop.
 
 `is_factor4_valid()` returns `True` when `factor4_min`/`factor4_max` are `None` ("no factor4 for this model" — i.e. the model row's `Factor4ID` is `NULL`, so factor4 isn't checked at all for that row). This must not be read as "any bounds-less factor4 row is fine": StandardizationService now checks *before* calling it whether the resolved row declares a real factor4 type (`Factor4ID != NULL`) with `factor4_min`/`factor4_max` still absent, and fails closed in that case rather than letting `is_factor4_valid()`'s permissive default silently pass an unbounded value through (§3.3 Operation 3b, §8).
 
@@ -1089,11 +1089,12 @@ LiteLLM + Instructor. Model specified via `LLM_MODEL`. Supported providers inclu
 | `app/main.py` | FastAPI app factory, lifespan startup (load models, init vector store) |
 | `app/config/settings.py` | `Settings` (pydantic_settings), all env-var defaults |
 | `app/config/rules.py` | Temperature + duration interpretation rule tables, embedding fallback |
-| `app/models/enums.py` | `ModelType`, `ComBaseOrganism` (with alias dict), `Factor4Type`, `SessionStatus`, etc. |
+| `app/models/enums.py` | Orchestration-only enums: `IntentType`, `ClarificationReason`, `OrganismGroundingFailureStage`, `SessionStatus`, `RetrievalConfidenceLevel` |
+| `predictive/models/enums.py` | Engine-owned enums: `ModelType`, `ComBaseOrganism` (with alias dict and free-text matching), `Factor4Type`, `EngineType` |
 | `app/models/extraction.py` | `ExtractedScenario`, `ExtractedTemperature`, `ExtractedDuration`, `ExtractedIntent`, etc. |
 | `app/models/metadata.py` | `ValueProvenance`, `RangeBoundSelection`, `DefaultImputed`, `RangeClamp`, `RetrievalResult`, `InterpretationMetadata`, `ComBaseModelAudit`, `SystemAudit` |
-| `app/models/execution/base.py` | `TimeTemperatureStep`, `TimeTemperatureProfile`, `GrowthPrediction`, base execution classes |
-| `app/models/execution/combase.py` | `ComBaseParameters`, `ComBaseModelSelection`, `ComBaseExecutionPayload`, `ComBaseExecutionResult` |
+| `predictive/models/execution/base.py` | `TimeTemperatureStep`, `TimeTemperatureProfile`, `GrowthPrediction`, base execution classes |
+| `predictive/models/execution/combase.py` | `ComBaseParameters`, `ComBaseModelSelection`, `ComBaseExecutionPayload`, `ComBaseExecutionResult` |
 | `app/services/extraction/semantic_parser.py` | `SemanticParser` — LLM + Instructor extraction |
 | `app/services/grounding/grounding_service.py` | `GroundingService`, `GroundedValues`, `GroundedStep` |
 | `app/services/standardization/standardization_service.py` | `StandardizationService`, `StandardizationResult` |
@@ -1101,9 +1102,9 @@ LiteLLM + Instructor. Model specified via `LLM_MODEL`. Supported providers inclu
 | `app/services/audit/citations.py` | `get_full_citations()` — source ID → bibliographic citation |
 | `app/core/orchestrator.py` | `Orchestrator` — pipeline coordinator |
 | `app/core/state.py` | `SessionState`, `SessionManager` |
-| `app/engines/combase/engine.py` | `ComBaseEngine` — loads models, orchestrates execution |
-| `app/engines/combase/calculator.py` | `ComBaseCalculator` — polynomial evaluation, bw, μ_max, log increase |
-| `app/engines/combase/models.py` | `ComBaseModel`, `ComBaseModelConstraints`, `ComBaseModelRegistry` |
+| `predictive/engines/combase/engine.py` | `ComBaseEngine` — loads models, orchestrates execution |
+| `predictive/engines/combase/calculator.py` | `ComBaseCalculator` — polynomial evaluation, bw, μ_max, log increase |
+| `predictive/engines/combase/models.py` | `ComBaseModel`, `ComBaseModelConstraints`, `ComBaseModelRegistry` |
 | `app/rag/vector_store.py` | `VectorStore` — ChromaDB wrapper |
 | `app/rag/ingestion.py` | `IngestionPipeline` — document loading, manifest writing |
 | `app/rag/retrieval.py` | `RetrievalService` — confidence scoring, threshold gating, optional reranking |

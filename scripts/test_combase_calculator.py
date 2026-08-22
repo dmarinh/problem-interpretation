@@ -10,9 +10,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.engines.combase.models import ComBaseModelRegistry
-from app.engines.combase.calculator import ComBaseCalculator
-from app.models.enums import ModelType, ComBaseOrganism, Factor4Type
+from predictive.engines.combase.models import ComBaseModelRegistry
+from predictive.engines.combase.calculator import ComBaseCalculator
+from predictive.models.enums import ModelType, ComBaseOrganism, Factor4Type
 
 
 def main():

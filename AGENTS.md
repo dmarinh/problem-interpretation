@@ -44,7 +44,7 @@ User Query → Intent → Extraction → Model Type → Grounding (RAG) → Stan
 - **SemanticParser** (`app/services/extraction/semantic_parser.py`): LLM + Instructor → `ExtractedScenario`. Free text is allowed here. Populates `time_temperature_steps[]` for multi-step scenarios.
 - **GroundingService** (`app/services/grounding/grounding_service.py`): Resolves `ExtractedScenario` → `GroundedValues`. Uses RAG for food pH/aw; uses `config/rules.py` for linguistic terms ("room temperature" → 25°C). Applies model-type-aware range bound selection. **Does NOT handle multi-step profiles** — only reads `single_step_temperature` / `single_step_duration`.
 - **StandardizationService** (`app/services/standardization/standardization_service.py`): `GroundedValues` → `ComBaseExecutionPayload`. Applies conservative bias corrections and safety defaults. **Builds single-step `TimeTemperatureProfile` only** — multi-step support is not yet implemented.
-- **ComBaseEngine** (`app/engines/combase/engine.py`): Already iterates over `TimeTemperatureProfile.steps`, accumulating log growth per step. Engine is multi-step-ready; the gap is upstream.
+- **ComBaseEngine** (`predictive/engines/combase/engine.py`): Already iterates over `TimeTemperatureProfile.steps`, accumulating log growth per step. Engine is multi-step-ready; the gap is upstream. Lives in the top-level `predictive/` library (relocated from `app/engines/` — see specs/lessons.md), a peer of `app/` that imports nothing from it.
 
 ### Model type determination priority (orchestrator.py)
 explicit param → LLM inference (`implied_model_type`) → temperature heuristic (>50°C → thermal) → scenario flags → environmental conditions → default GROWTH
@@ -76,7 +76,7 @@ Missing values default to worst-case for growth:
 These are intentional. Do not make them more optimistic. For safety-critical metrics (model type classification, conservative defaults, safety gates), missing data must default to the worst-case interpretation — never borrow a semantically-different field as a fallback (use `.get(key, False)`, not `.get(key, some_other_field)`).
 
 ### Enums only — no free text to the engine
-All engine inputs use controlled enums (`app/models/enums.py`). Free text resolved via rapidfuzz before reaching the engine.
+All engine inputs use controlled enums. The 4 engine-owned enums (`ModelType`, `ComBaseOrganism`, `Factor4Type`, `EngineType`) live in `predictive/models/enums.py`; the 5 orchestration-only enums (`IntentType`, `ClarificationReason`, `OrganismGroundingFailureStage`, `SessionStatus`, `RetrievalConfidenceLevel`) stay in `app/models/enums.py`. Free text resolved via rapidfuzz before reaching the engine.
 
 ### Provenance tracking
 Every value tracks its source (`USER_EXPLICIT`, `USER_INFERRED`, `RAG_RETRIEVAL`, `CONSERVATIVE_DEFAULT`, `FUZZY_MATCH`), confidence score 0–1, and bias corrections applied. See `app/models/metadata.py`. Add a `ValueProvenance` when setting any grounded value.

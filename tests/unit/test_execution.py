@@ -5,13 +5,13 @@ Unit tests for execution models.
 import pytest
 from pydantic import ValidationError
 
-from app.models.enums import (
+from predictive.models.enums import (
     ComBaseOrganism,
     EngineType,
     Factor4Type,
     ModelType,
 )
-from app.models.execution import (
+from predictive.models.execution import (
     ComBaseExecutionPayload,
     ComBaseModelResult,
     ComBaseModelSelection,

@@ -11,7 +11,7 @@ from app.core.orchestrator import (
     _missing_key_to_audit_key,
 )
 from app.core.state import SessionManager
-from app.models.enums import ComBaseOrganism, Factor4Type, ModelType, SessionStatus
+from app.models.enums import SessionStatus
 from app.models.extraction import (
     ExtractedDuration,
     ExtractedIntent,
@@ -26,6 +26,7 @@ from app.models.metadata import (
     ValueSource,
 )
 from app.services.grounding.grounding_service import GroundedStep, GroundedValues
+from predictive.models.enums import ComBaseOrganism, Factor4Type, ModelType
 
 
 @pytest.fixture
@@ -70,8 +71,11 @@ def mock_grounder():
 @pytest.fixture
 def mock_engine():
     """Create mock ComBase engine."""
-    from app.models.enums import EngineType
-    from app.models.execution.combase import ComBaseExecutionResult, ComBaseModelResult
+    from predictive.models.enums import EngineType
+    from predictive.models.execution.combase import (
+        ComBaseExecutionResult,
+        ComBaseModelResult,
+    )
 
     engine = MagicMock()
     engine.is_available = True

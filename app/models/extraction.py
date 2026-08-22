@@ -16,7 +16,7 @@ Flow:
 
 from pydantic import BaseModel, Field
 
-from app.models.enums import ModelType
+from predictive.models.enums import ModelType
 
 # =============================================================================
 # CORE EXTRACTION MODELS

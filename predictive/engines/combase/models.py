@@ -10,7 +10,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
-from app.models.enums import ComBaseOrganism, Factor4Type, ModelType
+from predictive.models.enums import ComBaseOrganism, Factor4Type, ModelType
 
 
 class ComBaseModelConstraints(BaseModel):

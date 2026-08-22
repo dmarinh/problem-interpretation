@@ -402,9 +402,9 @@ def compute_growth_for_ph(ph_value: float, scenario: dict) -> dict | None:
     Returns {mu_max, log_increase, doubling_time_hours} or None on error.
     """
     try:
-        from app.engines.combase.models import ComBaseModelRegistry
-        from app.engines.combase.calculator import ComBaseCalculator
-        from app.models.enums import ModelType, ComBaseOrganism, Factor4Type
+        from predictive.engines.combase.models import ComBaseModelRegistry
+        from predictive.engines.combase.calculator import ComBaseCalculator
+        from predictive.models.enums import ModelType, ComBaseOrganism, Factor4Type
 
         registry = ComBaseModelRegistry()
         csv_path = Path("data/combase_models.csv")

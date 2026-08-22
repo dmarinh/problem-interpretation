@@ -18,11 +18,6 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from app.engines.combase.models import ComBaseModelConstraints
-from app.models.enums import (
-    ComBaseOrganism,
-    ModelType,
-)
 from app.models.extraction import (
     ExtractedDuration,
     ExtractedScenario,
@@ -35,6 +30,11 @@ from app.services.grounding.grounding_service import (
 )
 from app.services.standardization.standardization_service import (
     StandardizationService,
+)
+from predictive.engines.combase.models import ComBaseModelConstraints
+from predictive.models.enums import (
+    ComBaseOrganism,
+    ModelType,
 )
 
 # =============================================================================

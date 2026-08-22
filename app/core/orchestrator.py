@@ -19,12 +19,8 @@ from annotated_types import Le
 _log = logging.getLogger(__name__)
 
 from app.core.state import SessionManager, SessionState, get_session_manager
-from app.engines.combase.engine import ComBaseEngine, get_combase_engine
 from app.models.enums import (
-    ComBaseOrganism,
-    Factor4Type,
     IntentType,
-    ModelType,
     OrganismGroundingFailureStage,
     SessionStatus,
 )
@@ -59,6 +55,8 @@ from app.services.standardization.standardization_service import (
     StandardizationService,
     get_standardization_service,
 )
+from predictive.engines.combase.engine import ComBaseEngine, get_combase_engine
+from predictive.models.enums import ComBaseOrganism, Factor4Type, ModelType
 
 # The only two OrganismGroundingFailureStage members the organism
 # clarification gate can resolve with a question — see

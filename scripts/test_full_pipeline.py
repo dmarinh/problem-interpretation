@@ -21,7 +21,7 @@ async def main():
     logger = get_logger(__name__)
     
     from app.core.orchestrator import get_orchestrator, reset_orchestrator
-    from app.engines.combase.engine import get_combase_engine
+    from predictive.engines.combase.engine import get_combase_engine
     from app.rag.vector_store import get_vector_store
     from app.rag.ingestion import IngestionPipeline
     

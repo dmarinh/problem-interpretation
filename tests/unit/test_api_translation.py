@@ -9,8 +9,9 @@ from fastapi.testclient import TestClient
 
 from app.core.state import SessionState
 from app.main import app
-from app.models.enums import ComBaseOrganism, EngineType, ModelType, SessionStatus
+from app.models.enums import SessionStatus
 from app.models.metadata import InterpretationMetadata
+from predictive.models.enums import ComBaseOrganism, EngineType, ModelType
 
 
 @pytest.fixture
@@ -23,7 +24,10 @@ def client():
 def mock_translation_result():
     """Create mock orchestrator with successful result."""
     from app.core.orchestrator import TranslationResult
-    from app.models.execution.combase import ComBaseExecutionResult, ComBaseModelResult
+    from predictive.models.execution.combase import (
+        ComBaseExecutionResult,
+        ComBaseModelResult,
+    )
 
     # Create mock state
     state = SessionState(user_input="test query")
@@ -48,8 +52,11 @@ def mock_translation_result():
         engine_type=EngineType.COMBASE_LOCAL,
     )
 
-    from app.models.execution.base import TimeTemperatureProfile, TimeTemperatureStep
-    from app.models.execution.combase import (
+    from predictive.models.execution.base import (
+        TimeTemperatureProfile,
+        TimeTemperatureStep,
+    )
+    from predictive.models.execution.combase import (
         ComBaseExecutionPayload,
         ComBaseModelSelection,
         ComBaseParameters,
@@ -553,17 +560,6 @@ class TestVerboseAudit:
         every block of _build_audit_detail.
         """
         from app.core.orchestrator import TranslationResult
-        from app.models.execution.base import (
-            TimeTemperatureProfile,
-            TimeTemperatureStep,
-        )
-        from app.models.execution.combase import (
-            ComBaseExecutionPayload,
-            ComBaseExecutionResult,
-            ComBaseModelResult,
-            ComBaseModelSelection,
-            ComBaseParameters,
-        )
         from app.models.metadata import (
             ComBaseModelAudit,
             DefaultImputed,
@@ -572,6 +568,17 @@ class TestVerboseAudit:
             SystemAudit,
             ValueProvenance,
             ValueSource,
+        )
+        from predictive.models.execution.base import (
+            TimeTemperatureProfile,
+            TimeTemperatureStep,
+        )
+        from predictive.models.execution.combase import (
+            ComBaseExecutionPayload,
+            ComBaseExecutionResult,
+            ComBaseModelResult,
+            ComBaseModelSelection,
+            ComBaseParameters,
         )
 
         state = SessionState(user_input="slice of white bread left out")
@@ -872,17 +879,6 @@ class TestVerboseAudit:
         doc had pH but a blank aw field, so the fallback fired for aw.
         """
         from app.core.orchestrator import TranslationResult
-        from app.models.execution.base import (
-            TimeTemperatureProfile,
-            TimeTemperatureStep,
-        )
-        from app.models.execution.combase import (
-            ComBaseExecutionPayload,
-            ComBaseExecutionResult,
-            ComBaseModelResult,
-            ComBaseModelSelection,
-            ComBaseParameters,
-        )
         from app.models.metadata import (
             ComBaseModelAudit,
             DefaultImputed,
@@ -890,6 +886,17 @@ class TestVerboseAudit:
             SystemAudit,
             ValueProvenance,
             ValueSource,
+        )
+        from predictive.models.execution.base import (
+            TimeTemperatureProfile,
+            TimeTemperatureStep,
+        )
+        from predictive.models.execution.combase import (
+            ComBaseExecutionPayload,
+            ComBaseExecutionResult,
+            ComBaseModelResult,
+            ComBaseModelSelection,
+            ComBaseParameters,
         )
 
         state = SessionState(user_input="raw chicken at 25C for 4 hours")
@@ -1084,17 +1091,6 @@ class TestVerboseAudit:
         and supplied pH 6.4.  This mirrors the Q04 chicken observation.
         """
         from app.core.orchestrator import TranslationResult
-        from app.models.execution.base import (
-            TimeTemperatureProfile,
-            TimeTemperatureStep,
-        )
-        from app.models.execution.combase import (
-            ComBaseExecutionPayload,
-            ComBaseExecutionResult,
-            ComBaseModelResult,
-            ComBaseModelSelection,
-            ComBaseParameters,
-        )
         from app.models.metadata import (
             ComBaseModelAudit,
             DefaultImputed,
@@ -1103,6 +1099,17 @@ class TestVerboseAudit:
             SystemAudit,
             ValueProvenance,
             ValueSource,
+        )
+        from predictive.models.execution.base import (
+            TimeTemperatureProfile,
+            TimeTemperatureStep,
+        )
+        from predictive.models.execution.combase import (
+            ComBaseExecutionPayload,
+            ComBaseExecutionResult,
+            ComBaseModelResult,
+            ComBaseModelSelection,
+            ComBaseParameters,
         )
 
         state = SessionState(user_input="raw chicken at room temperature")
@@ -1229,17 +1236,6 @@ class TestVerboseAudit:
         mapping path in translation.py.
         """
         from app.core.orchestrator import TranslationResult
-        from app.models.execution.base import (
-            TimeTemperatureProfile,
-            TimeTemperatureStep,
-        )
-        from app.models.execution.combase import (
-            ComBaseExecutionPayload,
-            ComBaseExecutionResult,
-            ComBaseModelResult,
-            ComBaseModelSelection,
-            ComBaseParameters,
-        )
         from app.models.metadata import (
             ComBaseModelAudit,
             DefaultImputed,
@@ -1248,6 +1244,17 @@ class TestVerboseAudit:
             SystemAudit,
             ValueProvenance,
             ValueSource,
+        )
+        from predictive.models.execution.base import (
+            TimeTemperatureProfile,
+            TimeTemperatureStep,
+        )
+        from predictive.models.execution.combase import (
+            ComBaseExecutionPayload,
+            ComBaseExecutionResult,
+            ComBaseModelResult,
+            ComBaseModelSelection,
+            ComBaseParameters,
         )
 
         state = SessionState(user_input="exotic fermented food")
@@ -1466,23 +1473,23 @@ class TestAuditPostStandardization:
         selecting the upper bound (6.2) for a growth model.
         """
         from app.core.orchestrator import TranslationResult
-        from app.models.execution.base import (
-            TimeTemperatureProfile,
-            TimeTemperatureStep,
-        )
-        from app.models.execution.combase import (
-            ComBaseExecutionPayload,
-            ComBaseExecutionResult,
-            ComBaseModelResult,
-            ComBaseModelSelection,
-            ComBaseParameters,
-        )
         from app.models.metadata import (
             ComBaseModelAudit,
             RangeBoundSelection,
             SystemAudit,
             ValueProvenance,
             ValueSource,
+        )
+        from predictive.models.execution.base import (
+            TimeTemperatureProfile,
+            TimeTemperatureStep,
+        )
+        from predictive.models.execution.combase import (
+            ComBaseExecutionPayload,
+            ComBaseExecutionResult,
+            ComBaseModelResult,
+            ComBaseModelSelection,
+            ComBaseParameters,
         )
 
         state = SessionState(user_input="white bread query")
@@ -1598,23 +1605,23 @@ class TestAuditPostStandardization:
         Temperature inferred via rule ("sitting out" → 25°C).
         """
         from app.core.orchestrator import TranslationResult
-        from app.models.execution.base import (
-            TimeTemperatureProfile,
-            TimeTemperatureStep,
-        )
-        from app.models.execution.combase import (
-            ComBaseExecutionPayload,
-            ComBaseExecutionResult,
-            ComBaseModelResult,
-            ComBaseModelSelection,
-            ComBaseParameters,
-        )
         from app.models.metadata import (
             ComBaseModelAudit,
             DefaultImputed,
             SystemAudit,
             ValueProvenance,
             ValueSource,
+        )
+        from predictive.models.execution.base import (
+            TimeTemperatureProfile,
+            TimeTemperatureStep,
+        )
+        from predictive.models.execution.combase import (
+            ComBaseExecutionPayload,
+            ComBaseExecutionResult,
+            ComBaseModelResult,
+            ComBaseModelSelection,
+            ComBaseParameters,
         )
 
         state = SessionState(user_input="cooked rice query")
@@ -1842,23 +1849,23 @@ class TestDefaultedWithRetrieval:
         The retrieval records carry attempted_top with the best-rejected doc.
         """
         from app.core.orchestrator import TranslationResult
-        from app.models.execution.base import (
-            TimeTemperatureProfile,
-            TimeTemperatureStep,
-        )
-        from app.models.execution.combase import (
-            ComBaseExecutionPayload,
-            ComBaseExecutionResult,
-            ComBaseModelResult,
-            ComBaseModelSelection,
-            ComBaseParameters,
-        )
         from app.models.metadata import (
             ComBaseModelAudit,
             DefaultImputed,
             RetrievalResult,
             SkippedDocInfo,
             SystemAudit,
+        )
+        from predictive.models.execution.base import (
+            TimeTemperatureProfile,
+            TimeTemperatureStep,
+        )
+        from predictive.models.execution.combase import (
+            ComBaseExecutionPayload,
+            ComBaseExecutionResult,
+            ComBaseModelResult,
+            ComBaseModelSelection,
+            ComBaseParameters,
         )
 
         state = SessionState(user_input="zarblax burger at 25C for 4 hours")
@@ -2106,11 +2113,11 @@ class TestDefaultedWithRetrieval:
         meta.system = SystemAudit(ptm_version="test")
         state.metadata = meta
 
-        from app.models.execution.base import (
+        from predictive.models.execution.base import (
             TimeTemperatureProfile,
             TimeTemperatureStep,
         )
-        from app.models.execution.combase import (
+        from predictive.models.execution.combase import (
             ComBaseExecutionPayload,
             ComBaseExecutionResult,
             ComBaseModelResult,

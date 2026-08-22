@@ -35,7 +35,7 @@ from app.config.rules import (
     find_duration_interpretation,
     find_temperature_interpretation_with_fallback,
 )
-from app.models.enums import ComBaseOrganism, OrganismGroundingFailureStage
+from app.models.enums import OrganismGroundingFailureStage
 from app.models.extraction import (
     ExtractedDuration,
     ExtractedEnvironmentalConditions,
@@ -58,6 +58,7 @@ from app.rag.retrieval import RetrievalResponse, RetrievalService, get_retrieval
 from app.services.audit.citations import get_full_citations
 from app.services.grounding.taxonomy_bridge import TaxonomyBridge
 from app.services.llm.client import LLMClient, get_llm_client
+from predictive.models.enums import ComBaseOrganism
 
 logger = logging.getLogger(__name__)
 

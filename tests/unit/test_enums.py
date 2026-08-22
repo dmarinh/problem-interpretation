@@ -2,7 +2,7 @@
 Unit tests for core enums.
 """
 
-from app.models.enums import (
+from predictive.models.enums import (
     ComBaseOrganism,
     EngineType,
     Factor4Type,

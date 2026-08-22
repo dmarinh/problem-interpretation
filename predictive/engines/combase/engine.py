@@ -8,12 +8,12 @@ Executes predictions using loaded model coefficients.
 import math
 from pathlib import Path
 
-from app.engines.base import BaseEngine
-from app.engines.combase.calculator import CalculationResult, ComBaseCalculator
-from app.engines.combase.models import ComBaseModelRegistry
-from app.models.enums import EngineType
-from app.models.execution.base import GrowthPrediction
-from app.models.execution.combase import (
+from predictive.engines.base import BaseEngine
+from predictive.engines.combase.calculator import CalculationResult, ComBaseCalculator
+from predictive.engines.combase.models import ComBaseModelRegistry
+from predictive.models.enums import EngineType
+from predictive.models.execution.base import GrowthPrediction
+from predictive.models.execution.combase import (
     ComBaseExecutionPayload,
     ComBaseExecutionResult,
     ComBaseModelResult,

@@ -18,7 +18,7 @@ populate_store = False
 
 async def main():
     from app.core.orchestrator import Orchestrator
-    from app.engines.combase.engine import ComBaseEngine
+    from predictive.engines.combase.engine import ComBaseEngine
     from app.rag.vector_store import get_vector_store
     from app.rag.ingestion import IngestionPipeline
     

@@ -14,7 +14,6 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from app.models.enums import ComBaseOrganism, ModelType
 from app.models.extraction import (
     ExtractedDuration,
     ExtractedEnvironmentalConditions,
@@ -28,6 +27,7 @@ from app.services.grounding.grounding_service import (
     GroundingService,
 )
 from app.services.standardization.standardization_service import StandardizationService
+from predictive.models.enums import ComBaseOrganism, ModelType
 
 # =============================================================================
 # HELPERS

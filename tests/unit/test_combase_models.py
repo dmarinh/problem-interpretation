@@ -6,12 +6,12 @@ from pathlib import Path
 
 import pytest
 
-from app.engines.combase.models import (
+from predictive.engines.combase.models import (
     ComBaseModelConstraints,
     ComBaseModelRegistry,
     _parse_coefficients,
 )
-from app.models.enums import ComBaseOrganism, Factor4Type, ModelType
+from predictive.models.enums import ComBaseOrganism, Factor4Type, ModelType
 
 
 class TestComBaseModelConstraints:

@@ -39,7 +39,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.models.enums import ComBaseOrganism, ModelType
 from app.models.extraction import (
     ExtractedDuration,
     ExtractedEnvironmentalConditions,
@@ -50,6 +49,7 @@ from app.models.metadata import ValueSource
 from app.services.grounding.grounding_service import GroundedValues, GroundingService
 from app.services.grounding.taxonomy_bridge import TaxonomyBridge
 from app.services.standardization.standardization_service import StandardizationService
+from predictive.models.enums import ComBaseOrganism, ModelType
 
 # ---------------------------------------------------------------------------
 # Helpers

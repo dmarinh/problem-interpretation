@@ -17,16 +17,17 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.stdout.reconfigure(encoding="utf-8")
 
 from dotenv import load_dotenv
+
 load_dotenv()
 
 
 async def main():
-    from app.core.log_config import setup_logging, get_logger
+    from app.core.log_config import get_logger, setup_logging
     setup_logging()
 
     from app.core.orchestrator import get_orchestrator, reset_orchestrator
-    from app.engines.combase.engine import get_combase_engine
     from app.rag.vector_store import get_vector_store
+    from predictive.engines.combase.engine import get_combase_engine
 
     print("=" * 70)
     print("MULTI-STEP TEMPERATURE PIPELINE TEST")

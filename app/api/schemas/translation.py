@@ -11,11 +11,11 @@ from pydantic import BaseModel, Field
 
 from app.models.enums import (
     ClarificationReason,
-    ModelType,
     OrganismGroundingFailureStage,
     SessionStatus,
 )
 from app.models.metadata import ClarificationTranscript, DurationClarificationReply
+from predictive.models.enums import ModelType
 
 # =============================================================================
 # REQUEST

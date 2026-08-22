@@ -25,8 +25,8 @@ Where:
 import math
 from dataclasses import dataclass
 
-from app.engines.combase.models import ComBaseModel
-from app.models.enums import Factor4Type, ModelType
+from predictive.engines.combase.models import ComBaseModel
+from predictive.models.enums import Factor4Type, ModelType
 
 
 @dataclass

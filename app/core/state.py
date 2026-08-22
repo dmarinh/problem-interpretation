@@ -10,13 +10,16 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 from app.models.enums import IntentType, SessionStatus
-from app.models.execution.combase import ComBaseExecutionPayload, ComBaseExecutionResult
 from app.models.extraction import ExtractedIntent, ExtractedScenario
 from app.models.metadata import (
     ClarificationQuestion,
     DurationClarificationQuestion,
     InterpretationMetadata,
     ValueProvenance,
+)
+from predictive.models.execution.combase import (
+    ComBaseExecutionPayload,
+    ComBaseExecutionResult,
 )
 
 

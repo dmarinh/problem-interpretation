@@ -31,7 +31,7 @@ async def lifespan(app: FastAPI):
 
     # Initialize ComBase engine
     try:
-        from app.engines.combase.engine import get_combase_engine
+        from predictive.engines.combase.engine import get_combase_engine
 
         engine = get_combase_engine()
 

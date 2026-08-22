@@ -7,7 +7,7 @@ edge cases using synthetic injected dicts (no filesystem reads).
 
 from unittest.mock import AsyncMock, MagicMock
 
-from app.models.enums import ComBaseOrganism, OrganismGroundingFailureStage
+from app.models.enums import OrganismGroundingFailureStage
 from app.models.metadata import ValueSource
 from app.services.audit.citations import get_full_citations
 from app.services.grounding.grounding_service import (
@@ -15,6 +15,7 @@ from app.services.grounding.grounding_service import (
     GroundedValues,
     GroundingService,
 )
+from predictive.models.enums import ComBaseOrganism
 
 # ---------------------------------------------------------------------------
 # Helpers
