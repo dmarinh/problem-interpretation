@@ -14,7 +14,15 @@ from predictive.models.enums import ComBaseOrganism, Factor4Type, ModelType
 
 
 class ComBaseModelConstraints(BaseModel):
-    """Valid parameter ranges for a ComBase model."""
+    """
+    Valid parameter ranges for a ComBase model.
+
+    Facts only, by design: the bounds and a validity check. No clamp
+    action — the engine reports range facts and leaves the clamp policy
+    (arithmetic, conservative direction, audit emission) to the consumer.
+    PTM's StandardizationService owns that policy; see
+    _clamp_to_constraints() there.
+    """
 
     temp_min: float = Field(description="Minimum valid temperature (°C)")
     temp_max: float = Field(description="Maximum valid temperature (°C)")
@@ -42,24 +50,6 @@ class ComBaseModelConstraints(BaseModel):
         if self.factor4_min is None or self.factor4_max is None:
             return True  # No factor4 for this model
         return self.factor4_min <= value <= self.factor4_max
-
-    def clamp_temperature(self, temp: float) -> float:
-        """Clamp temperature to valid range."""
-        return max(self.temp_min, min(temp, self.temp_max))
-
-    def clamp_ph(self, ph: float) -> float:
-        """Clamp pH to valid range."""
-        return max(self.ph_min, min(ph, self.ph_max))
-
-    def clamp_aw(self, aw: float) -> float:
-        """Clamp water activity to valid range."""
-        return max(self.aw_min, min(aw, self.aw_max))
-
-    def clamp_factor4(self, value: float) -> float:
-        """Clamp factor4 to valid range."""
-        if self.factor4_min is None or self.factor4_max is None:
-            return value
-        return max(self.factor4_min, min(value, self.factor4_max))
 
 
 class ComBaseModelDefaults(BaseModel):

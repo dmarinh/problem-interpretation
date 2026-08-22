@@ -32,21 +32,6 @@ class TestComBaseModelConstraints:
         assert constraints.is_temperature_valid(4.0) is False
         assert constraints.is_temperature_valid(41.0) is False
 
-    def test_clamping(self):
-        """Should clamp values to valid range."""
-        constraints = ComBaseModelConstraints(
-            temp_min=5.0,
-            temp_max=40.0,
-            ph_min=4.0,
-            ph_max=8.0,
-            aw_min=0.9,
-            aw_max=1.0,
-        )
-
-        assert constraints.clamp_temperature(50.0) == 40.0
-        assert constraints.clamp_temperature(0.0) == 5.0
-        assert constraints.clamp_ph(3.0) == 4.0
-
 
 class TestParseCoefficients:
     """Tests for coefficient parsing."""

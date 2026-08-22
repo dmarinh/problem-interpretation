@@ -305,7 +305,6 @@ class StandardizationService:
         label: str,
         value: float,
         is_valid: Callable[[float], bool],
-        clamp: Callable[[float], float],
         valid_min: float,
         valid_max: float,
         reason: str,
@@ -314,22 +313,31 @@ class StandardizationService:
         """
         Shared clamp-and-audit block for a scalar model input.
 
-        Checks is_valid(value); if invalid, clamps via clamp(value), records a
-        RangeClamp (field_name, original_value, clamped_value, valid_min,
-        valid_max, reason) and a warning string on result, and returns the
-        clamped value. Returns value unchanged when already valid.
+        Checks is_valid(value) — the engine's read-only fact — and, if
+        invalid, clamps via plain max(min, min(v, max)) arithmetic against
+        the bounds the caller already passed in. Records a RangeClamp
+        (field_name, original_value, clamped_value, valid_min, valid_max,
+        reason) and a warning string on result, and returns the clamped
+        value. Returns value unchanged when already valid.
 
-        Field-specific behavior (which ComBaseModelConstraints method to call,
-        the reason text, the warning's units) is entirely supplied by the
-        caller, so wording is parameterised per field, not normalised across
-        them — e.g. temperature's "°C" survives via unit_suffix, pH/aw's
-        static "Model constraint" reason survives as a plain string.
+        The clamp arithmetic is owned here, not by the engine: the engine
+        exposes range facts (is_valid, the bounds) and nothing else — no
+        clamp action for a consumer to call. This is the one and only place
+        PTM computes a clamped value; every caller of this helper (and the
+        hand-inlined multi-step temperature clamp below, same formula)
+        shares this single implementation of the policy.
+
+        Field-specific behavior (which fact method to call, the reason text,
+        the warning's units) is entirely supplied by the caller, so wording
+        is parameterised per field, not normalised across them — e.g.
+        temperature's "°C" survives via unit_suffix, pH/aw's static "Model
+        constraint" reason survives as a plain string.
         """
         if is_valid(value):
             return value
 
         original = value
-        clamped_value = clamp(value)
+        clamped_value = max(valid_min, min(value, valid_max))
         result.range_clamps.append(
             RangeClamp(
                 field_name=field_name,
@@ -477,7 +485,6 @@ class StandardizationService:
             label=field_name.replace("_", " "),
             value=factor4_value,
             is_valid=constraints.is_factor4_valid,
-            clamp=constraints.clamp_factor4,
             valid_min=constraints.factor4_min,
             valid_max=constraints.factor4_max,
             reason="Model constraint",
@@ -547,7 +554,6 @@ class StandardizationService:
                 label="Temperature",
                 value=temp,
                 is_valid=constraints.is_temperature_valid,
-                clamp=constraints.clamp_temperature,
                 valid_min=constraints.temp_min,
                 valid_max=constraints.temp_max,
                 reason=f"Model constraint for {model_type.value}",
@@ -693,7 +699,6 @@ class StandardizationService:
                 label="pH",
                 value=ph,
                 is_valid=constraints.is_ph_valid,
-                clamp=constraints.clamp_ph,
                 valid_min=constraints.ph_min,
                 valid_max=constraints.ph_max,
                 reason="Model constraint",
@@ -783,7 +788,6 @@ class StandardizationService:
                 label="Water activity",
                 value=aw,
                 is_valid=constraints.is_aw_valid,
-                clamp=constraints.clamp_aw,
                 valid_min=constraints.aw_min,
                 valid_max=constraints.aw_max,
                 reason="Model constraint",
@@ -899,7 +903,7 @@ class StandardizationService:
 
             if constraints and not constraints.is_temperature_valid(temp):
                 original = temp
-                temp = constraints.clamp_temperature(temp)
+                temp = max(constraints.temp_min, min(temp, constraints.temp_max))
                 result.range_clamps.append(
                     RangeClamp(
                         field_name=f"temperature_celsius (step {gs.step_order})",
