@@ -90,36 +90,22 @@ class TestComBaseCalculator:
         assert result.doubling_time_hours is None  # Not applicable
         assert result.model_type == ModelType.THERMAL_INACTIVATION
 
-    def test_clamping_out_of_range(self, listeria_growth_model):
-        """Should clamp values outside valid range."""
+    def test_out_of_range_is_reported_not_clamped(self, listeria_growth_model):
+        """calculate() assumes pre-clamped input (StandardizationService's job) --
+        an out-of-range value is flagged via within_range/warnings but the
+        engine never clamps it itself. Engine exposes range facts only; the
+        caller owns clamp policy."""
         calc = ComBaseCalculator(listeria_growth_model)
 
-        # Temperature way outside range
         result = calc.calculate(
             temperature=100.0,  # Way too high
             ph=7.0,
             aw=0.99,
-            clamp_to_range=True,
-        )
-
-        assert result.within_range is False
-        assert len(result.warnings) > 0
-        assert result.temperature == listeria_growth_model.constraints.temp_max
-
-    def test_no_clamping_when_disabled(self, listeria_growth_model):
-        """Should not clamp when disabled."""
-        calc = ComBaseCalculator(listeria_growth_model)
-
-        result = calc.calculate(
-            temperature=100.0,
-            ph=7.0,
-            aw=0.99,
-            clamp_to_range=False,
         )
 
         assert result.temperature == 100.0  # Not clamped
         assert result.within_range is False
-        assert len(result.warnings) != 0
+        assert len(result.warnings) > 0
 
     def test_bw_calculation_growth(self, listeria_growth_model):
         """Growth model should use bw = sqrt(1 - aw)."""

@@ -82,17 +82,22 @@ class ComBaseCalculator:
         ph: float,
         aw: float,
         factor4_value: float = 0.0,
-        clamp_to_range: bool = False,
     ) -> CalculationResult:
         """
         Calculate mu (growth rate) and doubling time.
+
+        Assumes inputs are already within the model's valid range — the
+        caller (PTM's StandardizationService) is responsible for clamping
+        before calling. This method still validates and reports (via
+        within_range / warnings) so an out-of-range input is never silently
+        evaluated without disclosure, but it does not clamp: the engine
+        exposes range facts only, the caller owns the clamp policy.
 
         Args:
             temperature: Temperature in Celsius
             ph: pH value
             aw: Water activity (0-1)
             factor4_value: Fourth factor value (0 if not applicable)
-            clamp_to_range: Whether to clamp inputs to valid range
 
         Returns:
             CalculationResult with mu, doubling time, and metadata
@@ -103,54 +108,30 @@ class ComBaseCalculator:
         # Always validate range
         if not self.constraints.is_temperature_valid(temperature):
             within_range = False
-            if clamp_to_range:
-                warnings.append(
-                    f"Temperature {temperature}°C clamped to [{self.constraints.temp_min}, {self.constraints.temp_max}]"
-                )
-                temperature = self.constraints.clamp_temperature(temperature)
-            else:
-                warnings.append(
-                    f"Temperature {temperature}°C outside valid range [{self.constraints.temp_min}, {self.constraints.temp_max}]"
-                )
+            warnings.append(
+                f"Temperature {temperature}°C outside valid range [{self.constraints.temp_min}, {self.constraints.temp_max}]"
+            )
 
         if not self.constraints.is_ph_valid(ph):
             within_range = False
-            if clamp_to_range:
-                warnings.append(
-                    f"pH {ph} clamped to [{self.constraints.ph_min}, {self.constraints.ph_max}]"
-                )
-                ph = self.constraints.clamp_ph(ph)
-            else:
-                warnings.append(
-                    f"pH {ph} outside valid range [{self.constraints.ph_min}, {self.constraints.ph_max}]"
-                )
+            warnings.append(
+                f"pH {ph} outside valid range [{self.constraints.ph_min}, {self.constraints.ph_max}]"
+            )
 
         if not self.constraints.is_aw_valid(aw):
             within_range = False
-            if clamp_to_range:
-                warnings.append(
-                    f"Water activity {aw} clamped to [{self.constraints.aw_min}, {self.constraints.aw_max}]"
-                )
-                aw = self.constraints.clamp_aw(aw)
-            else:
-                warnings.append(
-                    f"Water activity {aw} outside valid range [{self.constraints.aw_min}, {self.constraints.aw_max}]"
-                )
+            warnings.append(
+                f"Water activity {aw} outside valid range [{self.constraints.aw_min}, {self.constraints.aw_max}]"
+            )
 
         if (
             self.model.factor4_type != Factor4Type.NONE
             and not self.constraints.is_factor4_valid(factor4_value)
         ):
             within_range = False
-            if clamp_to_range:
-                warnings.append(
-                    f"Factor4 {factor4_value} clamped to [{self.constraints.factor4_min}, {self.constraints.factor4_max}]"
-                )
-                factor4_value = self.constraints.clamp_factor4(factor4_value)
-            else:
-                warnings.append(
-                    f"Factor4 {factor4_value} outside valid range [{self.constraints.factor4_min}, {self.constraints.factor4_max}]"
-                )
+            warnings.append(
+                f"Factor4 {factor4_value} outside valid range [{self.constraints.factor4_min}, {self.constraints.factor4_max}]"
+            )
 
         # Calculate bw (water activity term) based on model type
         bw = self._calculate_bw(aw)

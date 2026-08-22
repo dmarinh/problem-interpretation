@@ -114,7 +114,6 @@ class ComBaseEngine(BaseEngine):
                 ph=payload.parameters.ph,
                 aw=payload.parameters.water_activity,
                 factor4_value=payload.parameters.factor4_value or 0.0,
-                clamp_to_range=False,
             )
 
             if first_calc_result is None:
