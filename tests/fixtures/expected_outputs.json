@@ -1,0 +1,1219 @@
+{
+  "clamped_temperature": {
+    "audit": {
+      "audit": {
+        "defaults_imputed": [
+          {
+            "default_value": 7.0,
+            "field_name": "ph",
+            "reason": "No pH specified. Bridge resolved food to category 'poultry' (state: 'fresh') but no curated pH data is available for that category/state. Using neutral default pH (7.0) \u2014 near-optimal for pathogen growth (conservative).",
+            "source": null
+          },
+          {
+            "default_value": 3.0,
+            "field_name": "initial_inoculum_log_cfu",
+            "reason": "No initial inoculum specified. Using model default (3.0 log CFU/g) from ComBase DefaultInoc.",
+            "source": null
+          }
+        ],
+        "range_clamps": [
+          {
+            "clamped_value": 40.0,
+            "field_name": "temperature_celsius",
+            "original_value": 50.0,
+            "reason": "Model constraint for growth",
+            "valid_max": 40.0,
+            "valid_min": 7.0
+          }
+        ],
+        "warnings": [
+          "Could not retrieve ph for 'chicken' from knowledge base (primary and fallback queries both below threshold)",
+          "Could not retrieve water_activity for 'chicken' from knowledge base (primary and fallback queries both below threshold)",
+          "Temperature 50.0\u00b0C is outside the model's valid range [7.0, 40.0]\u00b0C; clamped to 40.0\u00b0C. Prediction is at the model boundary."
+        ]
+      },
+      "combase_model": {
+        "coefficients_str": "-11.906;0.3649;1.7832;7.00019;-0.00442;0;0;-0.00458;-0.12539;-62.114;0;0;0;0;0",
+        "h0": 3.29,
+        "model_id": 1,
+        "model_type": "growth",
+        "organism": "SALMONELLA",
+        "organism_display_name": "Salmonellae",
+        "organism_id": "ss",
+        "selection_reason": "explicit model_type parameter override",
+        "valid_ranges": {
+          "ph": [
+            3.9,
+            7.4
+          ],
+          "temperature_celsius": [
+            7.0,
+            40.0
+          ],
+          "water_activity": [
+            0.973,
+            1.0
+          ]
+        },
+        "y_max": 19.6
+      },
+      "field_audit": {
+        "duration_minutes": {
+          "excluded_reason": null,
+          "extraction": {
+            "canonical_phrase": null,
+            "conservative": null,
+            "matched_pattern": null,
+            "method": "llm_extraction",
+            "notes": null,
+            "parsed_range": null,
+            "raw_match": null,
+            "similarity": null
+          },
+          "final_value": 120.0,
+          "pathogen_category_fallback": null,
+          "retrieval": null,
+          "source": "user_explicit",
+          "standardization": null
+        },
+        "initial_inoculum_log_cfu": {
+          "excluded_reason": null,
+          "extraction": null,
+          "final_value": 3.0,
+          "pathogen_category_fallback": null,
+          "retrieval": null,
+          "source": "conservative_default",
+          "standardization": {
+            "after_value": 3.0,
+            "before_value": null,
+            "direction": null,
+            "reason": "No initial inoculum specified. Using model default (3.0 log CFU/g) from ComBase DefaultInoc.",
+            "rule": "default_imputed"
+          }
+        },
+        "organism": {
+          "excluded_reason": null,
+          "extraction": {
+            "canonical_phrase": null,
+            "conservative": null,
+            "matched_pattern": null,
+            "method": "direct",
+            "notes": null,
+            "parsed_range": null,
+            "raw_match": null,
+            "similarity": null
+          },
+          "final_value": "Salmonellae",
+          "pathogen_category_fallback": null,
+          "retrieval": null,
+          "source": "user_explicit",
+          "standardization": null
+        },
+        "ph": {
+          "excluded_reason": null,
+          "extraction": null,
+          "final_value": 7.0,
+          "pathogen_category_fallback": null,
+          "retrieval": {
+            "attempted_top": null,
+            "query": "chicken pH acidity",
+            "reranker_top": null,
+            "runners_up": [],
+            "top_match": null
+          },
+          "source": "conservative_default",
+          "standardization": {
+            "after_value": 7.0,
+            "before_value": null,
+            "direction": null,
+            "reason": "No pH specified. Bridge resolved food to category 'poultry' (state: 'fresh') but no curated pH data is available for that category/state. Using neutral default pH (7.0) \u2014 near-optimal for pathogen growth (conservative).",
+            "rule": "default_imputed"
+          }
+        },
+        "temperature_celsius": {
+          "excluded_reason": null,
+          "extraction": {
+            "canonical_phrase": null,
+            "conservative": null,
+            "matched_pattern": null,
+            "method": "llm_extraction",
+            "notes": null,
+            "parsed_range": null,
+            "raw_match": null,
+            "similarity": null
+          },
+          "final_value": 40.0,
+          "pathogen_category_fallback": null,
+          "retrieval": null,
+          "source": "user_explicit",
+          "standardization": {
+            "after_value": 40.0,
+            "before_value": 50.0,
+            "direction": null,
+            "reason": "Model constraint for growth",
+            "rule": "range_clamp"
+          }
+        },
+        "water_activity": {
+          "excluded_reason": null,
+          "extraction": {
+            "canonical_phrase": null,
+            "conservative": null,
+            "matched_pattern": null,
+            "method": "taxonomy_bridge",
+            "notes": null,
+            "parsed_range": [
+              0.99,
+              1.0
+            ],
+            "raw_match": null,
+            "similarity": null
+          },
+          "final_value": 1.0,
+          "pathogen_category_fallback": null,
+          "retrieval": null,
+          "source": "rag_retrieval_category_bridge",
+          "standardization": {
+            "after_value": 1.0,
+            "before_value": [
+              0.99,
+              1.0
+            ],
+            "direction": "upper",
+            "reason": "Range narrowed to upper bound for growth model (more pathogen growth/survival = more conservative)",
+            "rule": "range_bound_selection"
+          }
+        }
+      },
+      "system": {
+        "combase_model_table_hash": "87546d35af5755b1",
+        "ptm_version": "aad8d92",
+        "rag_ingested_at": "2026-05-08T07:59:05.965827+00:00",
+        "rag_store_hash": "0ce41a51b0f6ff1a",
+        "source_csv_audit_date": "2026-05-06T09:53:36.217081+00:00"
+      }
+    },
+    "clarification": null,
+    "completed_at": "2026-08-22T10:37:52.483134",
+    "created_at": "2026-08-22T10:37:52.397439",
+    "duration_clarification": null,
+    "error": null,
+    "original_query": "Raw chicken at 50C for 2 hours",
+    "prediction": {
+      "doubling_time_hours": 0.43639699078867156,
+      "duration_minutes": 120.0,
+      "engine": "combase_local",
+      "final_log_cfu": 4.379615359491592,
+      "growth_description": "Significant growth: 1.4 log increase (~24x population)",
+      "h0": 3.29,
+      "initial_log_cfu": 3.0,
+      "is_multi_step": false,
+      "model_type": "growth",
+      "mu_max": 1.5883408804154813,
+      "organism": "SALMONELLA",
+      "ph": 7.0,
+      "step_predictions": [
+        {
+          "duration_minutes": 120.0,
+          "log_increase": 1.3796153594915925,
+          "mu_max": 1.5883408804154813,
+          "step_order": 1,
+          "temperature_celsius": 40.0
+        }
+      ],
+      "steps": [
+        {
+          "duration_minutes": 120.0,
+          "step_order": 1,
+          "temperature_celsius": 40.0
+        }
+      ],
+      "temperature_celsius": 40.0,
+      "total_log_increase": 1.3796153594915925,
+      "water_activity": 1.0,
+      "y_max": 19.6
+    },
+    "provenance": [
+      {
+        "field": "organism",
+        "notes": "Extracted via direct",
+        "source": "user_explicit",
+        "value": "Salmonellae"
+      },
+      {
+        "field": "water_activity",
+        "notes": "Range [0.99, 1.0] \u2192 selected upper bound 1.0 (Range narrowed to upper bound for growth model (more pathogen growth/survival = more conservative))",
+        "source": "rag_retrieval_category_bridge",
+        "value": "1.0"
+      },
+      {
+        "field": "temperature_celsius",
+        "notes": "Clamped 50.0 \u2192 40.0: Model constraint for growth",
+        "source": "user_explicit",
+        "value": "40.0"
+      },
+      {
+        "field": "duration_minutes",
+        "notes": "Extracted via llm_extraction",
+        "source": "user_explicit",
+        "value": "120.0"
+      },
+      {
+        "field": "ph",
+        "notes": "No pH specified. Bridge resolved food to category 'poultry' (state: 'fresh') but no curated pH data is available for that category/state. Using neutral default pH (7.0) \u2014 near-optimal for pathogen growth (conservative).",
+        "source": "conservative_default",
+        "value": "7.0"
+      },
+      {
+        "field": "initial_inoculum_log_cfu",
+        "notes": "No initial inoculum specified. Using model default (3.0 log CFU/g) from ComBase DefaultInoc.",
+        "source": "conservative_default",
+        "value": "3.0"
+      }
+    ],
+    "session_id": "389d4a25-8357-41d4-b29c-40ec25932cfa",
+    "status": "completed",
+    "success": true,
+    "warnings": [
+      {
+        "field": "temperature_celsius",
+        "message": "Value 50.0 clamped to 40.0 (valid range: 7.0-40.0)",
+        "type": "range_clamp"
+      },
+      {
+        "field": null,
+        "message": "Could not retrieve ph for 'chicken' from knowledge base (primary and fallback queries both below threshold)",
+        "type": "warning"
+      },
+      {
+        "field": null,
+        "message": "Could not retrieve water_activity for 'chicken' from knowledge base (primary and fallback queries both below threshold)",
+        "type": "warning"
+      },
+      {
+        "field": null,
+        "message": "Temperature 50.0\u00b0C is outside the model's valid range [7.0, 40.0]\u00b0C; clamped to 40.0\u00b0C. Prediction is at the model boundary.",
+        "type": "warning"
+      }
+    ]
+  },
+  "clean_growth": {
+    "audit": {
+      "audit": {
+        "defaults_imputed": [
+          {
+            "default_value": 7.0,
+            "field_name": "ph",
+            "reason": "No pH specified. Bridge resolved food to category 'poultry' (state: 'fresh') but no curated pH data is available for that category/state. Using neutral default pH (7.0) \u2014 near-optimal for pathogen growth (conservative).",
+            "source": null
+          },
+          {
+            "default_value": 3.0,
+            "field_name": "initial_inoculum_log_cfu",
+            "reason": "No initial inoculum specified. Using model default (3.0 log CFU/g) from ComBase DefaultInoc.",
+            "source": null
+          }
+        ],
+        "range_clamps": [],
+        "warnings": [
+          "Could not retrieve ph for 'chicken' from knowledge base (primary and fallback queries both below threshold)",
+          "Could not retrieve water_activity for 'chicken' from knowledge base (primary and fallback queries both below threshold)"
+        ]
+      },
+      "combase_model": {
+        "coefficients_str": "-11.906;0.3649;1.7832;7.00019;-0.00442;0;0;-0.00458;-0.12539;-62.114;0;0;0;0;0",
+        "h0": 3.29,
+        "model_id": 1,
+        "model_type": "growth",
+        "organism": "SALMONELLA",
+        "organism_display_name": "Salmonellae",
+        "organism_id": "ss",
+        "selection_reason": "explicit model_type parameter override",
+        "valid_ranges": {
+          "ph": [
+            3.9,
+            7.4
+          ],
+          "temperature_celsius": [
+            7.0,
+            40.0
+          ],
+          "water_activity": [
+            0.973,
+            1.0
+          ]
+        },
+        "y_max": 19.6
+      },
+      "field_audit": {
+        "duration_minutes": {
+          "excluded_reason": null,
+          "extraction": {
+            "canonical_phrase": null,
+            "conservative": null,
+            "matched_pattern": null,
+            "method": "llm_extraction",
+            "notes": null,
+            "parsed_range": null,
+            "raw_match": null,
+            "similarity": null
+          },
+          "final_value": 180.0,
+          "pathogen_category_fallback": null,
+          "retrieval": null,
+          "source": "user_explicit",
+          "standardization": null
+        },
+        "initial_inoculum_log_cfu": {
+          "excluded_reason": null,
+          "extraction": null,
+          "final_value": 3.0,
+          "pathogen_category_fallback": null,
+          "retrieval": null,
+          "source": "conservative_default",
+          "standardization": {
+            "after_value": 3.0,
+            "before_value": null,
+            "direction": null,
+            "reason": "No initial inoculum specified. Using model default (3.0 log CFU/g) from ComBase DefaultInoc.",
+            "rule": "default_imputed"
+          }
+        },
+        "organism": {
+          "excluded_reason": null,
+          "extraction": {
+            "canonical_phrase": null,
+            "conservative": null,
+            "matched_pattern": null,
+            "method": "direct",
+            "notes": null,
+            "parsed_range": null,
+            "raw_match": null,
+            "similarity": null
+          },
+          "final_value": "Salmonellae",
+          "pathogen_category_fallback": null,
+          "retrieval": null,
+          "source": "user_explicit",
+          "standardization": null
+        },
+        "ph": {
+          "excluded_reason": null,
+          "extraction": null,
+          "final_value": 7.0,
+          "pathogen_category_fallback": null,
+          "retrieval": {
+            "attempted_top": null,
+            "query": "chicken pH acidity",
+            "reranker_top": null,
+            "runners_up": [],
+            "top_match": null
+          },
+          "source": "conservative_default",
+          "standardization": {
+            "after_value": 7.0,
+            "before_value": null,
+            "direction": null,
+            "reason": "No pH specified. Bridge resolved food to category 'poultry' (state: 'fresh') but no curated pH data is available for that category/state. Using neutral default pH (7.0) \u2014 near-optimal for pathogen growth (conservative).",
+            "rule": "default_imputed"
+          }
+        },
+        "temperature_celsius": {
+          "excluded_reason": null,
+          "extraction": {
+            "canonical_phrase": null,
+            "conservative": null,
+            "matched_pattern": null,
+            "method": "llm_extraction",
+            "notes": null,
+            "parsed_range": null,
+            "raw_match": null,
+            "similarity": null
+          },
+          "final_value": 25.0,
+          "pathogen_category_fallback": null,
+          "retrieval": null,
+          "source": "user_explicit",
+          "standardization": null
+        },
+        "water_activity": {
+          "excluded_reason": null,
+          "extraction": {
+            "canonical_phrase": null,
+            "conservative": null,
+            "matched_pattern": null,
+            "method": "taxonomy_bridge",
+            "notes": null,
+            "parsed_range": [
+              0.99,
+              1.0
+            ],
+            "raw_match": null,
+            "similarity": null
+          },
+          "final_value": 1.0,
+          "pathogen_category_fallback": null,
+          "retrieval": null,
+          "source": "rag_retrieval_category_bridge",
+          "standardization": {
+            "after_value": 1.0,
+            "before_value": [
+              0.99,
+              1.0
+            ],
+            "direction": "upper",
+            "reason": "Range narrowed to upper bound for growth model (more pathogen growth/survival = more conservative)",
+            "rule": "range_bound_selection"
+          }
+        }
+      },
+      "system": {
+        "combase_model_table_hash": "87546d35af5755b1",
+        "ptm_version": "aad8d92",
+        "rag_ingested_at": "2026-05-08T07:59:05.965827+00:00",
+        "rag_store_hash": "0ce41a51b0f6ff1a",
+        "source_csv_audit_date": "2026-05-06T09:53:36.217081+00:00"
+      }
+    },
+    "clarification": null,
+    "completed_at": "2026-08-22T10:37:50.247073",
+    "created_at": "2026-08-22T10:37:50.143169",
+    "duration_clarification": null,
+    "error": null,
+    "original_query": "Raw chicken at 25C for 3 hours",
+    "prediction": {
+      "doubling_time_hours": 0.7517864882233068,
+      "duration_minutes": 180.0,
+      "engine": "combase_local",
+      "final_log_cfu": 4.201258603524801,
+      "growth_description": "Significant growth: 1.2 log increase (~16x population)",
+      "h0": 3.29,
+      "initial_log_cfu": 3.0,
+      "is_multi_step": false,
+      "model_type": "growth",
+      "mu_max": 0.9220000511023502,
+      "organism": "SALMONELLA",
+      "ph": 7.0,
+      "step_predictions": [
+        {
+          "duration_minutes": 180.0,
+          "log_increase": 1.2012586035248005,
+          "mu_max": 0.9220000511023502,
+          "step_order": 1,
+          "temperature_celsius": 25.0
+        }
+      ],
+      "steps": [
+        {
+          "duration_minutes": 180.0,
+          "step_order": 1,
+          "temperature_celsius": 25.0
+        }
+      ],
+      "temperature_celsius": 25.0,
+      "total_log_increase": 1.2012586035248005,
+      "water_activity": 1.0,
+      "y_max": 19.6
+    },
+    "provenance": [
+      {
+        "field": "organism",
+        "notes": "Extracted via direct",
+        "source": "user_explicit",
+        "value": "Salmonellae"
+      },
+      {
+        "field": "water_activity",
+        "notes": "Range [0.99, 1.0] \u2192 selected upper bound 1.0 (Range narrowed to upper bound for growth model (more pathogen growth/survival = more conservative))",
+        "source": "rag_retrieval_category_bridge",
+        "value": "1.0"
+      },
+      {
+        "field": "temperature_celsius",
+        "notes": "Extracted via llm_extraction",
+        "source": "user_explicit",
+        "value": "25.0"
+      },
+      {
+        "field": "duration_minutes",
+        "notes": "Extracted via llm_extraction",
+        "source": "user_explicit",
+        "value": "180.0"
+      },
+      {
+        "field": "ph",
+        "notes": "No pH specified. Bridge resolved food to category 'poultry' (state: 'fresh') but no curated pH data is available for that category/state. Using neutral default pH (7.0) \u2014 near-optimal for pathogen growth (conservative).",
+        "source": "conservative_default",
+        "value": "7.0"
+      },
+      {
+        "field": "initial_inoculum_log_cfu",
+        "notes": "No initial inoculum specified. Using model default (3.0 log CFU/g) from ComBase DefaultInoc.",
+        "source": "conservative_default",
+        "value": "3.0"
+      }
+    ],
+    "session_id": "d03f0465-6e35-4a56-b031-9ba2fb07dacd",
+    "status": "completed",
+    "success": true,
+    "warnings": [
+      {
+        "field": null,
+        "message": "Could not retrieve ph for 'chicken' from knowledge base (primary and fallback queries both below threshold)",
+        "type": "warning"
+      },
+      {
+        "field": null,
+        "message": "Could not retrieve water_activity for 'chicken' from knowledge base (primary and fallback queries both below threshold)",
+        "type": "warning"
+      }
+    ]
+  },
+  "multi_step": {
+    "audit": {
+      "audit": {
+        "defaults_imputed": [
+          {
+            "default_value": 7.0,
+            "field_name": "ph",
+            "reason": "No pH specified. Bridge resolved food to category 'poultry' (state: 'fresh') but no curated pH data is available for that category/state. Using neutral default pH (7.0) \u2014 near-optimal for pathogen growth (conservative).",
+            "source": null
+          },
+          {
+            "default_value": 3.0,
+            "field_name": "initial_inoculum_log_cfu",
+            "reason": "No initial inoculum specified. Using model default (3.0 log CFU/g) from ComBase DefaultInoc.",
+            "source": null
+          }
+        ],
+        "range_clamps": [
+          {
+            "clamped_value": 7.0,
+            "field_name": "temperature_celsius (step 2)",
+            "original_value": 4.0,
+            "reason": "Model constraint for growth",
+            "valid_max": 40.0,
+            "valid_min": 7.0
+          }
+        ],
+        "warnings": [
+          "Could not retrieve ph for 'chicken' from knowledge base (primary and fallback queries both below threshold)",
+          "Could not retrieve water_activity for 'chicken' from knowledge base (primary and fallback queries both below threshold)",
+          "Step 2: temperature 4.0\u00b0C is outside the model's valid range [7.0, 40.0]\u00b0C; clamped to 7.0\u00b0C. Prediction is at the model boundary."
+        ]
+      },
+      "combase_model": {
+        "coefficients_str": "-11.906;0.3649;1.7832;7.00019;-0.00442;0;0;-0.00458;-0.12539;-62.114;0;0;0;0;0",
+        "h0": 3.29,
+        "model_id": 1,
+        "model_type": "growth",
+        "organism": "SALMONELLA",
+        "organism_display_name": "Salmonellae",
+        "organism_id": "ss",
+        "selection_reason": "explicit model_type parameter override",
+        "valid_ranges": {
+          "ph": [
+            3.9,
+            7.4
+          ],
+          "temperature_celsius": [
+            7.0,
+            40.0
+          ],
+          "water_activity": [
+            0.973,
+            1.0
+          ]
+        },
+        "y_max": 19.6
+      },
+      "field_audit": {
+        "duration_minutes (step 1)": {
+          "excluded_reason": null,
+          "extraction": {
+            "canonical_phrase": null,
+            "conservative": null,
+            "matched_pattern": null,
+            "method": "llm_extraction",
+            "notes": null,
+            "parsed_range": null,
+            "raw_match": null,
+            "similarity": null
+          },
+          "final_value": 60.0,
+          "pathogen_category_fallback": null,
+          "retrieval": null,
+          "source": "user_explicit",
+          "standardization": null
+        },
+        "duration_minutes (step 2)": {
+          "excluded_reason": null,
+          "extraction": {
+            "canonical_phrase": null,
+            "conservative": null,
+            "matched_pattern": null,
+            "method": "llm_extraction",
+            "notes": null,
+            "parsed_range": null,
+            "raw_match": null,
+            "similarity": null
+          },
+          "final_value": 240.0,
+          "pathogen_category_fallback": null,
+          "retrieval": null,
+          "source": "user_explicit",
+          "standardization": null
+        },
+        "initial_inoculum_log_cfu": {
+          "excluded_reason": null,
+          "extraction": null,
+          "final_value": 3.0,
+          "pathogen_category_fallback": null,
+          "retrieval": null,
+          "source": "conservative_default",
+          "standardization": {
+            "after_value": 3.0,
+            "before_value": null,
+            "direction": null,
+            "reason": "No initial inoculum specified. Using model default (3.0 log CFU/g) from ComBase DefaultInoc.",
+            "rule": "default_imputed"
+          }
+        },
+        "organism": {
+          "excluded_reason": null,
+          "extraction": {
+            "canonical_phrase": null,
+            "conservative": null,
+            "matched_pattern": null,
+            "method": "direct",
+            "notes": null,
+            "parsed_range": null,
+            "raw_match": null,
+            "similarity": null
+          },
+          "final_value": "Salmonellae",
+          "pathogen_category_fallback": null,
+          "retrieval": null,
+          "source": "user_explicit",
+          "standardization": null
+        },
+        "ph": {
+          "excluded_reason": null,
+          "extraction": null,
+          "final_value": 7.0,
+          "pathogen_category_fallback": null,
+          "retrieval": {
+            "attempted_top": null,
+            "query": "chicken pH acidity",
+            "reranker_top": null,
+            "runners_up": [],
+            "top_match": null
+          },
+          "source": "conservative_default",
+          "standardization": {
+            "after_value": 7.0,
+            "before_value": null,
+            "direction": null,
+            "reason": "No pH specified. Bridge resolved food to category 'poultry' (state: 'fresh') but no curated pH data is available for that category/state. Using neutral default pH (7.0) \u2014 near-optimal for pathogen growth (conservative).",
+            "rule": "default_imputed"
+          }
+        },
+        "temperature_celsius (step 1)": {
+          "excluded_reason": null,
+          "extraction": {
+            "canonical_phrase": null,
+            "conservative": null,
+            "matched_pattern": null,
+            "method": "llm_extraction",
+            "notes": null,
+            "parsed_range": null,
+            "raw_match": null,
+            "similarity": null
+          },
+          "final_value": 25.0,
+          "pathogen_category_fallback": null,
+          "retrieval": null,
+          "source": "user_explicit",
+          "standardization": null
+        },
+        "temperature_celsius (step 2)": {
+          "excluded_reason": null,
+          "extraction": {
+            "canonical_phrase": null,
+            "conservative": null,
+            "matched_pattern": null,
+            "method": "llm_extraction",
+            "notes": null,
+            "parsed_range": null,
+            "raw_match": null,
+            "similarity": null
+          },
+          "final_value": 7.0,
+          "pathogen_category_fallback": null,
+          "retrieval": null,
+          "source": "user_explicit",
+          "standardization": {
+            "after_value": 7.0,
+            "before_value": 4.0,
+            "direction": null,
+            "reason": "Model constraint for growth",
+            "rule": "range_clamp"
+          }
+        },
+        "water_activity": {
+          "excluded_reason": null,
+          "extraction": {
+            "canonical_phrase": null,
+            "conservative": null,
+            "matched_pattern": null,
+            "method": "taxonomy_bridge",
+            "notes": null,
+            "parsed_range": [
+              0.99,
+              1.0
+            ],
+            "raw_match": null,
+            "similarity": null
+          },
+          "final_value": 1.0,
+          "pathogen_category_fallback": null,
+          "retrieval": null,
+          "source": "rag_retrieval_category_bridge",
+          "standardization": {
+            "after_value": 1.0,
+            "before_value": [
+              0.99,
+              1.0
+            ],
+            "direction": "upper",
+            "reason": "Range narrowed to upper bound for growth model (more pathogen growth/survival = more conservative)",
+            "rule": "range_bound_selection"
+          }
+        }
+      },
+      "system": {
+        "combase_model_table_hash": "87546d35af5755b1",
+        "ptm_version": "aad8d92",
+        "rag_ingested_at": "2026-05-08T07:59:05.965827+00:00",
+        "rag_store_hash": "0ce41a51b0f6ff1a",
+        "source_csv_audit_date": "2026-05-06T09:53:36.217081+00:00"
+      }
+    },
+    "clarification": null,
+    "completed_at": "2026-08-22T10:37:54.754928",
+    "created_at": "2026-08-22T10:37:54.667687",
+    "duration_clarification": null,
+    "error": null,
+    "original_query": "Chicken at 25C for 1 hour then 4C for 4 hours",
+    "prediction": {
+      "doubling_time_hours": 0.7517864882233068,
+      "duration_minutes": 300.0,
+      "engine": "combase_local",
+      "final_log_cfu": 3.4553246869140186,
+      "growth_description": "Moderate growth: 0.5 log increase (~3x population)",
+      "h0": 3.29,
+      "initial_log_cfu": 3.0,
+      "is_multi_step": true,
+      "model_type": "growth",
+      "mu_max": 0.9220000511023502,
+      "organism": "SALMONELLA",
+      "ph": 7.0,
+      "step_predictions": [
+        {
+          "duration_minutes": 60.0,
+          "log_increase": 0.40041953450826684,
+          "mu_max": 0.9220000511023502,
+          "step_order": 1,
+          "temperature_celsius": 25.0
+        },
+        {
+          "duration_minutes": 240.0,
+          "log_increase": 0.05490515240575168,
+          "mu_max": 0.0316059463645125,
+          "step_order": 2,
+          "temperature_celsius": 7.0
+        }
+      ],
+      "steps": [
+        {
+          "duration_minutes": 60.0,
+          "step_order": 1,
+          "temperature_celsius": 25.0
+        },
+        {
+          "duration_minutes": 240.0,
+          "step_order": 2,
+          "temperature_celsius": 7.0
+        }
+      ],
+      "temperature_celsius": 25.0,
+      "total_log_increase": 0.4553246869140185,
+      "water_activity": 1.0,
+      "y_max": 19.6
+    },
+    "provenance": [
+      {
+        "field": "organism",
+        "notes": "Extracted via direct",
+        "source": "user_explicit",
+        "value": "Salmonellae"
+      },
+      {
+        "field": "water_activity",
+        "notes": "Range [0.99, 1.0] \u2192 selected upper bound 1.0 (Range narrowed to upper bound for growth model (more pathogen growth/survival = more conservative))",
+        "source": "rag_retrieval_category_bridge",
+        "value": "1.0"
+      },
+      {
+        "field": "temperature_celsius (step 1)",
+        "notes": "Extracted via llm_extraction",
+        "source": "user_explicit",
+        "value": "25.0"
+      },
+      {
+        "field": "duration_minutes (step 1)",
+        "notes": "Extracted via llm_extraction",
+        "source": "user_explicit",
+        "value": "60.0"
+      },
+      {
+        "field": "temperature_celsius (step 2)",
+        "notes": "Clamped 4.0 \u2192 7.0: Model constraint for growth",
+        "source": "user_explicit",
+        "value": "7.0"
+      },
+      {
+        "field": "duration_minutes (step 2)",
+        "notes": "Extracted via llm_extraction",
+        "source": "user_explicit",
+        "value": "240.0"
+      },
+      {
+        "field": "ph",
+        "notes": "No pH specified. Bridge resolved food to category 'poultry' (state: 'fresh') but no curated pH data is available for that category/state. Using neutral default pH (7.0) \u2014 near-optimal for pathogen growth (conservative).",
+        "source": "conservative_default",
+        "value": "7.0"
+      },
+      {
+        "field": "initial_inoculum_log_cfu",
+        "notes": "No initial inoculum specified. Using model default (3.0 log CFU/g) from ComBase DefaultInoc.",
+        "source": "conservative_default",
+        "value": "3.0"
+      }
+    ],
+    "session_id": "07957912-c3ef-469e-a54a-21ff56c152bc",
+    "status": "completed",
+    "success": true,
+    "warnings": [
+      {
+        "field": "temperature_celsius (step 2)",
+        "message": "Value 4.0 clamped to 7.0 (valid range: 7.0-40.0)",
+        "type": "range_clamp"
+      },
+      {
+        "field": null,
+        "message": "Could not retrieve ph for 'chicken' from knowledge base (primary and fallback queries both below threshold)",
+        "type": "warning"
+      },
+      {
+        "field": null,
+        "message": "Could not retrieve water_activity for 'chicken' from knowledge base (primary and fallback queries both below threshold)",
+        "type": "warning"
+      },
+      {
+        "field": null,
+        "message": "Step 2: temperature 4.0\u00b0C is outside the model's valid range [7.0, 40.0]\u00b0C; clamped to 7.0\u00b0C. Prediction is at the model boundary.",
+        "type": "warning"
+      }
+    ]
+  },
+  "thermal_inactivation": {
+    "audit": {
+      "audit": {
+        "defaults_imputed": [
+          {
+            "default_value": 7.0,
+            "field_name": "ph",
+            "reason": "No pH specified. Bridge resolved food to category 'poultry' (state: 'fresh') but no curated pH data is available for that category/state. Using neutral default pH (7.0) \u2014 near-optimal for pathogen growth (conservative).",
+            "source": null
+          },
+          {
+            "default_value": 0.0,
+            "field_name": "initial_inoculum_log_cfu",
+            "reason": "No initial inoculum specified. Using model default (0.0 log CFU/g) from ComBase DefaultInoc.",
+            "source": null
+          }
+        ],
+        "range_clamps": [
+          {
+            "clamped_value": 0.997,
+            "field_name": "water_activity",
+            "original_value": 0.99,
+            "reason": "Model constraint",
+            "valid_max": 1.0,
+            "valid_min": 0.997
+          }
+        ],
+        "warnings": [
+          "Could not retrieve ph for 'chicken' from knowledge base (primary and fallback queries both below threshold)",
+          "Could not retrieve water_activity for 'chicken' from knowledge base (primary and fallback queries both below threshold)",
+          "Water activity 0.99 is outside the model's valid range [0.997, 1.0]; clamped to 0.997. Prediction is at the model boundary."
+        ]
+      },
+      "combase_model": {
+        "coefficients_str": "8.1218;0;-5.94372;0;0.0900627;0;0;0;0;0;0;0;0;0;0",
+        "h0": 1.8,
+        "model_id": 2,
+        "model_type": "thermal_inactivation",
+        "organism": "SALMONELLA",
+        "organism_display_name": "salmonellae",
+        "organism_id": "ss",
+        "selection_reason": "explicit model_type parameter override",
+        "valid_ranges": {
+          "ph": [
+            4.0,
+            7.1
+          ],
+          "temperature_celsius": [
+            54.5,
+            65.0
+          ],
+          "water_activity": [
+            0.997,
+            1.0
+          ]
+        },
+        "y_max": -27.0
+      },
+      "field_audit": {
+        "duration_minutes": {
+          "excluded_reason": null,
+          "extraction": {
+            "canonical_phrase": null,
+            "conservative": null,
+            "matched_pattern": null,
+            "method": "llm_extraction",
+            "notes": null,
+            "parsed_range": null,
+            "raw_match": null,
+            "similarity": null
+          },
+          "final_value": 10.0,
+          "pathogen_category_fallback": null,
+          "retrieval": null,
+          "source": "user_explicit",
+          "standardization": null
+        },
+        "initial_inoculum_log_cfu": {
+          "excluded_reason": null,
+          "extraction": null,
+          "final_value": 0.0,
+          "pathogen_category_fallback": null,
+          "retrieval": null,
+          "source": "conservative_default",
+          "standardization": {
+            "after_value": 0.0,
+            "before_value": null,
+            "direction": null,
+            "reason": "No initial inoculum specified. Using model default (0.0 log CFU/g) from ComBase DefaultInoc.",
+            "rule": "default_imputed"
+          }
+        },
+        "organism": {
+          "excluded_reason": null,
+          "extraction": {
+            "canonical_phrase": null,
+            "conservative": null,
+            "matched_pattern": null,
+            "method": "direct",
+            "notes": null,
+            "parsed_range": null,
+            "raw_match": null,
+            "similarity": null
+          },
+          "final_value": "salmonellae",
+          "pathogen_category_fallback": null,
+          "retrieval": null,
+          "source": "user_explicit",
+          "standardization": null
+        },
+        "ph": {
+          "excluded_reason": null,
+          "extraction": null,
+          "final_value": 7.0,
+          "pathogen_category_fallback": null,
+          "retrieval": {
+            "attempted_top": null,
+            "query": "chicken pH acidity",
+            "reranker_top": null,
+            "runners_up": [],
+            "top_match": null
+          },
+          "source": "conservative_default",
+          "standardization": {
+            "after_value": 7.0,
+            "before_value": null,
+            "direction": null,
+            "reason": "No pH specified. Bridge resolved food to category 'poultry' (state: 'fresh') but no curated pH data is available for that category/state. Using neutral default pH (7.0) \u2014 near-optimal for pathogen growth (conservative).",
+            "rule": "default_imputed"
+          }
+        },
+        "temperature_celsius": {
+          "excluded_reason": null,
+          "extraction": {
+            "canonical_phrase": null,
+            "conservative": null,
+            "matched_pattern": null,
+            "method": "llm_extraction",
+            "notes": null,
+            "parsed_range": null,
+            "raw_match": null,
+            "similarity": null
+          },
+          "final_value": 60.0,
+          "pathogen_category_fallback": null,
+          "retrieval": null,
+          "source": "user_explicit",
+          "standardization": null
+        },
+        "water_activity": {
+          "excluded_reason": null,
+          "extraction": {
+            "canonical_phrase": null,
+            "conservative": null,
+            "matched_pattern": null,
+            "method": "taxonomy_bridge",
+            "notes": null,
+            "parsed_range": [
+              0.99,
+              1.0
+            ],
+            "raw_match": null,
+            "similarity": null
+          },
+          "final_value": 0.997,
+          "pathogen_category_fallback": null,
+          "retrieval": null,
+          "source": "rag_retrieval_category_bridge",
+          "standardization": {
+            "after_value": 0.997,
+            "before_value": 0.99,
+            "direction": null,
+            "reason": "Model constraint",
+            "rule": "range_clamp"
+          }
+        }
+      },
+      "system": {
+        "combase_model_table_hash": "87546d35af5755b1",
+        "ptm_version": "aad8d92",
+        "rag_ingested_at": "2026-05-08T07:59:05.965827+00:00",
+        "rag_store_hash": "0ce41a51b0f6ff1a",
+        "source_csv_audit_date": "2026-05-06T09:53:36.217081+00:00"
+      }
+    },
+    "clarification": null,
+    "completed_at": "2026-08-22T10:37:56.954874",
+    "created_at": "2026-08-22T10:37:56.868325",
+    "duration_clarification": null,
+    "error": null,
+    "original_query": "Cooking chicken at 60C for 10 minutes",
+    "prediction": {
+      "doubling_time_hours": null,
+      "duration_minutes": 10.0,
+      "engine": "combase_local",
+      "final_log_cfu": -12.811388869684546,
+      "growth_description": "Significant reduction: 12.8 log decrease (>99.9999% killed)",
+      "h0": 1.8,
+      "initial_log_cfu": 0.0,
+      "is_multi_step": false,
+      "model_type": "thermal_inactivation",
+      "mu_max": -76.86833321810728,
+      "organism": "SALMONELLA",
+      "ph": 7.0,
+      "step_predictions": [
+        {
+          "duration_minutes": 10.0,
+          "log_increase": -12.811388869684546,
+          "mu_max": -76.86833321810728,
+          "step_order": 1,
+          "temperature_celsius": 60.0
+        }
+      ],
+      "steps": [
+        {
+          "duration_minutes": 10.0,
+          "step_order": 1,
+          "temperature_celsius": 60.0
+        }
+      ],
+      "temperature_celsius": 60.0,
+      "total_log_increase": -12.811388869684546,
+      "water_activity": 0.997,
+      "y_max": -27.0
+    },
+    "provenance": [
+      {
+        "field": "organism",
+        "notes": "Extracted via direct",
+        "source": "user_explicit",
+        "value": "salmonellae"
+      },
+      {
+        "field": "water_activity",
+        "notes": "Clamped 0.99 \u2192 0.997: Model constraint",
+        "source": "rag_retrieval_category_bridge",
+        "value": "0.997"
+      },
+      {
+        "field": "temperature_celsius",
+        "notes": "Extracted via llm_extraction",
+        "source": "user_explicit",
+        "value": "60.0"
+      },
+      {
+        "field": "duration_minutes",
+        "notes": "Extracted via llm_extraction",
+        "source": "user_explicit",
+        "value": "10.0"
+      },
+      {
+        "field": "ph",
+        "notes": "No pH specified. Bridge resolved food to category 'poultry' (state: 'fresh') but no curated pH data is available for that category/state. Using neutral default pH (7.0) \u2014 near-optimal for pathogen growth (conservative).",
+        "source": "conservative_default",
+        "value": "7.0"
+      },
+      {
+        "field": "initial_inoculum_log_cfu",
+        "notes": "No initial inoculum specified. Using model default (0.0 log CFU/g) from ComBase DefaultInoc.",
+        "source": "conservative_default",
+        "value": "0.0"
+      }
+    ],
+    "session_id": "ff2fd474-a0c7-445e-b1e4-44abd936e3dd",
+    "status": "completed",
+    "success": true,
+    "warnings": [
+      {
+        "field": "water_activity",
+        "message": "Value 0.99 clamped to 0.997 (valid range: 0.997-1.0)",
+        "type": "range_clamp"
+      },
+      {
+        "field": null,
+        "message": "Could not retrieve ph for 'chicken' from knowledge base (primary and fallback queries both below threshold)",
+        "type": "warning"
+      },
+      {
+        "field": null,
+        "message": "Could not retrieve water_activity for 'chicken' from knowledge base (primary and fallback queries both below threshold)",
+        "type": "warning"
+      },
+      {
+        "field": null,
+        "message": "Water activity 0.99 is outside the model's valid range [0.997, 1.0]; clamped to 0.997. Prediction is at the model boundary.",
+        "type": "warning"
+      }
+    ]
+  }
+}

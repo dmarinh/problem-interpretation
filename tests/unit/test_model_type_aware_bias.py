@@ -833,6 +833,36 @@ class TestRangeClamping:
             "0.97" in w for w in result.warnings
         ), f"Expected aw clamping notice; got: {result.warnings}"
 
+    def test_ph_above_max_clamped(self):
+        """pH 8.2 > max 7.5 -> clamped to 7.5 with RangeClamp + warning."""
+        service = StandardizationService(
+            model_registry=_make_registry_with_constraints(ph_min=4.5, ph_max=7.5)
+        )
+        grounded = GroundedValues()
+        grounded.set(
+            "organism", ComBaseOrganism.ESCHERICHIA_COLI, ValueSource.USER_EXPLICIT
+        )
+        grounded.set("temperature_celsius", 25.0, ValueSource.USER_EXPLICIT)
+        grounded.set("duration_minutes", 60.0, ValueSource.USER_EXPLICIT)
+        grounded.set("ph", 8.2, ValueSource.USER_EXPLICIT)
+
+        result = service.standardize(grounded, model_type=ModelType.GROWTH)
+
+        assert result.payload is not None
+        assert result.payload.parameters.ph == pytest.approx(7.5)
+
+        ph_clamps = [c for c in result.range_clamps if c.field_name == "ph"]
+        assert len(ph_clamps) == 1
+        c = ph_clamps[0]
+        assert c.original_value == pytest.approx(8.2)
+        assert c.clamped_value == pytest.approx(7.5)
+        assert c.valid_min == pytest.approx(4.5)
+        assert c.valid_max == pytest.approx(7.5)
+
+        assert any(
+            "8.2" in w and "7.5" in w for w in result.warnings
+        ), f"Expected pH clamping notice mentioning 8.2 and 7.5; got: {result.warnings}"
+
     def test_in_range_value_no_clamp_no_warning(self):
         """Value inside valid range → no clamp, no range-related warning."""
         service = StandardizationService(

@@ -4,6 +4,7 @@ Unit tests for core enums.
 
 from app.models.enums import (
     ComBaseOrganism,
+    EngineType,
     Factor4Type,
     ModelType,
 )
@@ -203,3 +204,39 @@ class TestFactor4Type:
         assert Factor4Type.from_string("lactic") == Factor4Type.LACTIC_ACID
         assert Factor4Type.from_string("acetic_acid") == Factor4Type.ACETIC_ACID
         assert Factor4Type.from_string("nitrite") == Factor4Type.NITRITE
+
+
+class TestEnumMemberSets:
+    """
+    Full member-set pins, added ahead of the engine-relocation/enum-split
+    refactor. Unlike from_string()/from_model_id() round-trip tests (which
+    only prove a specific alias still resolves), these fail if a member is
+    dropped, renamed, or has its value silently changed during the split --
+    even if nothing else in the suite happens to touch that member.
+
+    ComBaseOrganism already has its own CSV-cross-check invariant
+    (TestComBaseOrganismMatchesCSV in test_combase_models.py); this covers
+    the three enums that don't have an external data file to check against.
+    """
+
+    def test_model_type_member_set(self):
+        assert {m.name: m.value for m in ModelType} == {
+            "GROWTH": "growth",
+            "THERMAL_INACTIVATION": "thermal_inactivation",
+            "NON_THERMAL_SURVIVAL": "non_thermal_survival",
+        }
+
+    def test_factor4_type_member_set(self):
+        assert {m.name: m.value for m in Factor4Type} == {
+            "NONE": "none",
+            "CO2": "co2",
+            "NITRITE": "nitrite",
+            "LACTIC_ACID": "lactic_acid",
+            "ACETIC_ACID": "acetic_acid",
+        }
+
+    def test_engine_type_member_set(self):
+        assert {m.name: m.value for m in EngineType} == {
+            "COMBASE_LOCAL": "combase_local",
+            "COMBASE_API": "combase_api",
+        }
