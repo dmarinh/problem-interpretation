@@ -638,6 +638,35 @@ Clamping is applied by StandardizationService before payload construction, for a
 
 `app/main.py` lifespan handler loads `data/combase_models.csv` at startup. If the file is absent, the engine logs a warning and `is_available` remains `False`.
 
+### 5.6 Baranyi Primary Growth Model (`predictive/primary/baranyi.py`, additive)
+
+A *primary* model (population over time, given a rate) alongside `predictive/engines/combase/`'s *secondary* model (environment -> rate). Added 2026-08-22 as pure capability, no pipeline wiring: no `app/` consumer, no API surface, no change to `ComBaseCalculator.calculate()` or `calculate_log_increase()` (PTM's existing log-linear forward path). The two coexist as independent consumers of a `mu_max`-shaped rate — Baranyi does not call, import, or get called by anything in `predictive/engines/combase/`.
+
+Ported line-for-line from a frontend TypeScript implementation (itself a documented-fix port of ComBase's legacy `cbMath.js dmy`), reproducing its three worked numerical examples to the tolerances the reference itself documents (a ~1e-4 systematic gap against PTM's linear formula is expected — Baranyi's stationary-phase correction term is never exactly zero even far from the asymptote, PTM's `log_increase` is exactly linear).
+
+**The mixed-basis units contract.** Every quantity is log10, ln, or a raw unit — per field, not by category:
+
+| Field | Basis received | Handling |
+|---|---|---|
+| `initial_log_cfu` | log10(CFU/g) | x ln(10) -> ln, internally |
+| `target_log_increase` (inverse only) | log10(CFU/g) | x ln(10) -> ln, internally |
+| `y_max_ln` | already ln(CFU/g) | passed through, never x ln(10) |
+| `mu_max_ln` | already ln, per hour | passed through, never x ln(10) |
+| `h0` | dimensionless | passed through, no conversion either direction |
+| `duration_minutes` | minutes | / 60 -> hours, internally |
+| curve output (internal) | ln | / ln(10) -> log10 on the way out |
+
+`y_max_ln`/`mu_max_ln` carry the `_ln` suffix in the field name itself (`BaranyiParams`), not just in a docstring — the basis is visible at every call site. There is no generic "list of log values" entry point; every function takes these fields individually, so a uniform per-category conversion has nowhere to be written. Confirmed by CSV data, not just the type: `data/combase_models.csv`'s `ymax`/`h0` columns are populated (non-null) for all 35 rows; `exp(19.6) ~= 3.3e8` CFU/g (Listeria's `ymax`) is a biologically plausible carrying capacity, whereas `10^19.6` CFU/g (the reading if `ymax` were log10) is not — independent confirmation the CSV column is ln-basis, matching the frontend contract.
+
+Where `mu_max_ln` comes from is the caller's decision, out of this module's scope: deriving it from the (possibly physically-capped) `log_increase` (`log_increase * ln(10) / duration_hours`) respects `ComBaseEngine.execute()`'s `_PHYSICAL_LOG_LIMIT` cap (§3.4); reading the raw polynomial `mu_max` field does not. The worked examples' "capped" case (Example B: raw `mu_max=-1797.7`, capped `log_increase=-15`) demonstrates why — this module takes whichever value it's given, uninspected.
+
+**`h0` is a parameter, never read from the CSV.** Defaults to `0.0` (no lag — conservative floor). `BaranyiParams`/`population_at`/`time_to_target` take no `ComBaseModel`/CSV argument anywhere in their signatures — reading the CSV-fitted `h0` into the calculation is structurally not a thing that can happen by accident, only by a future caller deliberately wiring it in (which would itself be the mistake — CSV `h0` reflects the *training culture's* adaptation history in the ComBase experiment, not the user's product's). Negative `h0` is rejected (`ValueError`) at construction, a stricter contract than the legacy JS reference's silent `h0<0 -> return y0` fallback (preserved faithfully in the private `_dmy_ln` for portability/audit purposes, but not exposed at the public `BaranyiParams` boundary).
+
+**`time_to_target()` — the inverse, analytic (no numerical solve).** Both the population-to-adjusted-time step and the adjusted-time-to-real-time step invert in closed form (derivations in `specs/lessons.md`); verified by round-tripping `population_at(T) -> target -> time_to_target(target)` and recovering `T` to ~1e-12 (max absolute error, 32-case sweep across `h0=0`/`h0>0` and growth/inactivation) and by fuzzing 200,000+ random parameter combinations (`h0` up to 300, `|mu_max_ln|` up to 8, targets up to ±80 log10) with zero crashes and zero invalid `REACHED` results remaining. Three rounds of code review plus follow-up fuzzing beyond each round's own reported cases found five independent overflow/division/domain-error failure modes in the first implementation's direct evaluation of the closed form: two for realistic-not-adversarial inputs (moderate growth near `y_max`; fast inactivation with `h0>0` and a large log-reduction target), two more once `h0` or the asymptote gap sit at a float64 extreme (a long-relative-to-the-observation-window lag `h0`; a target far beyond reach relative to a narrow asymptote-correction band), and a fifth (`ZeroDivisionError` when the asymptote gap underflows to exactly `0.0` at the subnormal-float extreme) found only by a third, independent review pass's own fuzzing after the first four were fixed. Every `math.exp()` call and every division by a quantity that can vanish in the hot path is now preceded by an argument-boundedness argument (a concrete, comment-documented reason the operation cannot fail), rather than a `try/except` — this was deliberate: an exception-catching patch on the first two reported inputs was verified to *silently mis-report* other real, finite, reachable targets as `UNREACHABLE`, because the arithmetic instability (not the model) was what had actually failed. One review claim did **not** survive independent verification and is deliberately **not** claimed fixed here: a "silently imprecise for `h0` roughly 15–37" band, which a systematic sweep against a bisection oracle showed produces byte-identical results before and after the suggested reformulation, independently reconfirmed by the third review pass — the actual cause is a float64 precision floor in `population_at()` itself (the forward path, already frontend-verified in Part 1): at these `(h0, duration)` combinations the lag genuinely dwarfs the observation window, and `population_at()` returns exactly `y0` with no residual growth signal left to invert, in either direction. See `specs/lessons.md` (2026-08-22) for the full failure-mode analysis, the derivation of each fix, and why the "15-37 band" claim was rejected rather than papered over. Three outcomes, each a real result:
+- **REACHED** — `hours` is the time.
+- **ALREADY_MET** — the target is at or behind the starting population, in the direction the curve is already moving (`hours=0.0`).
+- **UNREACHABLE** — the target lies past the model's asymptote (`y_max`, growth case), the curve is flat (`mu_max_ln == 0`, or an internally inconsistent asymptote/rate pairing), or the target is so extreme (within ~1e-9 of the asymptote, or requiring a time beyond float64's representable range) that no finite answer exists at the precision available — each a fact about the model/target/numerics, not a solver failure.
+
 ---
 
 ## 6. RAG Knowledge Base
@@ -1095,6 +1124,7 @@ LiteLLM + Instructor. Model specified via `LLM_MODEL`. Supported providers inclu
 | `app/models/metadata.py` | `ValueProvenance`, `RangeBoundSelection`, `DefaultImputed`, `RangeClamp`, `RetrievalResult`, `InterpretationMetadata`, `ComBaseModelAudit`, `SystemAudit` |
 | `predictive/models/execution/base.py` | `TimeTemperatureStep`, `TimeTemperatureProfile`, `GrowthPrediction`, base execution classes |
 | `predictive/models/execution/combase.py` | `ComBaseParameters`, `ComBaseModelSelection`, `ComBaseExecutionPayload`, `ComBaseExecutionResult` |
+| `predictive/primary/baranyi.py` | `BaranyiParams`, `population_at()`, `time_to_target()` — additive primary-growth capability, no `app/` consumer (§5.6) |
 | `app/services/extraction/semantic_parser.py` | `SemanticParser` — LLM + Instructor extraction |
 | `app/services/grounding/grounding_service.py` | `GroundingService`, `GroundedValues`, `GroundedStep` |
 | `app/services/standardization/standardization_service.py` | `StandardizationService`, `StandardizationResult` |
