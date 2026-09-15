@@ -12,8 +12,10 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+# Anchored to repo root — an unanchored lib/ silently excluded
+# benchmarks/visualizations/lib/.
+/lib/
+/lib64/
 parts/
 sdist/
 var/
