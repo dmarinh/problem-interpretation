@@ -41,3 +41,18 @@ Full pinned environment: `requirements.lock.txt` (repo root).
 `data/vector_store/` is gitignored in **this** repo (see `.gitignore`) and
 is not committed here. The store contents fingerprinted above live in the
 backup repo instead.
+
+## Re-cut history
+
+The `v1.0-rag` tag was deleted and re-cut on 2026-09-15. The original tag
+pointed at commit `c717d2b`. Commit `aee5196` ("fix: anchor gitignore
+patterns; commit dashboard lib/ that was silently excluded") discovered
+that an unanchored `lib/` pattern in `.gitignore` had silently excluded
+`benchmarks/visualizations/lib/` (a real source directory, never committed
+in this repo's history) from every prior commit, including the original
+`c717d2b` freeze point. `lib/`/`lib64/` were anchored to `/lib/`/`/lib64/`
+and the four affected source files were committed. The re-cut tag points
+at the commit that includes this fix and this manifest update (see `git
+log` / `git tag -n` for the exact SHA at tag time). The vector store
+fingerprint, environment, and everything else above are unchanged by the
+re-cut — only the code state the tag points to changed.
