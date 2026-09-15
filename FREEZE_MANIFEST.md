@@ -56,3 +56,26 @@ at the commit that includes this fix and this manifest update (see `git
 log` / `git tag -n` for the exact SHA at tag time). The vector store
 fingerprint, environment, and everything else above are unchanged by the
 re-cut — only the code state the tag points to changed.
+
+### Second re-cut
+
+The tag was deleted and re-cut a second time on 2026-09-15. Reason: the
+gitignore rule `data/sources/**/*.csv` (added to exclude bulk source
+data) was over-broad and also excluded
+`data/sources/source_references.csv` — a small metadata file that
+`app/services/audit/citations.py:13-18` loads at runtime to format
+citation strings in the audit trail. Without it, `get_full_citations()`
+degraded silently to an empty dict (by design, for missing-file
+tolerance), which meant 4 tests
+(`test_pathogen_category_fallback.py::{TestT1Barley,TestT2Mascarpone,
+TestT3BoiledEgg}::test_full_citations_populated` and
+`test_category_pathogen_fallback.py::TestGetFullCitationsUnknownId::
+test_mixed_ids_only_known_returned`) failed in any clean checkout
+(confirmed failing in the backup repo). Fixed by adding a narrow
+un-ignore (`!data/sources/source_references.csv`) immediately after the
+broad rule and committing the file, in commit `af9bea1` ("fix: track
+source_references.csv, required at runtime for citations"). The re-cut
+tag points at the commit that includes this fix and this manifest
+update (see `git tag -n` / `git log` for the exact SHA at tag time).
+Nothing else changed: the vector store fingerprint and pinned
+environment above still apply unchanged.
