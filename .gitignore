@@ -84,6 +84,8 @@ data/sources/**/*.doc
 data/sources/**/*.xlsx
 data/sources/**/*.xls
 data/sources/**/*.csv
+# Required at runtime for citation formatting — small metadata file, not bulk source data.
+!data/sources/source_references.csv
 !data/sources/**/.gitkeep
 
 # =============================================================================
